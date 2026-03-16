@@ -52,7 +52,7 @@ export default function AgencyApplications() {
       await updateApplicationStatus(appId, newStatus);
       await loadData();
     } catch (err: any) {
-      alert(err.message);
+      console.error(err.message);
     }
   };
 
@@ -155,7 +155,10 @@ export default function AgencyApplications() {
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      <button className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors">
+                      <button 
+                        onClick={() => console.log(`More options clicked for application ${app.id}`)}
+                        className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
+                      >
                         <MoreHorizontal className="h-5 w-5" />
                       </button>
                     </td>

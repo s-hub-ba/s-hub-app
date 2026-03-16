@@ -1,0 +1,123 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin' ||
+          (request.auth.token.email == "aissolutins@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAgency() {
+      return isAuthenticated() && (getRole() == 'agency_admin' || getRole() == 'agency_recruiter');
+    }
+
+    function isNanny() {
+      return isAuthenticated() && getRole() == 'nanny';
+    }
+
+    function isFamily() {
+      return isAuthenticated() && getRole() == 'family';
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role']) &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['nanny', 'agency_admin', 'agency_recruiter', 'superadmin', 'family'];
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['agency_id', 'title', 'description', 'location_borough', 'job_type', 'work_type']) &&
+             data.agency_id is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 5000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
+    }
+
+    match /nanny_profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /agency_profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /families/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /family_profiles/{profileId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(request.resource.data.family_id) || isAdmin();
+    }
+
+    match /jobs/{jobId} {
+      allow read: if true; // Publicly viewable jobs
+      allow create: if isAgency() && request.resource.data.agency_id == request.auth.uid && isValidJob(request.resource.data);
+      allow update: if (isAgency() && resource.data.agency_id == request.auth.uid && isValidJob(request.resource.data)) || isAdmin();
+      allow delete: if (isAgency() && resource.data.agency_id == request.auth.uid) || isAdmin();
+    }
+
+    match /applications/{appId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.nanny_id || isAgency() || isAdmin());
+      allow create: if isNanny() && request.resource.data.nanny_id == request.auth.uid;
+      allow update: if (isAgency() || isNanny() && request.auth.uid == resource.data.nanny_id) || isAdmin();
+    }
+
+    match /saved_jobs/{saveId} {
+      allow read: if isFamily() && request.auth.uid == resource.data.family_id;
+      allow create: if isFamily() && request.resource.data.family_id == request.auth.uid;
+      allow delete: if isFamily() && resource.data.family_id == request.auth.uid;
+    }
+
+    match /family_applications/{appId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.family_id || isAgency() || isAdmin());
+      allow create: if isFamily() && request.resource.data.family_id == request.auth.uid;
+      allow update: if (isAgency() || isFamily() && request.auth.uid == resource.data.family_id) || isAdmin();
+    }
+
+    match /conversations/{convId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      
+      match /messages/{msgId} {
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+        allow create: if isAuthenticated() && request.auth.uid == request.resource.data.sender_id;
+      }
+    }
+  }
+}

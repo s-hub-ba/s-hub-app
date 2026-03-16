@@ -20,7 +20,7 @@ export default function FamilyDashboard() {
           getFamilyProfile(familyId),
           getSavedJobs(familyId),
           getFamilyApplications(familyId),
-          getConversations(familyId)
+          getConversations(familyId, 'family')
         ]);
         setProfile(prof);
         setSavedJobs(saved);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, BookmarkPlus, CheckCircle2 } from 'lucide-react';
+import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, BookmarkPlus, CheckCircle2, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getJobs, createApplication, getApplicationsForNanny } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,9 +33,9 @@ export default function NannyJobs() {
     try {
       await createApplication(jobId, nannyId, 'Cover letter placeholder');
       await loadData();
-      alert('Application submitted successfully!');
+      console.log('Application submitted successfully!');
     } catch (err: any) {
-      alert(err.message);
+      console.error(err.message);
     }
   };
 
@@ -81,6 +81,9 @@ export default function NannyJobs() {
         ) : (
           filteredJobs.map((job, index) => {
             const hasApplied = appliedJobIds.has(job.id);
+            const isSponsored = job.agency_profiles?.company_name?.toLowerCase().includes('elite') || 
+                                job.agency_profiles?.company_name?.toLowerCase().includes('premium') ||
+                                job.agency_profiles?.company_name?.toLowerCase().includes('star');
             
             return (
               <motion.div 
@@ -88,8 +91,14 @@ export default function NannyJobs() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
                 key={job.id} 
-                className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow"
+                className={`bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md transition-shadow relative overflow-hidden ${isSponsored ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-stone-200'}`}
               >
+                {isSponsored && (
+                  <div className="absolute top-0 right-0 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-bl-xl shadow-sm z-10 flex items-center gap-1">
+                    <Star className="h-3 w-3 fill-current" />
+                    Sponsored
+                  </div>
+                )}
                 <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-stone-900">{job.title}</h3>
@@ -134,7 +143,11 @@ export default function NannyJobs() {
                     )}
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
-                    <button className="p-2.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors flex items-center justify-center">
+                    <button 
+                      onClick={() => console.log('Saved job', job.id)}
+                      className="p-2.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors flex items-center justify-center"
+                      title="Save Job"
+                    >
                       <BookmarkPlus className="h-5 w-5" />
                     </button>
                     {hasApplied ? (

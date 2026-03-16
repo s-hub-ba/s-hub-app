@@ -69,7 +69,10 @@ export default function Billing() {
                 <CreditCard className="h-4 w-4" />
                 Manage Subscription
               </button>
-              <button className="flex-1 bg-white border border-stone-200 text-stone-700 px-4 py-3 rounded-xl text-sm font-bold shadow-sm hover:bg-stone-50 transition-colors">
+              <button 
+                onClick={() => console.log('No invoices available yet.')}
+                className="flex-1 bg-white border border-stone-200 text-stone-700 px-4 py-3 rounded-xl text-sm font-bold shadow-sm hover:bg-stone-50 transition-colors"
+              >
                 View Invoices
               </button>
             </div>
@@ -102,7 +105,13 @@ export default function Billing() {
                 >
                   Cancel
                 </button>
-                <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-sm transition-colors">
+                <button 
+                  onClick={() => {
+                    setIsManaging(false);
+                    console.log('Plan updated');
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-sm transition-colors"
+                >
                   Update Plan
                 </button>
               </div>
@@ -135,7 +144,10 @@ export default function Billing() {
                 <p className="text-xs text-stone-500">agency@example.com</p>
               </div>
             </div>
-            <button className="w-full py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors">
+            <button 
+              onClick={() => console.log('Update payment method clicked')}
+              className="w-full py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors"
+            >
               Update Payment Method
             </button>
           </div>

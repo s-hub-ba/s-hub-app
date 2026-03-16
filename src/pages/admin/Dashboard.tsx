@@ -65,10 +65,18 @@ export default function AdminDashboard() {
                     <p className="text-xs text-stone-500 mt-0.5">Applied 2 hours ago • Manhattan</p>
                   </div>
                   <div className="flex gap-2">
-                    <button className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Approve">
+                    <button 
+                      onClick={() => console.log('Approved agency')}
+                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" 
+                      title="Approve"
+                    >
                       <CheckCircle2 className="h-5 w-5" />
                     </button>
-                    <button className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
+                    <button 
+                      onClick={() => console.log('Rejected agency')}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+                      title="Reject"
+                    >
                       <XCircle className="h-5 w-5" />
                     </button>
                   </div>

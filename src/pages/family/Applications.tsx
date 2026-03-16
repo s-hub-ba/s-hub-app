@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, MapPin, DollarSign, Clock, CheckCircle2, MessageSquare, XCircle } from 'lucide-react';
+import { Briefcase, MapPin, DollarSign, Clock, CheckCircle2, MessageSquare, XCircle, Star, X } from 'lucide-react';
 import { getFamilyApplications } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -8,6 +8,12 @@ export default function FamilyApplications() {
   const { user } = useAuth();
   const [applications, setApplications] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedApp, setSelectedApp] = useState<any>(null);
+  const [rating, setRating] = useState(5);
+  const [reviewText, setReviewText] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewSuccess, setReviewSuccess] = useState(false);
   
   const familyId = user?.id || 'f1111111-2222-3333-4444-555555555555';
 
@@ -22,6 +28,32 @@ export default function FamilyApplications() {
     };
     loadData();
   }, []);
+
+  const handleOpenReview = (app: any) => {
+    setSelectedApp(app);
+    setRating(5);
+    setReviewText('');
+    setReviewSuccess(false);
+    setReviewModalOpen(true);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewText.trim()) return;
+    setIsSubmittingReview(true);
+    
+    // Simulate API call
+    setTimeout(() => {
+      console.log(`Review submitted for app ${selectedApp.id}: Rating ${rating}, Text: ${reviewText}`);
+      setIsSubmittingReview(false);
+      setReviewSuccess(true);
+      
+      // Close modal after 2 seconds of showing success
+      setTimeout(() => {
+        setReviewModalOpen(false);
+        setReviewSuccess(false);
+      }, 2000);
+    }, 1000);
+  };
 
   const filteredApps = applications.filter(app => {
     if (filter === 'all') return true;
@@ -116,6 +148,14 @@ export default function FamilyApplications() {
                         Message Agency
                       </Link>
                     )}
+                    {app.status === 'hired' && (
+                      <button 
+                        onClick={() => handleOpenReview(app)}
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
+                      >
+                        Leave Review
+                      </button>
+                    )}
                     <Link 
                       to={`/family/jobs/${app.job.id}`}
                       className="bg-white border border-stone-200 text-stone-700 hover:bg-stone-50 px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
@@ -129,6 +169,92 @@ export default function FamilyApplications() {
           )}
         </div>
       </div>
+
+      {/* Review Modal */}
+      {reviewModalOpen && selectedApp && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl relative">
+            <button 
+              onClick={() => setReviewModalOpen(false)}
+              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-100 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            <h2 className="text-2xl font-bold text-stone-900 mb-2">Leave a Review</h2>
+            
+            {reviewSuccess ? (
+              <div className="py-12 text-center">
+                <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 className="h-8 w-8" />
+                </div>
+                <h3 className="text-xl font-bold text-stone-900 mb-2">Review Submitted!</h3>
+                <p className="text-stone-500">Thank you for sharing your feedback. This helps our community stay safe and informed.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-stone-500 mb-6">
+                  Share your experience working with the nanny from <span className="font-bold">{selectedApp.job.agency_profiles?.company_name || 'the agency'}</span>.
+                </p>
+                
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-stone-700 mb-2">Rating</label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setRating(star)}
+                          className="p-1 focus:outline-none transition-transform hover:scale-110"
+                        >
+                          <Star 
+                            className={`h-8 w-8 ${star <= rating ? 'fill-amber-400 text-amber-400' : 'text-stone-300'}`} 
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-bold text-stone-700 mb-2">Your Review</label>
+                    <textarea
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      placeholder="Tell us about your experience..."
+                      rows={4}
+                      className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                    />
+                  </div>
+                  
+                  <div className="flex justify-end gap-3 pt-4">
+                    <button
+                      onClick={() => setReviewModalOpen(false)}
+                      className="px-5 py-2.5 rounded-xl text-sm font-bold text-stone-600 hover:bg-stone-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSubmitReview}
+                      disabled={!reviewText.trim() || isSubmittingReview}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2"
+                    >
+                      {isSubmittingReview ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        'Submit Review'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

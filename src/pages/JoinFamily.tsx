@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Baby, ArrowRight, Mail, Lock, User, Users } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function JoinFamily() {
   const navigate = useNavigate();
+  const { loginMock } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -25,46 +29,26 @@ export default function JoinFamily() {
     setError(null);
 
     try {
-      // 1. Sign up with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.name,
-            role: 'family'
-          }
-        }
-      });
+      // 1. Sign up with Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
 
-      if (authError) throw authError;
-
-      if (authData.user) {
-        // 2. Create the user record in the public.users table
-        const { error: userError } = await supabase.from('users').insert([{
-          id: authData.user.id,
+      if (user) {
+        // 2. Create the user record in the users collection
+        await setDoc(doc(db, 'users', user.uid), {
           email: formData.email,
-          role: 'family'
-        }]);
+          role: 'family',
+          created_at: serverTimestamp()
+        });
 
-        if (userError) {
-          console.error("Error creating user record:", userError);
-          // If RLS prevents this, we might need a trigger or edge function.
-          // For now, we'll try to insert it directly.
-        }
-
-        // 3. Create the family profile
-        const { error: familyError } = await supabase.from('families').insert([{
-          id: authData.user.id,
+        // 3. Create the family record
+        await setDoc(doc(db, 'families', user.uid), {
           name: formData.name,
           email: formData.email,
           location_borough: formData.location_borough,
-          location_neighborhood: formData.location_neighborhood
-        }]);
-
-        if (familyError) {
-           console.error("Error creating family record:", familyError);
-        }
+          location_neighborhood: formData.location_neighborhood,
+          created_at: serverTimestamp()
+        });
 
         // Navigate to family onboarding
         navigate('/family/onboarding');
@@ -221,6 +205,26 @@ export default function JoinFamily() {
                 {!isSubmitting && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
+
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-stone-100"></div>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-stone-400">For Testing</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                loginMock('family');
+                navigate('/family/onboarding');
+              }}
+              className="w-full py-3 px-4 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors"
+            >
+              Skip to Onboarding (Demo Mode)
+            </button>
           </form>
         </div>
       </div>

@@ -3,19 +3,19 @@ import { MessageSquare, Send, User, Building2 } from 'lucide-react';
 import { getConversations, getMessages, sendMessage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
-export default function FamilyMessages() {
+export default function NannyMessages() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   
-  const familyId = user?.id || 'f1111111-2222-3333-4444-555555555555';
+  const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const convos = await getConversations(familyId, 'family');
+        const convos = await getConversations(nannyId, 'nanny');
         setConversations(convos);
         if (convos.length > 0) {
           setActiveConversation(convos[0]);
@@ -34,7 +34,7 @@ export default function FamilyMessages() {
     if (!newMessage.trim() || !activeConversation) return;
 
     try {
-      const msg = await sendMessage(activeConversation.id, 'family', familyId, newMessage);
+      const msg = await sendMessage(activeConversation.id, 'nanny', nannyId, newMessage);
       setMessages(prev => [...prev, msg]);
       setNewMessage('');
     } catch (error) {
@@ -47,7 +47,7 @@ export default function FamilyMessages() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Messages</h1>
-          <p className="text-stone-500 mt-1">Communicate with agencies about your applications.</p>
+          <p className="text-stone-500 mt-1">Communicate with agencies and families.</p>
         </div>
       </div>
 
@@ -55,7 +55,7 @@ export default function FamilyMessages() {
         {/* Conversations List */}
         <div className="w-1/3 border-r border-stone-200 flex flex-col">
           <div className="p-4 border-b border-stone-100 bg-stone-50">
-            <h2 className="font-bold text-stone-900">Agencies</h2>
+            <h2 className="font-bold text-stone-900">Conversations</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
             {conversations.length === 0 ? (
@@ -102,52 +102,50 @@ export default function FamilyMessages() {
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-stone-900">Agency Chat</h2>
-                  <p className="text-xs text-stone-500">Usually replies within 24 hours</p>
+                  <h3 className="font-bold text-stone-900">Agency ID: {activeConversation.agency_id.substring(0, 8)}...</h3>
+                  <p className="text-xs text-stone-500">Active now</p>
                 </div>
               </div>
-              
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-stone-50/50">
+
+              <div className="flex-1 p-6 overflow-y-auto bg-stone-50/50 space-y-4">
                 {messages.length === 0 ? (
-                  <div className="text-center text-stone-500 py-8">
-                    <p className="text-sm">Send a message to start the conversation.</p>
+                  <div className="text-center text-stone-500 mt-10">
+                    <p>No messages yet. Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.map(msg => (
-                    <div 
-                      key={msg.id} 
-                      className={`flex flex-col max-w-[80%] ${
-                        msg.sender_type === 'family' ? 'ml-auto items-end' : 'mr-auto items-start'
-                      }`}
-                    >
-                      <div className={`p-3 rounded-2xl ${
-                        msg.sender_type === 'family' 
-                          ? 'bg-emerald-600 text-white rounded-br-sm' 
-                          : 'bg-white border border-stone-200 text-stone-800 rounded-bl-sm'
-                      }`}>
-                        <p className="text-sm">{msg.content}</p>
+                  messages.map((msg, idx) => {
+                    const isMe = msg.sender_type === 'nanny' && msg.sender_id === nannyId;
+                    return (
+                      <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+                          isMe 
+                            ? 'bg-emerald-600 text-white rounded-br-sm' 
+                            : 'bg-white border border-stone-200 text-stone-900 rounded-bl-sm shadow-sm'
+                        }`}>
+                          <p className="text-sm">{msg.content}</p>
+                          <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-emerald-100' : 'text-stone-400'}`}>
+                            {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </p>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-stone-400 mt-1 px-1">
-                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
-              
+
               <div className="p-4 bg-white border-t border-stone-100">
                 <form onSubmit={handleSendMessage} className="flex gap-2">
                   <input 
-                    type="text"
+                    type="text" 
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Type your message..."
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
+                    placeholder="Type your message..." 
+                    className="flex-1 px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
                   />
                   <button 
                     type="submit"
                     disabled={!newMessage.trim()}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                   >
                     <Send className="h-5 w-5" />
                   </button>
@@ -155,11 +153,10 @@ export default function FamilyMessages() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-stone-400 bg-stone-50/50">
-              <div className="text-center">
-                <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                <p>Select a conversation to start messaging</p>
-              </div>
+            <div className="flex-1 flex flex-col items-center justify-center text-stone-500 p-8 text-center">
+              <MessageSquare className="h-12 w-12 text-stone-300 mb-4" />
+              <h3 className="text-lg font-bold text-stone-900">Select a conversation</h3>
+              <p className="text-stone-500 mt-1">Choose an agency from the list to start messaging.</p>
             </div>
           )}
         </div>

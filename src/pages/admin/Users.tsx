@@ -95,7 +95,10 @@ export default function AdminUsers() {
                     <span className="text-sm text-stone-600">{new Date(user.created_at).toLocaleDateString()}</span>
                   </td>
                   <td className="p-4 pr-6 text-right">
-                    <button className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors">
+                    <button 
+                      onClick={() => console.log('User actions clicked for', user.id)}
+                      className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
+                    >
                       <MoreHorizontal className="h-5 w-5" />
                     </button>
                   </td>

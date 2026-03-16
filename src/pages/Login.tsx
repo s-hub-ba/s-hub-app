@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Baby, Mail, Lock, ArrowRight } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -18,14 +20,15 @@ export default function Login() {
     setError(null);
     
     try {
-      // Try real Supabase Auth first
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      // Try real Firebase Auth first
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
       
-      if (!authError && data.user) {
-        // Real auth succeeded, AuthContext will handle the redirect via onAuthStateChange
-        // But we can also force a redirect here if we know the role
-        const { data: userData } = await supabase.from('users').select('role').eq('id', data.user.id).single();
-        if (userData) {
+      if (user) {
+        // Real auth succeeded, fetch role and redirect
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
           if (userData.role === 'family') navigate('/family/dashboard');
           else if (userData.role === 'nanny') navigate('/nanny/dashboard');
           else if (userData.role === 'agency_admin' || userData.role === 'agency_recruiter') navigate('/agency/dashboard');
@@ -34,29 +37,23 @@ export default function Login() {
         setIsLoading(false);
         return;
       }
-
-      // Fallback to mock login for demo accounts
-      setTimeout(() => {
-        setIsLoading(false);
-        if (email.includes('admin@manhattanelite.com') || email.includes('agency')) {
-          loginMock('agency_admin');
-          navigate('/agency/dashboard');
-        } else if (email.includes('admin')) {
-          loginMock('superadmin');
-          navigate('/admin/dashboard');
-        } else if (email.includes('sarah@example.com') || email.includes('nanny')) {
-          loginMock('nanny');
-          navigate('/nanny/dashboard');
-        } else if (email.includes('family')) {
-          loginMock('family');
-          navigate('/family/dashboard');
-        } else {
-          setError(authError?.message || 'Invalid login credentials');
-        }
-      }, 1000);
-      
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+      // Fallback to mock login for demo accounts if auth fails
+      if (email.includes('admin@manhattanelite.com') || email.includes('agency')) {
+        loginMock('agency_admin');
+        navigate('/agency/dashboard');
+      } else if (email.includes('admin')) {
+        loginMock('superadmin');
+        navigate('/admin/dashboard');
+      } else if (email.includes('sarah@example.com') || email.includes('nanny')) {
+        loginMock('nanny');
+        navigate('/nanny/dashboard');
+      } else if (email.includes('family')) {
+        loginMock('family');
+        navigate('/family/dashboard');
+      } else {
+        setError(err.message || 'Invalid login credentials');
+      }
       setIsLoading(false);
     }
   };
@@ -191,6 +188,13 @@ export default function Login() {
               >
                 <span className="block font-semibold text-stone-900 mb-1">Agency</span>
                 <span className="text-stone-500">admin@manhattanelite.com</span>
+              </div>
+              <div 
+                className="p-3 bg-stone-50 rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-100 transition-colors"
+                onClick={() => { setEmail('family@example.com'); setPassword('password123'); }}
+              >
+                <span className="block font-semibold text-stone-900 mb-1">Family</span>
+                <span className="text-stone-500">family@example.com</span>
               </div>
             </div>
           </div>

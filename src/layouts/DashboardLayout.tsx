@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Baby, Briefcase, Calendar, User, Bell, LogOut, Search, Users, FileText, CreditCard, LayoutDashboard, Heart, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
+import NotificationsDropdown from '../components/NotificationsDropdown';
 
 export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | 'agency' | 'admin' | 'family' }) {
   const location = useLocation();
@@ -102,18 +103,13 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
             </div>
             <span className="text-lg font-bold tracking-tight text-stone-900">Shift Me Up</span>
           </Link>
-          <button className="p-2 text-stone-500 hover:text-stone-900">
-            <Bell className="h-5 w-5" />
-          </button>
+          <NotificationsDropdown />
         </header>
 
         {/* Desktop Topbar */}
         <header className="hidden md:flex h-16 bg-white border-b border-stone-200 items-center justify-end px-8 sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            <button className="p-2 text-stone-400 hover:text-stone-600 relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 border-2 border-white"></span>
-            </button>
+            <NotificationsDropdown />
             <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border border-emerald-200">
               {role === 'agency' ? 'A' : role === 'family' ? 'F' : 'N'}
             </div>

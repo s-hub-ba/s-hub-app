@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Base user information and role",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["nanny", "agency_admin", "agency_recruiter", "superadmin", "family"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    },
+    "NannyProfile": {
+      "title": "Nanny Profile",
+      "description": "Professional profile for a nanny",
+      "type": "object",
+      "properties": {
+        "first_name": { "type": "string" },
+        "last_name": { "type": "string" },
+        "bio": { "type": "string" },
+        "years_experience": { "type": "integer" },
+        "expected_pay_min": { "type": "number" },
+        "expected_pay_max": { "type": "number" },
+        "profile_photo_url": { "type": "string" },
+        "location_borough": { "type": "string" },
+        "location_neighborhood": { "type": "string" },
+        "availability_status": { "type": "string" },
+        "shift_score": { "type": "integer" },
+        "certifications": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["first_name", "last_name"]
+    },
+    "AgencyProfile": {
+      "title": "Agency Profile",
+      "description": "Profile for a nanny agency",
+      "type": "object",
+      "properties": {
+        "company_name": { "type": "string" },
+        "contact_person": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "country": { "type": "string" },
+        "website": { "type": "string" },
+        "logo_url": { "type": "string" },
+        "description": { "type": "string" },
+        "is_verified": { "type": "boolean" },
+        "subscription_plan": { "type": "string", "enum": ["free", "starter", "pro"] },
+        "subscription_status": { "type": "string" }
+      },
+      "required": ["company_name"]
+    },
+    "Family": {
+      "title": "Family",
+      "description": "Basic family account information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "location_borough": { "type": "string" },
+        "location_neighborhood": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    },
+    "FamilyProfile": {
+      "title": "Family Profile",
+      "description": "Detailed care requirements for a family",
+      "type": "object",
+      "properties": {
+        "children_count": { "type": "integer" },
+        "children_ages": { "type": "array", "items": { "type": "string" } },
+        "schedule": { "type": "string" },
+        "care_type": { "type": "string" },
+        "live_in": { "type": "boolean" },
+        "start_date": { "type": "string" },
+        "preferences": { "type": "object" }
+      }
+    },
+    "Job": {
+      "title": "Job",
+      "description": "A job posting by an agency",
+      "type": "object",
+      "properties": {
+        "agency_id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "location_borough": { "type": "string" },
+        "location_neighborhood": { "type": "string" },
+        "job_type": { "type": "string" },
+        "work_type": { "type": "string" },
+        "pay_min": { "type": "number" },
+        "pay_max": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published", "filled", "closed"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["agency_id", "title", "description", "location_borough", "job_type", "work_type"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "A nanny's application to a job",
+      "type": "object",
+      "properties": {
+        "job_id": { "type": "string" },
+        "nanny_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["applied", "reviewing", "interview_invited", "accepted", "rejected", "withdrawn"] },
+        "cover_letter": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["job_id", "nanny_id", "status"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A chat thread between parties",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "family_id": { "type": "string" },
+        "agency_id": { "type": "string" },
+        "nanny_id": { "type": "string" },
+        "last_message": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message in a conversation",
+      "type": "object",
+      "properties": {
+        "sender_id": { "type": "string" },
+        "sender_type": { "type": "string", "enum": ["family", "agency", "nanny"] },
+        "content": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sender_id", "sender_type", "content"]
+    },
+    "SavedJob": {
+      "title": "Saved Job",
+      "description": "A job saved by a family",
+      "type": "object",
+      "properties": {
+        "family_id": { "type": "string" },
+        "job_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["family_id", "job_id"]
+    },
+    "FamilyApplication": {
+      "title": "Family Application",
+      "description": "A family's application to an agency for a job",
+      "type": "object",
+      "properties": {
+        "family_id": { "type": "string" },
+        "job_id": { "type": "string" },
+        "agency_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined", "interviewing", "hired"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["family_id", "job_id", "agency_id", "status"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "User", "description": "Base user records" },
+    "nanny_profiles": { "schema": "NannyProfile", "description": "Nanny professional profiles" },
+    "agency_profiles": { "schema": "AgencyProfile", "description": "Agency profiles" },
+    "families": { "schema": "Family", "description": "Family account info" },
+    "family_profiles": { "schema": "FamilyProfile", "description": "Family care needs" },
+    "jobs": { "schema": "Job", "description": "Job postings" },
+    "applications": { "schema": "Application", "description": "Nanny job applications" },
+    "saved_jobs": { "schema": "SavedJob", "description": "Jobs saved by families" },
+    "family_applications": { "schema": "FamilyApplication", "description": "Family applications to agencies" },
+    "conversations": { "schema": "Conversation", "description": "Chat threads" },
+    "conversations/{conversationId}/messages": { "schema": "Message", "description": "Messages within a thread" }
+  }
+}

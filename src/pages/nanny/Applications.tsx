@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { FileText, CheckCircle2, Clock, XCircle, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getApplicationsForNanny, getJobById } from '../../lib/api';
@@ -98,9 +99,12 @@ export default function NannyApplications() {
                       Last update: {new Date(app.updated_at).toLocaleDateString()}
                     </div>
                     {app.status === 'interview_invited' && (
-                      <button className="mt-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors">
+                      <Link 
+                        to="/nanny/messages"
+                        className="mt-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors inline-flex items-center justify-center"
+                      >
                         View Message
-                      </button>
+                      </Link>
                     )}
                   </div>
                 </motion.div>

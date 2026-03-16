@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, MapPin, Briefcase, Clock, DollarSign, Heart, Baby, Filter } from 'lucide-react';
+import { Search, MapPin, Briefcase, Clock, DollarSign, Heart, Baby, Filter, Star } from 'lucide-react';
 import { getJobs, saveJob, unsaveJob, getSavedJobs } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -105,29 +105,53 @@ export default function JobDiscovery() {
             <option value="Live-In">Live-In</option>
           </select>
         </div>
+
+        {(selectedBorough !== 'All' || selectedSchedule !== 'All' || searchTerm !== '') && (
+          <button 
+            onClick={() => {
+              setSelectedBorough('All');
+              setSelectedSchedule('All');
+              setSearchTerm('');
+            }}
+            className="text-sm font-medium text-red-500 hover:text-red-600 px-2"
+          >
+            Clear all
+          </button>
+        )}
       </div>
 
       {/* Job Listings */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredJobs.map(job => (
-          <div key={job.id} className="bg-white rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col">
-            <div className="p-6 md:p-8 flex-1">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-stone-900 mb-1">{job.title}</h3>
-                  <p className="text-sm font-medium text-emerald-600">{job.agency_profiles?.company_name || 'Agency'}</p>
+        {filteredJobs.map(job => {
+          const isSponsored = job.agency_profiles?.company_name?.toLowerCase().includes('elite') || 
+                              job.agency_profiles?.company_name?.toLowerCase().includes('premium') ||
+                              job.agency_profiles?.company_name?.toLowerCase().includes('star');
+                              
+          return (
+            <div key={job.id} className={`bg-white rounded-3xl border shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative ${isSponsored ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-stone-200'}`}>
+              {isSponsored && (
+                <div className="absolute top-0 right-0 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-bl-xl shadow-sm z-10 flex items-center gap-1">
+                  <Star className="h-3 w-3 fill-current" />
+                  Sponsored
                 </div>
-                <button 
-                  onClick={() => handleSaveToggle(job.id)}
-                  className={`p-2 rounded-full transition-colors ${
-                    savedJobIds.includes(job.id) 
-                      ? 'bg-rose-50 text-rose-500' 
-                      : 'bg-stone-50 text-stone-400 hover:bg-stone-100 hover:text-stone-600'
-                  }`}
-                >
-                  <Heart className={`h-5 w-5 ${savedJobIds.includes(job.id) ? 'fill-current' : ''}`} />
-                </button>
-              </div>
+              )}
+              <div className="p-6 md:p-8 flex-1">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-stone-900 mb-1">{job.title}</h3>
+                    <p className="text-sm font-medium text-emerald-600">{job.agency_profiles?.company_name || 'Agency'}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleSaveToggle(job.id)}
+                    className={`p-2 rounded-full transition-colors ${
+                      savedJobIds.includes(job.id) 
+                        ? 'bg-rose-50 text-rose-500' 
+                        : 'bg-stone-50 text-stone-400 hover:bg-stone-100 hover:text-stone-600'
+                    }`}
+                  >
+                    <Heart className={`h-5 w-5 ${savedJobIds.includes(job.id) ? 'fill-current' : ''}`} />
+                  </button>
+                </div>
               
               <div className="flex flex-wrap gap-2 mb-6">
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-stone-100 text-stone-700">
@@ -178,7 +202,8 @@ export default function JobDiscovery() {
               </Link>
             </div>
           </div>
-        ))}
+          );
+        })}
         
         {filteredJobs.length === 0 && (
           <div className="col-span-full py-12 text-center bg-white rounded-3xl border border-stone-200 border-dashed">

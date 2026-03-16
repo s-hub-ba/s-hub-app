@@ -61,11 +61,17 @@ export default function AgencyProfile() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{AGENCY.name}</h1>
-                    {AGENCY.isVerified && (
-                      <div className="flex items-center justify-center bg-emerald-100 text-emerald-600 p-1 rounded-full" title="Verified Agency">
-                        <ShieldCheck className="h-5 w-5" />
+                    <div className="flex items-center gap-2">
+                      {AGENCY.isVerified && (
+                        <div className="flex items-center justify-center bg-emerald-100 text-emerald-600 p-1 rounded-full" title="Verified Agency">
+                          <ShieldCheck className="h-5 w-5" />
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border border-amber-200">
+                        <Star className="h-3 w-3 fill-current" />
+                        Sponsored
                       </div>
-                    )}
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-4 text-sm text-stone-600 mb-4">

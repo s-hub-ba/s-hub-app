@@ -11,6 +11,7 @@ export default function PostJob() {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -41,6 +42,7 @@ export default function PostJob() {
     }
     
     setIsSubmitting(true);
+    setError(null);
     
     try {
       await createJob({
@@ -56,8 +58,9 @@ export default function PostJob() {
       setTimeout(() => {
         navigate('/agency/jobs');
       }, 2000);
-    } catch (error) {
-      console.error('Error creating job:', error);
+    } catch (err: any) {
+      console.error('Error creating job:', err);
+      setError(err.message || 'Failed to post job. Please ensure your agency profile is complete.');
       setIsSubmitting(false);
     }
   };
@@ -105,6 +108,12 @@ export default function PostJob() {
         </div>
 
         <div className="p-6 md:p-8">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              {error}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-6">
             
             {step === 1 && (

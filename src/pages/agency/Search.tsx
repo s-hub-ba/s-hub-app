@@ -6,6 +6,9 @@ import { getNannies } from '../../lib/api';
 export default function GlobalSearch() {
   const [searchQuery, setSearchQuery] = useState('');
   const [nannies, setNannies] = useState<any[]>([]);
+  const [selectedBorough, setSelectedBorough] = useState('All');
+  const [selectedTier, setSelectedTier] = useState('All');
+  const [minExperience, setMinExperience] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -14,11 +17,11 @@ export default function GlobalSearch() {
         // Add mock data for search-specific fields
         const enrichedNannies = fetchedNannies.map((nanny: any, index: number) => ({
           ...nanny,
-          experience: 5 + index * 2,
-          shiftScore: 90 - index * 5,
-          tier: index === 0 ? 'Elite' : 'Professional',
-          specialties: index === 0 ? ['Newborn Care', 'Multiples', 'Sleep Training'] : ['Bilingual (Spanish)', 'Special Needs', 'Toddlers'],
-          availability: index === 0 ? 'seeking' : 'open',
+          experience: 5 + (index % 5) * 2,
+          shiftScore: 90 - (index % 10) * 5,
+          tier: index % 3 === 0 ? 'Elite' : 'Professional',
+          specialties: index % 2 === 0 ? ['Newborn Care', 'Multiples', 'Sleep Training'] : ['Bilingual (Spanish)', 'Special Needs', 'Toddlers'],
+          availability: index % 4 === 0 ? 'seeking' : 'open',
           certs: ['CPR', 'First Aid']
         }));
         setNannies(enrichedNannies);
@@ -29,12 +32,17 @@ export default function GlobalSearch() {
     loadData();
   }, []);
 
-  const filteredNannies = nannies.filter(nanny => 
-    nanny.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    nanny.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    nanny.location_borough?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    nanny.specialties?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredNannies = nannies.filter(nanny => {
+    const matchesSearch = nanny.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          nanny.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          nanny.specialties?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    const matchesBorough = selectedBorough === 'All' || nanny.location_borough === selectedBorough;
+    const matchesTier = selectedTier === 'All' || nanny.tier === selectedTier;
+    const matchesExperience = nanny.experience >= minExperience;
+
+    return matchesSearch && matchesBorough && matchesTier && matchesExperience;
+  });
 
   return (
     <div className="space-y-8 pb-12">
@@ -46,21 +54,78 @@ export default function GlobalSearch() {
       </div>
 
       {/* Search & Filters */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400" />
-          <input 
-            type="text" 
-            placeholder="Search by name, specialty, or keyword..." 
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div className="space-y-4">
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400" />
+            <input 
+              type="text" 
+              placeholder="Search by name, specialty, or keyword..." 
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
-        <button className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-medium hover:bg-stone-50 transition-colors">
-          <Filter className="h-4 w-4" />
-          Filters
-        </button>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
+            <MapPin className="h-4 w-4 text-stone-400" />
+            <select 
+              value={selectedBorough}
+              onChange={(e) => setSelectedBorough(e.target.value)}
+              className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
+            >
+              <option value="All">All Boroughs</option>
+              <option value="Manhattan">Manhattan</option>
+              <option value="Brooklyn">Brooklyn</option>
+              <option value="Queens">Queens</option>
+              <option value="Bronx">Bronx</option>
+              <option value="Staten Island">Staten Island</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
+            <Star className="h-4 w-4 text-stone-400" />
+            <select 
+              value={selectedTier}
+              onChange={(e) => setSelectedTier(e.target.value)}
+              className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
+            >
+              <option value="All">All Tiers</option>
+              <option value="Elite">Elite</option>
+              <option value="Professional">Professional</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
+            <Filter className="h-4 w-4 text-stone-400" />
+            <select 
+              value={minExperience}
+              onChange={(e) => setMinExperience(Number(e.target.value))}
+              className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
+            >
+              <option value="0">Any Experience</option>
+              <option value="2">2+ Years</option>
+              <option value="5">5+ Years</option>
+              <option value="10">10+ Years</option>
+            </select>
+          </div>
+
+          {(selectedBorough !== 'All' || selectedTier !== 'All' || minExperience !== 0 || searchQuery !== '') && (
+            <button 
+              onClick={() => {
+                setSelectedBorough('All');
+                setSelectedTier('All');
+                setMinExperience(0);
+                setSearchQuery('');
+              }}
+              className="text-sm font-medium text-red-500 hover:text-red-600 px-2"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Results */}
@@ -121,10 +186,17 @@ export default function GlobalSearch() {
               </div>
               
               <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex gap-2">
-                <button className="flex-1 text-center px-4 py-2.5 rounded-xl bg-white border border-stone-200 text-stone-900 text-sm font-medium hover:bg-stone-50 transition-colors">
+                <button 
+                  onClick={() => console.log(`View profile clicked for nanny ${nanny.id}`)}
+                  className="flex-1 text-center px-4 py-2.5 rounded-xl bg-white border border-stone-200 text-stone-900 text-sm font-medium hover:bg-stone-50 transition-colors"
+                >
                   View Profile
                 </button>
-                <button className="px-4 py-2.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors flex items-center justify-center" title="Save to Talent Pool">
+                <button 
+                  onClick={() => console.log(`Save to Talent Pool clicked for nanny ${nanny.id}`)}
+                  className="px-4 py-2.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors flex items-center justify-center" 
+                  title="Save to Talent Pool"
+                >
                   <BookmarkPlus className="h-4 w-4" />
                 </button>
               </div>

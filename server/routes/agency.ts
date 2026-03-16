@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabaseAdmin } from '../supabase.js';
+import { db, auth } from '../firebase.js';
 import { calculateSubscriptionPrice } from '../services/billing.js';
 
 const router = Router();
@@ -18,33 +18,36 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
   const agency_id = req.agency_id;
   
   try {
-    // 1. Create user in auth (mocked ID for MVP)
-    const newUserId = crypto.randomUUID(); 
+    // 1. Create user in auth
+    const userRecord = await auth.createUser({
+      email,
+      displayName: `${first_name} ${last_name}`
+    });
+    const newUserId = userRecord.uid;
     
     // 2. Add to agency_recruiters
-    await supabaseAdmin.from('agency_recruiters').insert({
+    await db.collection('agency_recruiters').add({
       agency_id,
       user_id: newUserId,
-      status: 'active'
+      status: 'active',
+      created_at: new Date().toISOString()
     });
     
     // 3. Update subscription pricing
-    const { data: sub } = await supabaseAdmin
-      .from('subscriptions')
-      .select('*')
-      .eq('agency_id', agency_id)
-      .single();
+    const subSnapshot = await db.collection('subscriptions').where('agency_id', '==', agency_id).limit(1).get();
       
-    if (sub) {
-      const newCount = sub.recruiter_count + 1;
+    if (!subSnapshot.empty) {
+      const subDoc = subSnapshot.docs[0];
+      const sub = subDoc.data();
+      const newCount = (sub.recruiter_count || 0) + 1;
       const newTotal = calculateSubscriptionPrice(newCount);
       
-      await supabaseAdmin
-        .from('subscriptions')
-        .update({ recruiter_count: newCount, total_price: newTotal, updated_at: new Date().toISOString() })
-        .eq('id', sub.id);
+      await subDoc.ref.update({ 
+        recruiter_count: newCount, 
+        total_price: newTotal, 
+        updated_at: new Date().toISOString() 
+      });
         
-      // TODO: Call PayPal/Stripe API to update the live subscription amount
       console.log(`[Billing] Agency ${agency_id} price increased to $${newTotal}/mo`);
     }
     
@@ -61,29 +64,31 @@ router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) =
   
   try {
     // 1. Remove from agency_recruiters
-    await supabaseAdmin
-      .from('agency_recruiters')
-      .delete()
-      .match({ agency_id, user_id: recruiter_user_id });
+    const recruiterSnapshot = await db.collection('agency_recruiters')
+      .where('agency_id', '==', agency_id)
+      .where('user_id', '==', recruiter_user_id)
+      .get();
+    
+    await Promise.all(recruiterSnapshot.docs.map(d => d.ref.delete()));
     
     // 2. Update subscription pricing
-    const { data: sub } = await supabaseAdmin
-      .from('subscriptions')
-      .select('*')
-      .eq('agency_id', agency_id)
-      .single();
+    const subSnapshot = await db.collection('subscriptions').where('agency_id', '==', agency_id).limit(1).get();
       
-    if (sub && sub.recruiter_count > 1) {
-      const newCount = sub.recruiter_count - 1;
-      const newTotal = calculateSubscriptionPrice(newCount);
-      
-      await supabaseAdmin
-        .from('subscriptions')
-        .update({ recruiter_count: newCount, total_price: newTotal, updated_at: new Date().toISOString() })
-        .eq('id', sub.id);
+    if (!subSnapshot.empty) {
+      const subDoc = subSnapshot.docs[0];
+      const sub = subDoc.data();
+      if (sub.recruiter_count > 1) {
+        const newCount = sub.recruiter_count - 1;
+        const newTotal = calculateSubscriptionPrice(newCount);
         
-      // TODO: Call PayPal/Stripe API to reduce the live subscription amount
-      console.log(`[Billing] Agency ${agency_id} price decreased to $${newTotal}/mo`);
+        await subDoc.ref.update({ 
+          recruiter_count: newCount, 
+          total_price: newTotal, 
+          updated_at: new Date().toISOString() 
+        });
+          
+        console.log(`[Billing] Agency ${agency_id} price decreased to $${newTotal}/mo`);
+      }
     }
     
     res.json({ success: true, message: 'Recruiter removed and billing updated' });
@@ -99,19 +104,21 @@ router.post('/invite-link', requireAgencyOwner, async (req: any, res: any) => {
   // Generate a short unique code
   const code = Math.random().toString(36).substring(2, 10);
   
-  const { data, error } = await supabaseAdmin
-    .from('invite_links')
-    .insert({ agency_id, code })
-    .select()
-    .single();
+  try {
+    await db.collection('invite_links').doc(code).set({
+      agency_id,
+      code,
+      created_at: new Date().toISOString()
+    });
     
-  if (error) return res.status(500).json({ error: error.message });
-  
-  res.json({ 
-    success: true, 
-    invite_link: `https://shiftmeup.com/join/${code}`,
-    code 
-  });
+    res.json({ 
+      success: true, 
+      invite_link: `https://shiftmeup.com/join/${code}`,
+      code 
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 export default router;

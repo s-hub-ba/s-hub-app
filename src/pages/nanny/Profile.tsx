@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, MapPin, Briefcase, GraduationCap, Camera, Save } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { User, Mail, MapPin, Briefcase, GraduationCap, Camera, Save, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getNannyById, updateNannyProfile } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -9,23 +10,31 @@ export default function NannyProfile() {
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [formData, setFormData] = useState<any>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
 
   useEffect(() => {
     const loadData = async () => {
+      setIsLoading(true);
       try {
         const data = await getNannyById(nannyId);
         if (data) {
           setProfile(data);
           setFormData(data);
+        } else {
+          setError('Profile not found. Please complete your onboarding.');
         }
-      } catch (error) {
-        console.error('Error loading profile:', error);
+      } catch (err: any) {
+        console.error('Error loading profile:', err);
+        setError('Failed to load profile. Please try again later.');
+      } finally {
+        setIsLoading(false);
       }
     };
     loadData();
-  }, []);
+  }, [nannyId]);
 
   const handleSave = async () => {
     try {
@@ -34,8 +43,9 @@ export default function NannyProfile() {
         setProfile(updated);
         setIsEditing(false);
       }
-    } catch (error) {
-      console.error('Error saving profile:', error);
+    } catch (err: any) {
+      console.error('Error saving profile:', err);
+      alert('Failed to save profile: ' + err.message);
     }
   };
 
@@ -44,7 +54,26 @@ export default function NannyProfile() {
     setFormData((prev: any) => ({ ...prev, [name]: value }));
   };
 
-  if (!profile) return <div>Loading...</div>;
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="max-w-4xl mx-auto mt-12 p-8 bg-white rounded-3xl border border-stone-200 text-center">
+      <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+        <User className="h-8 w-8 text-red-600" />
+      </div>
+      <h2 className="text-2xl font-bold text-stone-900 mb-2">Profile Issue</h2>
+      <p className="text-stone-600 mb-6">{error}</p>
+      <Link to="/nanny/onboarding" className="inline-flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors">
+        Complete Onboarding
+      </Link>
+    </div>
+  );
+
+  if (!profile) return null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
@@ -192,6 +221,50 @@ export default function NannyProfile() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Reviews Section */}
+      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden p-6 md:p-8">
+        <h3 className="text-lg font-bold text-stone-900 mb-6 flex items-center gap-2">
+          <Star className="h-5 w-5 text-amber-500" />
+          Parent Reviews
+        </h3>
+        
+        <div className="space-y-6">
+          <div className="p-4 rounded-2xl border border-stone-100 bg-stone-50">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-bold text-stone-900">The Smith Family</div>
+              <div className="flex text-amber-400">
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+              </div>
+            </div>
+            <p className="text-stone-600 text-sm leading-relaxed">
+              "Sarah was absolutely wonderful with our two kids. She is punctual, creative, and very patient. We highly recommend her!"
+            </p>
+            <div className="text-xs text-stone-400 mt-3">March 2026</div>
+          </div>
+
+          <div className="p-4 rounded-2xl border border-stone-100 bg-stone-50">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-bold text-stone-900">The Johnson Family</div>
+              <div className="flex text-amber-400">
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 fill-current" />
+                <Star className="h-4 w-4 text-stone-300" />
+              </div>
+            </div>
+            <p className="text-stone-600 text-sm leading-relaxed">
+              "Great experience overall. Sarah helped us out during a busy week and the kids loved her."
+            </p>
+            <div className="text-xs text-stone-400 mt-3">February 2026</div>
           </div>
         </div>
       </div>

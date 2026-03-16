@@ -1,21 +1,78 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { CheckCircle2, ChevronRight, Upload, Camera } from 'lucide-react';
+import { updateNannyProfile, getNannyById } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function NannyOnboarding() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState<any>({
+    first_name: '',
+    last_name: '',
+    phone_number: '',
+    years_experience: '',
+    bio: '',
+    certifications: [],
+    location_borough: '',
+    expected_pay_min: '',
+    expected_pay_max: '',
+    preferred_job_types: []
+  });
 
-  const handleNext = () => {
+  useEffect(() => {
+    if (user?.id) {
+      getNannyById(user.id).then(data => {
+        if (data) {
+          setFormData(prev => ({
+            ...prev,
+            ...data
+          }));
+        }
+      }).catch(err => console.error("Error fetching nanny profile:", err));
+    }
+  }, [user]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCheckboxChange = (name: string, value: string) => {
+    setFormData(prev => {
+      const current = prev[name] || [];
+      if (current.includes(value)) {
+        return { ...prev, [name]: current.filter((v: string) => v !== value) };
+      } else {
+        return { ...prev, [name]: [...current, value] };
+      }
+    });
+  };
+
+  const handleNext = async () => {
     if (step < 4) {
       setStep(step + 1);
     } else {
       setIsSubmitting(true);
-      setTimeout(() => {
-        navigate('/nanny/dashboard');
-      }, 1500);
+      try {
+        if (user?.id) {
+          await updateNannyProfile(user.id, {
+            ...formData,
+            years_experience: parseInt(formData.years_experience) || 0,
+            expected_pay_min: parseFloat(formData.expected_pay_min) || 0,
+            expected_pay_max: parseFloat(formData.expected_pay_max) || 0,
+          });
+        }
+        setTimeout(() => {
+          navigate('/nanny/dashboard');
+        }, 1500);
+      } catch (error) {
+        console.error('Error saving onboarding data:', error);
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -62,17 +119,17 @@ export default function NannyOnboarding() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">First Name</label>
-                    <input type="text" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Sarah" />
+                    <input name="first_name" value={formData.first_name} onChange={handleChange} type="text" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Sarah" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Last Name</label>
-                    <input type="text" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Jenkins" />
+                    <input name="last_name" value={formData.last_name} onChange={handleChange} type="text" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Jenkins" />
                   </div>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Phone Number</label>
-                  <input type="tel" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="(555) 123-4567" />
+                  <input name="phone_number" value={formData.phone_number} onChange={handleChange} type="tel" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="(555) 123-4567" />
                 </div>
               </motion.div>
             )}
@@ -86,12 +143,12 @@ export default function NannyOnboarding() {
 
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Years of Professional Experience</label>
-                  <input type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="e.g. 5" />
+                  <input name="years_experience" value={formData.years_experience} onChange={handleChange} type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="e.g. 5" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Professional Bio</label>
-                  <textarea rows={4} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" placeholder="Briefly describe your childcare philosophy and experience..."></textarea>
+                  <textarea name="bio" value={formData.bio} onChange={handleChange} rows={4} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" placeholder="Briefly describe your childcare philosophy and experience..."></textarea>
                 </div>
 
                 <div>
@@ -99,7 +156,12 @@ export default function NannyOnboarding() {
                   <div className="grid grid-cols-2 gap-3">
                     {['CPR', 'First Aid', 'Water Safety', 'Special Needs', 'Newborn Care', 'Early Ed Degree'].map(cert => (
                       <label key={cert} className="flex items-center gap-2 p-3 border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50">
-                        <input type="checkbox" className="rounded text-emerald-600 focus:ring-emerald-500" />
+                        <input 
+                          type="checkbox" 
+                          checked={formData.certifications?.includes(cert)}
+                          onChange={() => handleCheckboxChange('certifications', cert)}
+                          className="rounded text-emerald-600 focus:ring-emerald-500" 
+                        />
                         <span className="text-sm font-medium text-stone-700">{cert}</span>
                       </label>
                     ))}
@@ -117,7 +179,7 @@ export default function NannyOnboarding() {
 
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Primary Borough</label>
-                  <select name="location_borough" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+                  <select name="location_borough" value={formData.location_borough} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
                     <option value="">Select Borough</option>
                     <option value="Manhattan">Manhattan</option>
                     <option value="Brooklyn">Brooklyn</option>
@@ -130,11 +192,11 @@ export default function NannyOnboarding() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Min Pay ($/hr)</label>
-                    <input type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="25" />
+                    <input name="expected_pay_min" value={formData.expected_pay_min} onChange={handleChange} type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="25" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Max Pay ($/hr)</label>
-                    <input type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="45" />
+                    <input name="expected_pay_max" value={formData.expected_pay_max} onChange={handleChange} type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="45" />
                   </div>
                 </div>
 
@@ -143,7 +205,12 @@ export default function NannyOnboarding() {
                   <div className="grid grid-cols-2 gap-3">
                     {['Full-Time', 'Part-Time', 'Temporary', 'Overnight', 'Live-In', 'Live-Out'].map(type => (
                       <label key={type} className="flex items-center gap-2 p-3 border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50">
-                        <input type="checkbox" className="rounded text-emerald-600 focus:ring-emerald-500" />
+                        <input 
+                          type="checkbox" 
+                          checked={formData.preferred_job_types?.includes(type)}
+                          onChange={() => handleCheckboxChange('preferred_job_types', type)}
+                          className="rounded text-emerald-600 focus:ring-emerald-500" 
+                        />
                         <span className="text-sm font-medium text-stone-700">{type}</span>
                       </label>
                     ))}

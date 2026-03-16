@@ -11,6 +11,8 @@ export default function AgencyJobs() {
   const { user } = useAuth();
   const agencyId = user?.id || 'a1b2c3d4-e5f6-7890-1234-56789abcdef0';
 
+  const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+
   useEffect(() => {
     loadJobs();
   }, []);
@@ -24,11 +26,12 @@ export default function AgencyJobs() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this job?')) {
+  const handleDelete = async () => {
+    if (jobToDelete) {
       try {
-        await deleteJob(id);
+        await deleteJob(jobToDelete);
         await loadJobs();
+        setJobToDelete(null);
       } catch (error) {
         console.error('Error deleting job:', error);
       }
@@ -122,7 +125,7 @@ export default function AgencyJobs() {
                     </td>
                     <td className="p-4 pr-6 text-right">
                       <button 
-                        onClick={() => handleDelete(job.id)}
+                        onClick={() => setJobToDelete(job.id)}
                         className="p-2 text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
                         title="Delete Job"
                       >
@@ -136,6 +139,34 @@ export default function AgencyJobs() {
           </table>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {jobToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl shadow-xl max-w-md w-full p-6 border border-stone-200"
+          >
+            <h3 className="text-xl font-bold text-stone-900 mb-2">Delete Job</h3>
+            <p className="text-stone-600 mb-6">Are you sure you want to delete this job? This action cannot be undone.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setJobToDelete(null)}
+                className="px-4 py-2 text-stone-600 font-medium hover:bg-stone-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

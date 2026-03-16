@@ -131,7 +131,7 @@ export default function AgencyDashboard() {
               <h3 className="font-bold text-stone-900 mb-1">Search Nannies</h3>
               <p className="text-xs text-stone-500">Find talent in the global NYC pool.</p>
             </Link>
-            <Link to="/agency/talent/invite" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">
+            <Link to="/agency/talent" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">
               <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-blue-100 group-hover:text-blue-600 mb-3 transition-colors">
                 <Users className="h-5 w-5" />
               </div>
@@ -145,7 +145,7 @@ export default function AgencyDashboard() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-stone-900">Recent Inquiries</h2>
-            <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</button>
+            <Link to="/agency/messages" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
           </div>
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="divide-y divide-stone-100">
@@ -155,9 +155,9 @@ export default function AgencyDashboard() {
                     <h4 className="font-bold text-stone-900 text-sm">The Johnson Family</h4>
                     <p className="text-xs text-stone-500 mt-0.5">Looking for full-time nanny in Brooklyn</p>
                   </div>
-                  <button className="text-stone-400 hover:text-stone-600">
+                  <Link to="/agency/messages" className="text-stone-400 hover:text-stone-600">
                     <ArrowRight className="h-4 w-4" />
-                  </button>
+                  </Link>
                 </div>
               ))}
             </div>

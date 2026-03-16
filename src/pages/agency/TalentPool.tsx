@@ -26,6 +26,8 @@ const STATUS_LABELS = {
 export default function TalentPool() {
   const [searchQuery, setSearchQuery] = useState('');
   const [talentPool, setTalentPool] = useState<any[]>([]);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -61,10 +63,16 @@ export default function TalentPool() {
           <p className="text-stone-500 mt-1">Manage your agency's private roster and saved candidates.</p>
         </div>
         <div className="flex gap-2">
-          <button className="bg-white border border-stone-200 text-stone-700 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-stone-50 transition-colors">
+          <button 
+            onClick={() => setShowImportModal(true)}
+            className="bg-white border border-stone-200 text-stone-700 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-stone-50 transition-colors"
+          >
             Import CSV
           </button>
-          <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors">
+          <button 
+            onClick={() => setShowInviteModal(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors"
+          >
             Invite Nanny
           </button>
         </div>
@@ -162,7 +170,10 @@ export default function TalentPool() {
                       </div>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      <button className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors">
+                      <button 
+                        onClick={() => console.log(`More options clicked for nanny ${talent.id}`)}
+                        className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
+                      >
                         <MoreHorizontal className="h-5 w-5" />
                       </button>
                     </td>
@@ -173,6 +184,81 @@ export default function TalentPool() {
           </table>
         </div>
       </div>
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl shadow-xl max-w-md w-full p-6 border border-stone-200"
+          >
+            <h3 className="text-xl font-bold text-stone-900 mb-2">Invite Nanny</h3>
+            <p className="text-stone-600 mb-6">Send an invitation to a nanny to join your talent pool.</p>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-bold text-stone-700 mb-1">Email Address</label>
+                <input type="email" className="w-full px-4 py-2 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="nanny@example.com" />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="px-4 py-2 text-stone-600 font-medium hover:bg-stone-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowInviteModal(false);
+                  // Mock success
+                  console.log('Invitation sent!');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors"
+              >
+                Send Invite
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl shadow-xl max-w-md w-full p-6 border border-stone-200"
+          >
+            <h3 className="text-xl font-bold text-stone-900 mb-2">Import CSV</h3>
+            <p className="text-stone-600 mb-6">Upload a CSV file to import multiple nannies into your talent pool.</p>
+            <div className="border-2 border-dashed border-stone-200 rounded-2xl p-8 text-center mb-6">
+              <FileText className="h-8 w-8 text-stone-400 mx-auto mb-2" />
+              <p className="text-sm text-stone-600 font-medium">Click to upload or drag and drop</p>
+              <p className="text-xs text-stone-400 mt-1">CSV files only</p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2 text-stone-600 font-medium hover:bg-stone-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  // Mock success
+                  console.log('Import started!');
+                }}
+                className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-xl transition-colors"
+              >
+                Import
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Baby, ArrowRight, Mail, Lock, User } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function JoinNanny() {
@@ -26,35 +28,23 @@ export default function JoinNanny() {
 
     try {
       // 1. Sign up the user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
-      if (authError) throw authError;
-
-      if (authData.user) {
+      if (user) {
         // 2. Create the user record
-        const { error: userError } = await supabase.from('users').insert([{
-          id: authData.user.id,
+        await setDoc(doc(db, 'users', user.uid), {
           email: email,
-          role: 'nanny'
-        }]);
-
-        if (userError) {
-          console.error("Error creating user record:", userError);
-        }
+          role: 'nanny',
+          created_at: serverTimestamp()
+        });
 
         // 3. Create the nanny profile
-        const { error: profileError } = await supabase.from('nanny_profiles').insert([{
-          id: authData.user.id,
+        await setDoc(doc(db, 'nanny_profiles', user.uid), {
           first_name: firstName,
-          last_name: lastName
-        }]);
-
-        if (profileError) {
-           console.error("Error creating nanny profile record:", profileError);
-        }
+          last_name: lastName,
+          created_at: serverTimestamp()
+        });
 
         // Navigate to nanny onboarding
         navigate('/nanny/onboarding');
@@ -184,6 +174,26 @@ export default function JoinNanny() {
                 {!isSubmitting && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
+            
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-stone-100"></div>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-stone-400">For Testing</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                loginMock('nanny');
+                navigate('/nanny/onboarding');
+              }}
+              className="w-full py-3 px-4 border border-emerald-200 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+            >
+              Skip to Onboarding (Demo Mode)
+            </button>
           </form>
 
           <div className="mt-6">

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabaseAdmin } from '../supabase.js';
+import { db, auth } from '../firebase.js';
 
 const router = Router();
 
@@ -13,14 +13,10 @@ router.post('/register', async (req, res) => {
     
     // 1. Process Invite Code if provided
     if (invite_code) {
-      const { data: link } = await supabaseAdmin
-        .from('invite_links')
-        .select('agency_id')
-        .eq('code', invite_code)
-        .single();
+      const inviteDoc = await db.collection('invite_links').doc(invite_code).get();
         
-      if (link) {
-        agency_id = link.agency_id;
+      if (inviteDoc.exists) {
+        agency_id = inviteDoc.data()?.agency_id;
         
         // Grant 3 months of Premium access
         const date = new Date();
@@ -29,34 +25,37 @@ router.post('/register', async (req, res) => {
       }
     }
     
-    // 2. Create Auth User (Mocked for MVP)
-    const newUserId = crypto.randomUUID();
-    
-    // 3. Insert into users, profiles, and nannies
-    await supabaseAdmin.from('users').insert({
-      id: newUserId,
+    // 2. Create Auth User
+    const userRecord = await auth.createUser({
       email,
-      role: 'nanny'
+      password,
+      displayName: `${first_name} ${last_name}`
     });
     
-    await supabaseAdmin.from('profiles').insert({
-      id: newUserId,
+    const newUserId = userRecord.uid;
+    
+    // 3. Insert into users and nanny_profiles
+    await db.collection('users').doc(newUserId).set({
+      email,
+      role: 'nanny',
+      created_at: new Date().toISOString()
+    });
+    
+    await db.collection('nanny_profiles').doc(newUserId).set({
       first_name,
-      last_name
-    });
-    
-    await supabaseAdmin.from('nannies').insert({
-      id: newUserId,
+      last_name,
       agency_id,
       premium_until,
-      status: 'active'
+      status: 'active',
+      created_at: new Date().toISOString()
     });
     
     res.json({ 
       success: true, 
       message: 'Nanny registered successfully',
       agency_assigned: !!agency_id,
-      premium_granted: !!premium_until
+      premium_granted: !!premium_until,
+      uid: newUserId
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

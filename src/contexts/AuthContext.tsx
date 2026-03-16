@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 
 type AuthContextType = {
   user: User | null;
-  session: Session | null;
   role: 'nanny' | 'agency_admin' | 'agency_recruiter' | 'superadmin' | 'family' | null;
   loading: boolean;
   loginMock: (role: 'nanny' | 'agency_admin' | 'superadmin' | 'family') => void;
@@ -13,7 +13,6 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  session: null,
   role: null,
   loading: true,
   loginMock: () => {},
@@ -22,47 +21,28 @@ const AuthContext = createContext<AuthContextType>({
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AuthContextType['role']>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserRole(session.user.id);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        await fetchUserRole(firebaseUser.uid);
       } else {
+        setRole(null);
         setLoading(false);
       }
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserRole(session.user.id);
-      } else {
-        // Don't clear role if we are using mock login
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const fetchUserRole = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .single();
-        
-      if (!error && data) {
-        setRole(data.role as AuthContextType['role']);
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        setRole(userDoc.data().role as AuthContextType['role']);
       }
     } catch (err) {
       console.error('Error fetching role:', err);
@@ -77,7 +57,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (mockRole === 'agency_admin') mockId = 'a1b2c3d4-e5f6-7890-1234-56789abcdef0';
     if (mockRole === 'family') mockId = 'f1111111-2222-3333-4444-555555555555';
     
-    setUser({ id: mockId, email: 'mock@example.com' } as User);
+    setUser({ uid: mockId, email: 'mock@example.com' } as User);
     setRole(mockRole);
     setLoading(false);
   };
@@ -87,12 +67,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setRole(null);
     } else {
-      await supabase.auth.signOut();
+      await signOut(auth);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, loading, loginMock, logout }}>
+    <AuthContext.Provider value={{ user, role, loading, loginMock, logout }}>
       {children}
     </AuthContext.Provider>
   );

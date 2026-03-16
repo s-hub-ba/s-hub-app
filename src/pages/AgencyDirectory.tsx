@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, MapPin, ShieldCheck, Star, Filter } from 'lucide-react';
+import { Search, MapPin, ShieldCheck, Star, Filter, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Mock Data
@@ -12,7 +12,8 @@ const AGENCIES = [
     boroughs: ['Manhattan', 'Brooklyn'],
     specialties: ['Newborn Care', 'Bilingual', 'High-Profile'],
     description: 'Providing top-tier childcare professionals to discerning families across Manhattan and Brooklyn for over 10 years.',
-    isVerified: true
+    isVerified: true,
+    isSponsored: true
   },
   {
     id: '2',
@@ -21,7 +22,8 @@ const AGENCIES = [
     boroughs: ['Brooklyn', 'Queens'],
     specialties: ['Part-time', 'Creative Arts', 'Special Needs'],
     description: 'A boutique agency focused on matching creative, engaging caregivers with modern Brooklyn families.',
-    isVerified: true
+    isVerified: true,
+    isSponsored: false
   },
   {
     id: '3',
@@ -30,7 +32,8 @@ const AGENCIES = [
     boroughs: ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'],
     specialties: ['Overnight', 'Newborn Care Specialist', 'Lactation'],
     description: 'Specialized overnight newborn care and sleep training across all five boroughs.',
-    isVerified: true
+    isVerified: true,
+    isSponsored: false
   }
 ];
 
@@ -58,6 +61,54 @@ export default function AgencyDirectory() {
             Browse our directory of trusted, vetted nanny agencies operating in New York City. 
             Send inquiries directly to find the perfect fit for your family.
           </p>
+        </div>
+
+        {/* Featured Agencies Strip */}
+        <div className="mb-12">
+          <div className="flex items-center gap-2 mb-4">
+            <Star className="h-5 w-5 text-amber-500 fill-current" />
+            <h2 className="text-xl font-bold text-stone-900">Featured Agencies</h2>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {AGENCIES.filter(a => a.isSponsored).map((agency, index) => (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+                key={`featured-${agency.id}`} 
+                className="bg-gradient-to-br from-amber-50 to-white rounded-3xl border-2 border-amber-200 p-6 shadow-md relative overflow-hidden group"
+              >
+                <div className="absolute top-0 right-0 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-bl-xl shadow-sm z-10 flex items-center gap-1">
+                  <Star className="h-3 w-3 fill-current" />
+                  Featured
+                </div>
+                <div className="flex items-center gap-4 mb-4">
+                  <img 
+                    src={agency.logo} 
+                    alt={agency.name} 
+                    className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div>
+                    <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition-colors">{agency.name}</h3>
+                    <div className="flex items-center gap-1 text-xs text-stone-500 mt-1">
+                      <MapPin className="h-3 w-3" />
+                      {agency.boroughs.join(', ')}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm text-stone-600 line-clamp-2 mb-4">
+                  {agency.description}
+                </p>
+                <Link 
+                  to={`/agencies/${agency.id}`}
+                  className="inline-flex items-center text-sm font-bold text-amber-600 hover:text-amber-700"
+                >
+                  View Profile <ArrowRight className="ml-1 h-4 w-4" />
+                </Link>
+              </motion.div>
+            ))}
+          </div>
         </div>
 
         {/* Search & Filters */}
@@ -97,8 +148,14 @@ export default function AgencyDirectory() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: index * 0.1 }}
               key={agency.id} 
-              className="bg-white rounded-2xl border border-stone-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+              className={`bg-white rounded-2xl border overflow-hidden hover:shadow-md transition-shadow flex flex-col relative ${agency.isSponsored ? 'border-amber-300 ring-1 ring-amber-300' : 'border-stone-200'}`}
             >
+              {agency.isSponsored && (
+                <div className="absolute top-0 right-0 bg-gradient-to-r from-amber-400 to-amber-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl shadow-sm z-10 flex items-center gap-1">
+                  <Star className="h-3 w-3 fill-current" />
+                  Sponsored
+                </div>
+              )}
               <div className="p-6 flex-1">
                 <div className="flex items-start gap-4 mb-4">
                   <img 

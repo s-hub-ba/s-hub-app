@@ -5,6 +5,7 @@
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -35,6 +36,9 @@ import GlobalSearch from './pages/agency/Search';
 import TalentPool from './pages/agency/TalentPool';
 import Billing from './pages/agency/Billing';
 
+import AgencyMessages from './pages/agency/Messages';
+import NannyMessages from './pages/nanny/Messages';
+
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminAgencies from './pages/admin/Agencies';
 import AdminUsers from './pages/admin/Users';
@@ -47,12 +51,14 @@ import FamilyApplications from './pages/family/Applications';
 import SavedJobs from './pages/family/SavedJobs';
 import FamilyMessages from './pages/family/Messages';
 import FamilyProfile from './pages/family/Profile';
+import Notifications from './pages/Notifications';
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+      <NotificationProvider>
+        <BrowserRouter>
+          <Routes>
           {/* Public Routes */}
           <Route element={<PublicLayout />}>
             <Route path="/" element={<Home />} />
@@ -79,6 +85,7 @@ export default function App() {
               <Route path="applications" element={<FamilyApplications />} />
               <Route path="saved" element={<SavedJobs />} />
               <Route path="messages" element={<FamilyMessages />} />
+              <Route path="notifications" element={<Notifications />} />
               <Route path="profile" element={<FamilyProfile />} />
             </Route>
           </Route>
@@ -90,6 +97,8 @@ export default function App() {
               <Route path="dashboard" element={<NannyDashboard />} />
               <Route path="jobs" element={<NannyJobs />} />
               <Route path="applications" element={<NannyApplications />} />
+              <Route path="messages" element={<NannyMessages />} />
+              <Route path="notifications" element={<Notifications />} />
               <Route path="availability" element={<NannyAvailability />} />
               <Route path="profile" element={<NannyProfile />} />
             </Route>
@@ -102,6 +111,8 @@ export default function App() {
               <Route path="jobs" element={<AgencyJobs />} />
               <Route path="jobs/new" element={<PostJob />} />
               <Route path="applications" element={<AgencyApplications />} />
+              <Route path="messages" element={<AgencyMessages />} />
+              <Route path="notifications" element={<Notifications />} />
               <Route path="search" element={<GlobalSearch />} />
               <Route path="talent" element={<TalentPool />} />
               <Route path="billing" element={<Billing />} />
@@ -114,10 +125,12 @@ export default function App() {
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="agencies" element={<AdminAgencies />} />
               <Route path="users" element={<AdminUsers />} />
+              <Route path="notifications" element={<Notifications />} />
             </Route>
           </Route>
         </Routes>
       </BrowserRouter>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

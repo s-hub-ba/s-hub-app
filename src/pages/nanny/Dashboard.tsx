@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
 import { getJobs, getApplicationsForNanny } from '../../lib/api';
@@ -55,9 +56,9 @@ export default function NannyDashboard() {
             <option value="open">Open to Offers</option>
             <option value="not_seeking">Not Seeking</option>
           </select>
-          <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors">
+          <Link to="/nanny/profile" className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors">
             Update Profile
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -106,7 +107,7 @@ export default function NannyDashboard() {
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-stone-900">Recommended Jobs</h2>
-            <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</button>
+            <Link to="/nanny/jobs" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
           </div>
 
           <div className="space-y-4">
@@ -127,17 +128,17 @@ export default function NannyDashboard() {
                     <div>
                       <h3 className="text-lg font-bold text-stone-900">{job.title}</h3>
                       <div className="flex items-center gap-2 text-sm text-stone-500 mt-1">
-                        <span className="font-medium text-stone-700">Manhattan Elite Nannies</span>
+                        <span className="font-medium text-stone-700">{job.agency_profiles?.company_name || 'Agency'}</span>
                         <span>•</span>
                         <div className="flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5" />
-                          {job.location}
+                          {job.location_neighborhood}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-bold text-emerald-600">${job.salary_min} - ${job.salary_max}/hr</div>
-                      <div className="text-xs font-medium text-stone-400 uppercase tracking-wider mt-1">{job.type}</div>
+                      <div className="text-lg font-bold text-emerald-600">${job.pay_min} - ${job.pay_max}/hr</div>
+                      <div className="text-xs font-medium text-stone-400 uppercase tracking-wider mt-1">{job.job_type}</div>
                     </div>
                   </div>
                   
@@ -147,15 +148,15 @@ export default function NannyDashboard() {
 
                   <div className="flex items-center justify-between">
                     <div className="flex gap-2">
-                      {job.requirements?.slice(0, 2).map((req: string) => (
+                      {job.special_requirements?.split(',').slice(0, 2).map((req: string) => (
                         <span key={req} className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-100 text-stone-600">
-                          {req}
+                          {req.trim()}
                         </span>
                       ))}
                     </div>
-                    <button className="px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors">
+                    <Link to="/nanny/jobs" className="px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors">
                       Apply Now
-                    </button>
+                    </Link>
                   </div>
                 </motion.div>
               ))
@@ -198,9 +199,12 @@ export default function NannyDashboard() {
                 </button>
               </div>
             </div>
-            <button className="w-full mt-6 py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors">
+            <Link 
+              to="/agencies"
+              className="block w-full mt-6 py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors text-center"
+            >
               Find More Agencies
-            </button>
+            </Link>
           </div>
 
           {/* Recent Reviews */}
