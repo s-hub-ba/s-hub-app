@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
-import { getJobs, getApplicationsForNanny } from '../../lib/api';
+import { getJobs, getApplicationsForNanny, getNannyById, getNannyReviewStats, getAgencyReviewStats, getNannyReviews, computeShiftScore } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function NannyDashboard() {
@@ -10,40 +10,82 @@ export default function NannyDashboard() {
   const [availability, setAvailability] = useState('seeking');
   const [stats, setStats] = useState({
     activeApps: 0,
-    shiftScore: 85,
-    profileCompletion: 90
+    shiftScore: 0,
+    profileCompletion: 0,
+    familyRatingAvg: 0,
+    familyRatingCount: 0,
+    agencyRatingAvg: 0,
+    agencyRatingCount: 0
   });
   const [recommendedJobs, setRecommendedJobs] = useState<any[]>([]);
+  const [recentReviews, setRecentReviews] = useState<any[]>([]);
+  const [profile, setProfile] = useState<any>(null);
 
-  const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || '';
+
+  if (!nannyId) {
+    return (
+      <div className="p-8 text-center text-stone-500">Please sign in to view your dashboard.</div>
+    );
+  }
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const apps = await getApplicationsForNanny(nannyId);
-        const activeApps = apps.filter(a => ['applied', 'interview_invited', 'interview_scheduled'].includes(a.status));
-        
+        const [apps, fetchedProfile] = await Promise.all([
+          getApplicationsForNanny(nannyId),
+          getNannyById(nannyId)
+        ]);
+
+        setProfile(fetchedProfile);
+
+        const activeApps = apps.filter(a => ['applied', 'reviewing', 'interviewing', 'interview_scheduled'].includes(a.status));
+
+        const nannyReviewStats = await getNannyReviewStats(nannyId);
+        const agencyReviewStats = fetchedProfile?.agency_id ? await getAgencyReviewStats(fetchedProfile.agency_id) : { count: 0, avg: 0 };
+
+        const reviews = await getNannyReviews(nannyId);
+
+        const shiftScoreData = computeShiftScore(
+          fetchedProfile,
+          apps.length,
+          nannyReviewStats.avg,
+          nannyReviewStats.count,
+          agencyReviewStats.avg,
+          agencyReviewStats.count
+        );
+        const profileCompletion = Math.round((shiftScoreData.score / 100) * 100);
+
         setStats(prev => ({
           ...prev,
-          activeApps: activeApps.length
+          activeApps: activeApps.length,
+          shiftScore: shiftScoreData.score,
+          profileCompletion,
+          familyRatingAvg: nannyReviewStats.avg,
+          familyRatingCount: nannyReviewStats.count,
+          agencyRatingAvg: agencyReviewStats.avg,
+          agencyRatingCount: agencyReviewStats.count
         }));
 
+        setRecentReviews(reviews);
+
         const jobs = await getJobs();
-        // Simple recommendation mock: just take the first two jobs
         setRecommendedJobs(jobs.slice(0, 2));
       } catch (error) {
         console.error('Error loading dashboard data:', error);
       }
     };
-    loadData();
-  }, []);
+    if (nannyId) loadData();
+  }, [nannyId]);
 
   return (
     <div className="space-y-8 pb-12">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Welcome back, Sarah</h1>
+          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">
+            Welcome back, {profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ''}` : user?.email ?? 'Nanny'}
+          </h1>
           <p className="text-stone-500 mt-1">Here's what's happening with your profile today.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -98,6 +140,30 @@ export default function NannyDashboard() {
             <div className="flex items-baseline gap-2">
               <h2 className="text-3xl font-bold text-stone-900">{stats.activeApps}</h2>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm">
+          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Family Rating</p>
+          <div className="flex items-end gap-2 mt-1">
+            <h3 className="text-3xl font-bold text-stone-900">{stats.familyRatingAvg.toFixed(1)}</h3>
+            <span className="text-sm text-stone-500">({stats.familyRatingCount} reviews)</span>
+          </div>
+          <div className="h-2 bg-stone-100 rounded-full mt-3 overflow-hidden">
+            <div style={{ width: `${Math.min(100, (stats.familyRatingAvg / 5) * 100)}%` }} className="h-full bg-emerald-500" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm">
+          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Agency Partner Rating</p>
+          <div className="flex items-end gap-2 mt-1">
+            <h3 className="text-3xl font-bold text-stone-900">{stats.agencyRatingAvg.toFixed(1)}</h3>
+            <span className="text-sm text-stone-500">({stats.agencyRatingCount} reviews)</span>
+          </div>
+          <div className="h-2 bg-stone-100 rounded-full mt-3 overflow-hidden">
+            <div style={{ width: `${Math.min(100, (stats.agencyRatingAvg / 5) * 100)}%` }} className="h-full bg-blue-500" />
           </div>
         </div>
       </div>
@@ -211,17 +277,21 @@ export default function NannyDashboard() {
           <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
             <h2 className="text-lg font-bold text-stone-900 mb-4">Recent Reviews</h2>
             <div className="space-y-4">
-              <div className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                <div className="flex items-center gap-1 mb-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star key={star} className="h-3.5 w-3.5 text-yellow-400 fill-current" />
-                  ))}
-                </div>
-                <p className="text-sm text-stone-600 italic line-clamp-2">
-                  "Sarah was absolutely wonderful with our twins. Always punctual, professional, and so engaging."
-                </p>
-                <p className="text-xs text-stone-400 mt-2">— The Smith Family (via Manhattan Elite)</p>
-              </div>
+              {recentReviews.length === 0 ? (
+                <div className="text-stone-500 text-sm">No reviews yet. Keep working and earn more reviews to boost your score.</div>
+              ) : (
+                recentReviews.slice(0, 3).map((review) => (
+                  <div key={review.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                    <div className="flex items-center gap-1 mb-1">
+                      {Array.from({ length: 5 }).map((_, sIndex) => (
+                        <Star key={sIndex} className={`h-3.5 w-3.5 ${sIndex < (review.rating ?? 0) ? 'text-yellow-400 fill-current' : 'text-stone-200'}`} />
+                      ))}
+                    </div>
+                    <p className="text-sm text-stone-600 italic line-clamp-2">"{review.comment || 'No comment provided.'}"</p>
+                    <p className="text-xs text-stone-400 mt-2">— {review.reviewer_role === 'family' ? 'Family' : 'Agency'} reviewer</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

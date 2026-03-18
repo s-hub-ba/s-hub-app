@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Bell, MessageSquare, Briefcase, Star } from 'lucide-react';
+import { useAuth } from './AuthContext';
+import { getFamilyNotifications } from '../lib/api';
 
 export type NotificationType = 'application' | 'message' | 'review' | 'system';
 
@@ -25,6 +27,7 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const { user, role } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([
     {
       id: '1',
@@ -64,6 +67,30 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const markAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
+
+  useEffect(() => {
+    const loadNotifications = async () => {
+      if (role === 'family' && user?.uid) {
+        try {
+          const familyNotifs = await getFamilyNotifications(user.uid);
+          if (familyNotifs?.length) {
+            setNotifications(familyNotifs.map((notif) => ({
+              id: notif.id || Math.random().toString(36).substr(2, 9),
+              type: notif.type,
+              title: notif.title,
+              message: notif.message,
+              time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
+              read: notif.read ?? false,
+              link: notif.link
+            })));
+          }
+        } catch (error) {
+          console.error('Error loading family notifications:', error);
+        }
+      }
+    };
+    loadNotifications();
+  }, [role, user]);
 
   const removeNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));

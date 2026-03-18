@@ -45,9 +45,13 @@ export default function PostJob() {
     setError(null);
     
     try {
+      if (!user?.uid) {
+        throw new Error('Sign in as an agency to post jobs.');
+      }
+
       await createJob({
         ...formData,
-        agency_id: user?.id || 'a1b2c3d4-e5f6-7890-1234-56789abcdef0',
+        agency_id: user.uid,
         pay_min: parseFloat(formData.pay_min),
         pay_max: parseFloat(formData.pay_max),
         required_experience_years: parseInt(formData.required_experience_years) || 0

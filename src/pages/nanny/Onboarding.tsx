@@ -24,8 +24,8 @@ export default function NannyOnboarding() {
   });
 
   useEffect(() => {
-    if (user?.id) {
-      getNannyById(user.id).then(data => {
+    if (user?.uid) {
+      getNannyById(user.uid).then(data => {
         if (data) {
           setFormData(prev => ({
             ...prev,
@@ -55,24 +55,29 @@ export default function NannyOnboarding() {
   const handleNext = async () => {
     if (step < 4) {
       setStep(step + 1);
-    } else {
-      setIsSubmitting(true);
-      try {
-        if (user?.id) {
-          await updateNannyProfile(user.id, {
-            ...formData,
-            years_experience: parseInt(formData.years_experience) || 0,
-            expected_pay_min: parseFloat(formData.expected_pay_min) || 0,
-            expected_pay_max: parseFloat(formData.expected_pay_max) || 0,
-          });
-        }
-        setTimeout(() => {
-          navigate('/nanny/dashboard');
-        }, 1500);
-      } catch (error) {
-        console.error('Error saving onboarding data:', error);
-        setIsSubmitting(false);
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      if (user?.uid) {
+        console.log('[NannyOnboarding] saving profile', user.uid);
+        const updated = await updateNannyProfile(user.uid, {
+          ...formData,
+          years_experience: parseInt(formData.years_experience) || 0,
+          expected_pay_min: parseFloat(formData.expected_pay_min) || 0,
+          expected_pay_max: parseFloat(formData.expected_pay_max) || 0,
+        });
+        console.log('[NannyOnboarding] profile updated', updated);
       }
+
+      window.localStorage.setItem('userRole', 'nanny');
+      navigate('/nanny/dashboard', { replace: true });
+
+    } catch (error) {
+      console.error('Error saving onboarding data:', error);
+      setIsSubmitting(false);
     }
   };
 

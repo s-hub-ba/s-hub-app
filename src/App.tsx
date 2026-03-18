@@ -43,11 +43,10 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminAgencies from './pages/admin/Agencies';
 import AdminUsers from './pages/admin/Users';
 
-import FamilyOnboarding from './pages/family/Onboarding';
 import FamilyDashboard from './pages/family/Dashboard';
+import FamilyOnboarding from './pages/family/Onboarding';
 import JobDiscovery from './pages/family/JobDiscovery';
 import JobDetails from './pages/family/JobDetails';
-import FamilyApplications from './pages/family/Applications';
 import SavedJobs from './pages/family/SavedJobs';
 import FamilyMessages from './pages/family/Messages';
 import FamilyProfile from './pages/family/Profile';
@@ -77,12 +76,14 @@ export default function App() {
           
           {/* Protected Family Routes */}
           <Route element={<ProtectedRoute allowedRoles={['family']} />}>
-            <Route path="/family/onboarding" element={<FamilyOnboarding />} />
             <Route path="/family" element={<DashboardLayout role="family" />}>
               <Route path="dashboard" element={<FamilyDashboard />} />
               <Route path="jobs" element={<JobDiscovery />} />
               <Route path="jobs/:id" element={<JobDetails />} />
-              <Route path="applications" element={<FamilyApplications />} />
+              <Route path="agencies" element={<AgencyDirectory />} />
+              <Route path="agencies/:id" element={<AgencyProfile />} />
+              <Route path="onboarding" element={<FamilyOnboarding />} />
+
               <Route path="saved" element={<SavedJobs />} />
               <Route path="messages" element={<FamilyMessages />} />
               <Route path="notifications" element={<Notifications />} />

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, CheckCircle2, Clock, XCircle, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getApplicationsForNanny, getJobById } from '../../lib/api';
+import { getApplicationsForNanny, getJobById, updateApplicationStatus, addFamilyNotification } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_CONFIG = {
@@ -10,6 +10,8 @@ const STATUS_CONFIG = {
   reviewing: { color: 'bg-blue-100 text-blue-700', icon: FileText, label: 'In Review' },
   interview_invited: { color: 'bg-orange-100 text-orange-700', icon: Clock, label: 'Interview Invited' },
   accepted: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Accepted' },
+  pending_family_approval: { color: 'bg-indigo-100 text-indigo-700', icon: Clock, label: 'Pending Family Approval' },
+  completed: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Completed' },
   rejected: { color: 'bg-red-100 text-red-700', icon: XCircle, label: 'Not Selected' },
   withdrawn: { color: 'bg-stone-200 text-stone-500', icon: XCircle, label: 'Withdrawn' }
 };
@@ -18,7 +20,7 @@ export default function NannyApplications() {
   const { user } = useAuth();
   const [applications, setApplications] = useState<any[]>([]);
 
-  const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
 
   useEffect(() => {
     loadData();
@@ -105,6 +107,23 @@ export default function NannyApplications() {
                       >
                         View Message
                       </Link>
+                    )}
+
+                    {app.status === 'accepted' && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await updateApplicationStatus(app.id, 'pending_family_approval');
+                            await addFamilyNotification(app.family_id, 'Work completion requested', `Nanny ${app.nanny_profiles?.first_name || 'Nanny'} marked the job '${app.job_title || ''}' as done. Please review and confirm.`, '/family/applications');
+                            await loadData();
+                          } catch (error) {
+                            console.error('Error marking work done:', error);
+                          }
+                        }}
+                        className="mt-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center justify-center"
+                      >
+                        Mark Work Done
+                      </button>
                     )}
                   </div>
                 </motion.div>

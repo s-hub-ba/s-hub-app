@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Briefcase, MapPin, DollarSign, Clock, CheckCircle2, MessageSquare, XCircle, Star, X } from 'lucide-react';
-import { getFamilyApplications } from '../../lib/api';
+import { getFamilyApplications, addAgencyReview, updateApplicationStatus, recordCareHistoryFromApplication, addNannyNotification } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function FamilyApplications() {
@@ -15,7 +15,13 @@ export default function FamilyApplications() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState(false);
   
-  const familyId = user?.id || 'f1111111-2222-3333-4444-555555555555';
+  const familyId = user?.uid || '';
+
+  if (!familyId) {
+    return (
+      <div className="p-8 text-center text-stone-500">Please sign in to access your applications.</div>
+    );
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -37,22 +43,53 @@ export default function FamilyApplications() {
     setReviewModalOpen(true);
   };
 
+  const handleApproveCompletion = async (app: any) => {
+    try {
+      await updateApplicationStatus(app.id, 'completed');
+      await recordCareHistoryFromApplication(app.id);
+      if (app.nanny_id) {
+        await addNannyNotification(app.nanny_id, 'Family approved the work', `Your completed job '${app.jobs?.title || ''}' has been approved by the family.`, '/nanny/applications');
+      }
+      setApplications(prev => prev.map(item => item.id === app.id ? { ...item, status: 'completed' } : item));
+    } catch (error) {
+      console.error('Error approving completion:', error);
+    }
+  };
+
+  const handleRequestChanges = async (app: any) => {
+    try {
+      await updateApplicationStatus(app.id, 'accepted');
+      setApplications(prev => prev.map(item => item.id === app.id ? { ...item, status: 'accepted' } : item));
+    } catch (error) {
+      console.error('Error requesting changes:', error);
+    }
+  };
+
   const handleSubmitReview = async () => {
-    if (!reviewText.trim()) return;
+    if (!reviewText.trim() || !selectedApp) return;
     setIsSubmittingReview(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      console.log(`Review submitted for app ${selectedApp.id}: Rating ${rating}, Text: ${reviewText}`);
-      setIsSubmittingReview(false);
+
+    try {
+      if (selectedApp.job?.agency_id) {
+        await addAgencyReview({
+          agency_id: selectedApp.job.agency_id,
+          reviewer_id: familyId,
+          reviewer_role: 'family',
+          rating,
+          comment: reviewText
+        });
+      }
+
       setReviewSuccess(true);
-      
-      // Close modal after 2 seconds of showing success
       setTimeout(() => {
         setReviewModalOpen(false);
         setReviewSuccess(false);
       }, 2000);
-    }, 1000);
+    } catch (error) {
+      console.error('Error submitting review:', error);
+    } finally {
+      setIsSubmittingReview(false);
+    }
   };
 
   const filteredApps = applications.filter(app => {
@@ -114,12 +151,16 @@ export default function FamilyApplications() {
                         app.status === 'pending' ? 'bg-amber-100 text-amber-700' :
                         app.status === 'reviewing' ? 'bg-purple-100 text-purple-700' :
                         app.status === 'interviewing' ? 'bg-blue-100 text-blue-700' :
+                        app.status === 'pending_family_approval' ? 'bg-indigo-100 text-indigo-700' :
+                        app.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
                         app.status === 'hired' ? 'bg-emerald-100 text-emerald-700' :
                         'bg-stone-100 text-stone-700'
                       }`}>
                         {app.status === 'pending' && <Clock className="h-3.5 w-3.5 mr-1" />}
                         {app.status === 'reviewing' && <Briefcase className="h-3.5 w-3.5 mr-1" />}
                         {app.status === 'interviewing' && <MessageSquare className="h-3.5 w-3.5 mr-1" />}
+                        {app.status === 'pending_family_approval' && <Clock className="h-3.5 w-3.5 mr-1" />}
+                        {app.status === 'completed' && <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                         {app.status === 'hired' && <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                         {app.status === 'declined' && <XCircle className="h-3.5 w-3.5 mr-1" />}
                         {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
@@ -129,8 +170,8 @@ export default function FamilyApplications() {
                       </span>
                     </div>
                     
-                    <h3 className="text-xl font-bold text-stone-900 mb-1">{app.job.title}</h3>
-                    <p className="text-sm font-medium text-emerald-600 mb-4">{app.job.agency_profiles?.company_name || 'Agency'}</p>
+                    <h3 className="text-xl font-bold text-stone-900 mb-1">{app.jobs?.title || 'Unknown role'}</h3>
+                    <p className="text-sm font-medium text-emerald-600 mb-4">{app.jobs?.agency_profiles?.company_name || 'Agency'}</p>
                     
                     <div className="flex flex-wrap gap-4 text-sm text-stone-600">
                       <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-stone-400" /> {app.job.location_neighborhood}, {app.job.location_borough}</span>
@@ -148,7 +189,23 @@ export default function FamilyApplications() {
                         Message Agency
                       </Link>
                     )}
-                    {app.status === 'hired' && (
+                    {app.status === 'pending_family_approval' && (
+                      <>
+                        <button
+                          onClick={() => handleApproveCompletion(app)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
+                        >
+                          Approve Completion
+                        </button>
+                        <button
+                          onClick={() => handleRequestChanges(app)}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
+                        >
+                          Request Changes
+                        </button>
+                      </>
+                    )}
+                    {(app.status === 'hired' || app.status === 'completed') && (
                       <button 
                         onClick={() => handleOpenReview(app)}
                         className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
@@ -194,9 +251,9 @@ export default function FamilyApplications() {
             ) : (
               <>
                 <p className="text-stone-500 mb-6">
-                  Share your experience working with the nanny from <span className="font-bold">{selectedApp.job.agency_profiles?.company_name || 'the agency'}</span>.
+                  Share your experience working with the nanny from <span className="font-bold">{selectedApp.jobs?.agency_profiles?.company_name || 'the agency'}</span>.
                 </p>
-                
+
                 <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-bold text-stone-700 mb-2">Rating</label>

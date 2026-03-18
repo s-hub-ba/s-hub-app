@@ -14,17 +14,7 @@ export default function GlobalSearch() {
     const loadData = async () => {
       try {
         const fetchedNannies = await getNannies();
-        // Add mock data for search-specific fields
-        const enrichedNannies = fetchedNannies.map((nanny: any, index: number) => ({
-          ...nanny,
-          experience: 5 + (index % 5) * 2,
-          shiftScore: 90 - (index % 10) * 5,
-          tier: index % 3 === 0 ? 'Elite' : 'Professional',
-          specialties: index % 2 === 0 ? ['Newborn Care', 'Multiples', 'Sleep Training'] : ['Bilingual (Spanish)', 'Special Needs', 'Toddlers'],
-          availability: index % 4 === 0 ? 'seeking' : 'open',
-          certs: ['CPR', 'First Aid']
-        }));
-        setNannies(enrichedNannies);
+        setNannies(fetchedNannies);
       } catch (error) {
         console.error('Error loading nannies:', error);
       }

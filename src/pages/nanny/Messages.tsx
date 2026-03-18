@@ -10,7 +10,27 @@ export default function NannyMessages() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   
-  const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+
+  const toDate = (value: any): Date | null => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatTime = (value: any) => {
+    const date = toDate(value);
+    if (!date) return '';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatConversationTime = (convo: any) => {
+    const date = toDate(convo?.updated_at || convo?.created_at);
+    if (!date) return '';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -82,9 +102,12 @@ export default function NannyMessages() {
                     <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
                       <Building2 className="h-5 w-5" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-stone-900 text-sm">Agency ID: {convo.agency_id.substring(0, 8)}...</h3>
-                      <p className="text-xs text-stone-500 truncate">Click to view messages</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-bold text-stone-900 text-sm">{convo.agency_name || `Agency ID: ${convo.agency_id.substring(0, 8)}...`}</h3>
+                        <span className="text-[11px] text-stone-400 shrink-0">{formatConversationTime(convo)}</span>
+                      </div>
+                      <p className="text-xs text-stone-500 truncate">{convo.last_message || 'Click to view messages'}</p>
                     </div>
                   </div>
                 </button>
@@ -102,7 +125,7 @@ export default function NannyMessages() {
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-stone-900">Agency ID: {activeConversation.agency_id.substring(0, 8)}...</h3>
+                  <h3 className="font-bold text-stone-900">{activeConversation.agency_name || `Agency ID: ${activeConversation.agency_id.substring(0, 8)}...`}</h3>
                   <p className="text-xs text-stone-500">Active now</p>
                 </div>
               </div>
@@ -124,7 +147,7 @@ export default function NannyMessages() {
                         }`}>
                           <p className="text-sm">{msg.content}</p>
                           <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-emerald-100' : 'text-stone-400'}`}>
-                            {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            {formatTime(msg.created_at)}
                           </p>
                         </div>
                       </div>

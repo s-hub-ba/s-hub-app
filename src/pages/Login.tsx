@@ -4,7 +4,6 @@ import { Baby, Mail, Lock, ArrowRight } from 'lucide-react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -12,7 +11,6 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { loginMock } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,34 +24,42 @@ export default function Login() {
       
       if (user) {
         // Real auth succeeded, fetch role and redirect
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (userData.role === 'family') navigate('/family/dashboard');
-          else if (userData.role === 'nanny') navigate('/nanny/dashboard');
-          else if (userData.role === 'agency_admin' || userData.role === 'agency_recruiter') navigate('/agency/dashboard');
-          else if (userData.role === 'superadmin') navigate('/admin/dashboard');
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const role = userData.role as string;
+            if (role) window.localStorage.setItem('userRole', role);
+
+            if (role === 'family') navigate('/family/dashboard');
+            else if (role === 'nanny') navigate('/nanny/dashboard');
+            else if (role === 'agency_admin' || role === 'agency_recruiter') navigate('/agency/dashboard');
+            else if (role === 'superadmin') navigate('/admin/dashboard');
+            else setError('Unknown user role. Please contact support.');
+          } else {
+            setError('No user role record found. Please complete your profile.');
+          }
+        } catch (docError: any) {
+          console.error('[Login] getDoc error', docError);
+          const cachedRole = window.localStorage.getItem('userRole');
+          if (cachedRole) {
+            if (cachedRole === 'family') navigate('/family/dashboard');
+            else if (cachedRole === 'nanny') navigate('/nanny/dashboard');
+            else if (cachedRole === 'agency_admin' || cachedRole === 'agency_recruiter') navigate('/agency/dashboard');
+            else if (cachedRole === 'superadmin') navigate('/admin/dashboard');
+            else setError('Unable to determine role from cached data.');
+          } else {
+            setError('Failed to get role from Firestore. Check network connection.');
+          }
+          setIsLoading(false);
+          return;
         }
+
         setIsLoading(false);
         return;
       }
     } catch (err: any) {
-      // Fallback to mock login for demo accounts if auth fails
-      if (email.includes('admin@manhattanelite.com') || email.includes('agency')) {
-        loginMock('agency_admin');
-        navigate('/agency/dashboard');
-      } else if (email.includes('admin')) {
-        loginMock('superadmin');
-        navigate('/admin/dashboard');
-      } else if (email.includes('sarah@example.com') || email.includes('nanny')) {
-        loginMock('nanny');
-        navigate('/nanny/dashboard');
-      } else if (email.includes('family')) {
-        loginMock('family');
-        navigate('/family/dashboard');
-      } else {
-        setError(err.message || 'Invalid login credentials');
-      }
+      setError(err.message || 'Invalid login credentials');
       setIsLoading(false);
     }
   };

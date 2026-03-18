@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getApplicationsForAgency, updateApplicationStatus } from '../../lib/api';
+import { getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_COLORS = {
@@ -9,6 +9,7 @@ const STATUS_COLORS = {
   reviewing: 'bg-blue-100 text-blue-700',
   interview_invited: 'bg-orange-100 text-orange-700',
   accepted: 'bg-emerald-100 text-emerald-700',
+  completed: 'bg-indigo-100 text-indigo-700',
   rejected: 'bg-red-100 text-red-700',
   withdrawn: 'bg-stone-200 text-stone-500'
 };
@@ -18,6 +19,7 @@ const STATUS_LABELS = {
   reviewing: 'Reviewing',
   interview_invited: 'Interview Invited',
   accepted: 'Accepted',
+  completed: 'Completed',
   rejected: 'Rejected',
   withdrawn: 'Withdrawn'
 };
@@ -26,8 +28,15 @@ export default function AgencyApplications() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [applications, setApplications] = useState<any[]>([]);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedApp, setSelectedApp] = useState<any>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
+  const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState(false);
 
-  const agencyId = user?.id || 'a1b2c3d4-e5f6-7890-1234-56789abcdef0';
+  const agencyId = user?.uid || '';
+
 
   useEffect(() => {
     loadData();
@@ -50,9 +59,51 @@ export default function AgencyApplications() {
   const handleStatusChange = async (appId: string, newStatus: string) => {
     try {
       await updateApplicationStatus(appId, newStatus);
+      if (newStatus === 'completed') {
+        await recordCareHistoryFromApplication(appId);
+      }
       await loadData();
     } catch (err: any) {
       console.error(err.message);
+    }
+  };
+
+  const openReviewModal = (app: any) => {
+    setSelectedApp(app);
+    setReviewRating(5);
+    setReviewComment('');
+    setReviewSubmitSuccess(false);
+    setReviewModalOpen(true);
+  };
+
+  const closeReviewModal = () => {
+    setReviewModalOpen(false);
+    setSelectedApp(null);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!selectedApp || !agencyId || !selectedApp.nanny_id || reviewRating < 1 || reviewRating > 5 || !reviewComment.trim()) {
+      return;
+    }
+
+    setIsReviewSubmitting(true);
+    try {
+      await addNannyReview({
+        nanny_id: selectedApp.nanny_id,
+        reviewer_id: agencyId,
+        reviewer_role: 'agency',
+        rating: reviewRating,
+        comment: reviewComment
+      });
+      setReviewSubmitSuccess(true);
+      setTimeout(() => {
+        closeReviewModal();
+      }, 1500);
+    } catch (err) {
+      console.error('Error submitting nanny review', err);
+    } finally {
+      setIsReviewSubmitting(false);
+      loadData();
     }
   };
 
@@ -127,7 +178,7 @@ export default function AgencyApplications() {
                           </div>
                           <div className="flex items-center gap-1 mt-0.5">
                             <Star className="h-3 w-3 text-yellow-500 fill-current" />
-                            <span className="text-xs font-bold text-stone-700">95</span>
+                            <span className="text-xs font-bold text-stone-700">{app.nanny_profiles?.rating ? app.nanny_profiles.rating.toFixed(1) : 'N/A'}</span>
                           </div>
                         </div>
                       </div>
@@ -154,7 +205,16 @@ export default function AgencyApplications() {
                         {new Date(app.created_at).toLocaleDateString()}
                       </span>
                     </td>
-                    <td className="p-4 pr-6 text-right">
+                    <td className="p-4 pr-6 text-right space-y-2">
+                      {(app.status === 'accepted' || app.status === 'interview_invited') && (
+                        <button
+                          onClick={() => openReviewModal(app)}
+                          className="w-full inline-flex justify-center gap-2 px-3 py-1.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+                        >
+                          <Star className="h-3 w-3" />
+                          Review Nanny
+                        </button>
+                      )}
                       <button 
                         onClick={() => console.log(`More options clicked for application ${app.id}`)}
                         className="p-2 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
@@ -169,6 +229,61 @@ export default function AgencyApplications() {
           </table>
         </div>
       </div>
+
+      {reviewModalOpen && selectedApp && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl relative">
+            <button
+              onClick={closeReviewModal}
+              className="absolute top-4 right-4 p-2 text-stone-500 hover:text-stone-800 rounded-full"
+            >
+              ✕
+            </button>
+            <h2 className="text-2xl font-bold text-stone-900 mb-3">Review Nanny</h2>
+            <p className="text-stone-500 mb-5">{selectedApp.nanny_name || 'Candidate'}</p>
+            <div className="mb-4">
+              <div className="flex gap-1">
+                {[1,2,3,4,5].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setReviewRating(value)}
+                    className={`text-2xl ${value <= reviewRating ? 'text-amber-400' : 'text-stone-300'}`}
+                    type="button"
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            <textarea
+              value={reviewComment}
+              onChange={(e) => setReviewComment(e.target.value)}
+              rows={4}
+              className="w-full border border-stone-200 rounded-xl p-3 mb-4 focus:ring-emerald-500 outline-none"
+              placeholder="Share the nanny's performance (reliability, communication, skill, etc.)"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={closeReviewModal}
+                type="button"
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitReview}
+                disabled={isReviewSubmitting || !reviewComment.trim()}
+                className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {isReviewSubmitting ? 'Submitting...' : 'Submit Review'}
+              </button>
+            </div>
+            {reviewSubmitSuccess && (
+              <p className="text-green-600 text-sm mt-3">Review submitted successfully.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

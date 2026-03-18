@@ -4,11 +4,9 @@ import { Baby, ArrowRight, Mail, Lock, User } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function JoinNanny() {
   const navigate = useNavigate();
-  const { loginMock } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,41 +14,62 @@ export default function JoinNanny() {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    
+
     const formData = new FormData(e.currentTarget);
-    const name = formData.get('name') as string;
-    const email = formData.get('email') as string;
+    const name = (formData.get('name') as string).trim();
+    const email = (formData.get('email') as string).trim();
     const password = formData.get('password') as string;
-    
+
+    if (!name || !email || !password) {
+      setError('Full name, email and password are required.');
+      setIsSubmitting(false);
+      return;
+    }
+
     const nameParts = name.split(' ');
     const firstName = nameParts[0];
-    const lastName = nameParts.slice(1).join(' ');
+    const lastName = nameParts.slice(1).join(' ') || '';
 
     try {
+      console.log('[JoinNanny] creating account', { email });
+
       // 1. Sign up the user
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      if (user) {
-        // 2. Create the user record
-        await setDoc(doc(db, 'users', user.uid), {
-          email: email,
-          role: 'nanny',
-          created_at: serverTimestamp()
-        });
-
-        // 3. Create the nanny profile
-        await setDoc(doc(db, 'nanny_profiles', user.uid), {
-          first_name: firstName,
-          last_name: lastName,
-          created_at: serverTimestamp()
-        });
-
-        // Navigate to nanny onboarding
-        navigate('/nanny/onboarding');
+      if (!user?.uid) {
+        throw new Error('Firebase did not return user UID.');
       }
+
+      console.log('[JoinNanny] signed up user', user.uid);
+
+      // 2. Create the user record in Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        email,
+        role: 'nanny',
+        created_at: serverTimestamp()
+      });
+
+      // 3. Create the nanny profile in Firestore
+      await setDoc(doc(db, 'nanny_profiles', user.uid), {
+        first_name: firstName,
+        last_name: lastName,
+        created_at: serverTimestamp()
+      });
+
+      console.log('[JoinNanny] created Firestore documents for user', user.uid);
+
+      // Persist role locally for quick redirect while Firestore may lag/offline
+      window.localStorage.setItem('userRole', 'nanny');
+
+      // Navigate to nanny onboarding
+      navigate('/nanny/onboarding', { replace: true });
+
     } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+      console.error('[JoinNanny] registration error', err);
+      const code = err.code || '';
+      const message = err.message || 'Failed to create account';
+      setError(code ? `${code}: ${message}` : message);
+
     } finally {
       setIsSubmitting(false);
     }
@@ -174,26 +193,6 @@ export default function JoinNanny() {
                 {!isSubmitting && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
-            
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-stone-100"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-stone-400">For Testing</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                loginMock('nanny');
-                navigate('/nanny/onboarding');
-              }}
-              className="w-full py-3 px-4 border border-emerald-200 rounded-xl text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-            >
-              Skip to Onboarding (Demo Mode)
-            </button>
           </form>
 
           <div className="mt-6">

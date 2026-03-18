@@ -9,7 +9,11 @@ export default function AgencyJobs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [jobs, setJobs] = useState<any[]>([]);
   const { user } = useAuth();
-  const agencyId = user?.id || 'a1b2c3d4-e5f6-7890-1234-56789abcdef0';
+  const agencyId = user?.uid || '';
+
+  if (!agencyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to manage jobs.</div>;
+  }
 
   const [jobToDelete, setJobToDelete] = useState<string | null>(null);
 

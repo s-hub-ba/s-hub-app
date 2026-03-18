@@ -60,15 +60,97 @@ export interface NannyProfile {
   premium_until?: string | null;
   status: string;
   availability?: Record<string, string[]>;
+  phone_number?: string;
+  bio?: string;
+  years_experience?: number;
+  certifications?: string[];
+  location_borough?: string;
+  expected_pay_min?: number;
+  expected_pay_max?: number;
+  preferred_job_types?: string[];
   created_at: any;
   updated_at?: any;
 }
+
+export interface ShiftScoreResult {
+  score: number;
+  details: {
+    completedFields: number;
+    totalFields: number;
+    activityBonus: number;
+    familyRatingBonus: number;
+    agencyRatingBonus: number;
+    familyRatingAvg: number;
+    agencyRatingAvg: number;
+    familyRatingCount: number;
+    agencyRatingCount: number;
+  };
+}
+
+export const computeShiftScore = (
+  profile: Partial<NannyProfile> | null,
+  applicationCount = 0,
+  familyRatingAvg = 0,
+  familyRatingCount = 0,
+  agencyRatingAvg = 0,
+  agencyRatingCount = 0
+): ShiftScoreResult => {
+  const fields = [
+    !!profile?.first_name,
+    !!profile?.last_name,
+    !!profile?.phone_number,
+    !!profile?.bio,
+    !!profile?.location_borough,
+    !!profile?.years_experience,
+    !!profile?.certifications?.length,
+    !!profile?.availability && Object.keys(profile.availability).length > 0,
+    !!profile?.expected_pay_min,
+    !!profile?.expected_pay_max,
+  ];
+
+  const completedFields = fields.filter(Boolean).length;
+  const totalFields = fields.length;
+  const baseScore = Math.round((completedFields / totalFields) * 70);
+
+  const expBonus = (profile?.years_experience ?? 0) >= 3 ? 5 : 0;
+  const certBonus = (profile?.certifications?.length ?? 0) > 0 ? 5 : 0;
+  const activityBonus = Math.min(10, applicationCount * 2);
+
+  const familyRatingBonus = familyRatingCount > 0 ? Math.round((familyRatingAvg / 5) * 10) : 0;
+  const agencyRatingBonus = agencyRatingCount > 0 ? Math.round((agencyRatingAvg / 5) * 10) : 0;
+
+  const score = Math.min(100, baseScore + expBonus + certBonus + activityBonus + familyRatingBonus + agencyRatingBonus);
+
+  return {
+    score,
+    details: {
+      completedFields,
+      totalFields,
+      activityBonus,
+      familyRatingBonus,
+      agencyRatingBonus,
+      familyRatingAvg,
+      agencyRatingAvg,
+      familyRatingCount,
+      agencyRatingCount
+    }
+  };
+};
 
 export interface AgencyProfile {
   id: string;
   company_name: string;
   contact_name: string;
   website?: string;
+  cover?: string;
+  logo?: string;
+  boroughs?: string[];
+  specialties?: string[];
+  established?: string;
+  response_rate?: number;
+  score?: number;
+  isVerified?: boolean;
+  sponsored?: boolean;
   location?: string;
   bio?: string;
   created_at: any;
@@ -76,15 +158,57 @@ export interface AgencyProfile {
   users?: any;
 }
 
+export interface AgencyPost {
+  id?: string;
+  agency_id: string;
+  title: string;
+  content: string;
+  created_at?: any;
+  updated_at?: any;
+}
+
 export interface FamilyProfile {
   id: string;
+  name?: string;
   family_name: string;
+  family_id?: string;
   email: string;
   phone?: string;
   location_borough?: string;
   location_neighborhood?: string;
   bio?: string;
+  children?: Array<{ name: string; age: number; allergies?: string[]; special_needs?: string }>;
+  care_needs?: string;
+  schedule?: string;
+  live_in?: boolean;
+  languages?: string[];
+  special_skills?: string[];
+  driver_requirement?: boolean;
+  pet_friendly?: boolean;
+  parenting_style?: string;
+  dietary_preferences?: string;
+  cultural_values?: string;
+  additional_notes?: string;
+  onboarding_complete?: boolean;
   created_at: any;
+  updated_at?: any;
+}
+
+export interface CareHistory {
+  id?: string;
+  family_id: string;
+  job_id: string;
+  agency_id: string;
+  nanny_id: string;
+  job_title?: string;
+  agency_name?: string;
+  nanny_name?: string;
+  start_date?: string;
+  end_date?: string;
+  summary?: string;
+  rating?: number;
+  review?: string;
+  created_at?: any;
   updated_at?: any;
 }
 
@@ -102,6 +226,8 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
+  databaseId?: string;
+  projectId?: string;
   authInfo: {
     userId: string | undefined;
     email: string | null | undefined;
@@ -118,6 +244,8 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: any, operationType: OperationType, path: string | null) {
+  const runtimeDbId = ((db as any)?._databaseId?.database || (db as any)?._databaseId || 'unknown') as string;
+  const runtimeProjectId = (db as any)?.app?.options?.projectId || 'unknown';
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -134,10 +262,13 @@ export function handleFirestoreError(error: any, operationType: OperationType, p
       })) || []
     },
     operationType,
-    path
+    path,
+    databaseId: runtimeDbId,
+    projectId: runtimeProjectId
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  // Do not throw here so that API utility callers can return fallback values and UI continues to render.
+  return errInfo;
 }
 
 // --- JOBS ---
@@ -150,18 +281,18 @@ export const getJobs = async (agencyId?: string): Promise<Job[]> => {
     } else {
       q = query(collection(db, path), where('status', '==', 'published'), orderBy('created_at', 'desc'));
     }
+
     const snapshot = await getDocs(q);
-    const jobs = await Promise.all(snapshot.docs.map(async (d) => {
+    const jobsWithAgency = await Promise.all(snapshot.docs.map(async (d) => {
       const jobData = d.data();
-      // Join with agency profile
       const agencyDoc = await getDoc(doc(db, 'agency_profiles', jobData.agency_id));
-      return { 
-        id: d.id, 
-        ...jobData, 
+      return {
+        id: d.id,
+        ...jobData,
         agency_profiles: agencyDoc.exists() ? agencyDoc.data() : { company_name: 'Agency' }
       } as Job;
     }));
-    return jobs;
+    return jobsWithAgency;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -395,16 +526,60 @@ export const getFamilyProfile = async (familyId: string): Promise<FamilyProfile 
   const path = `families/${familyId}`;
   try {
     const familyDoc = await getDoc(doc(db, 'families', familyId));
-    if (!familyDoc.exists()) return null;
-    
-    const profileDoc = await getDoc(doc(db, 'family_profiles', familyId));
-    const profileData = profileDoc.exists() ? profileDoc.data() : {};
-    
-    return {
-      id: familyDoc.id,
-      ...familyDoc.data(),
-      ...profileData
-    } as FamilyProfile;
+    let combined: FamilyProfile | null = null;
+
+    if (familyDoc.exists()) {
+      combined = {
+        id: familyDoc.id,
+        ...familyDoc.data()
+      } as FamilyProfile;
+    } else {
+      const profileDoc = await getDoc(doc(db, 'family_profiles', familyId));
+      if (profileDoc.exists()) {
+        combined = {
+          id: profileDoc.id,
+          ...profileDoc.data()
+        } as FamilyProfile;
+      } else {
+        const fallbackQuery = query(collection(db, 'family_profiles'), where('family_id', '==', familyId));
+        const fallbackSnapshot = await getDocs(fallbackQuery);
+        if (!fallbackSnapshot.empty) {
+          const fallbackDoc = fallbackSnapshot.docs[0];
+          combined = {
+            id: fallbackDoc.id,
+            ...fallbackDoc.data()
+          } as FamilyProfile;
+          if (combined.family_id) {
+            const fallbackFamilyDoc = await getDoc(doc(db, 'families', combined.family_id));
+            if (fallbackFamilyDoc.exists()) {
+              combined = {
+                ...combined,
+                ...fallbackFamilyDoc.data(),
+                id: fallbackFamilyDoc.id
+              } as FamilyProfile;
+            }
+          }
+        }
+      }
+    }
+
+    if (!combined) return null;
+
+    if (!combined.family_name && combined.name) {
+      combined.family_name = combined.name;
+    }
+    if (!combined.name && combined.family_name) {
+      combined.name = combined.family_name;
+    }
+
+    if (combined.onboarding_complete === undefined) {
+      const hasChildren = Array.isArray(combined.children) && combined.children.length > 0;
+      const hasLocation = !!combined.location_neighborhood || !!combined.location_borough;
+      const hasContact = !!combined.phone || !!combined.email;
+      combined.onboarding_complete = !!(hasChildren && hasLocation && hasContact);
+    }
+
+    return combined;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
     return null;
@@ -414,16 +589,15 @@ export const getFamilyProfile = async (familyId: string): Promise<FamilyProfile 
 export const updateFamilyProfile = async (familyId: string, data: { family?: any, profile?: any }) => {
   try {
     if (data.family) {
-      const familyPath = `families/${familyId}`;
       await setDoc(doc(db, 'families', familyId), { ...data.family, updated_at: serverTimestamp() }, { merge: true });
     }
     
     if (data.profile) {
-      const profilePath = `family_profiles/${familyId}`;
-      await setDoc(doc(db, 'family_profiles', familyId), { 
-        family_id: familyId, 
-        ...data.profile, 
-        updated_at: serverTimestamp() 
+      // Merge profile fields into families document directly so there is no separate collection.
+      await setDoc(doc(db, 'families', familyId), {
+        ...data.profile,
+        family_id: familyId,
+        updated_at: serverTimestamp()
       }, { merge: true });
     }
     
@@ -529,6 +703,396 @@ export const getFamilyApplications = async (familyId: string): Promise<any[]> =>
   }
 };
 
+export const getFamilyCareHistory = async (familyId: string): Promise<CareHistory[]> => {
+  const path = 'care_history';
+  try {
+    const q = query(collection(db, path), where('family_id', '==', familyId), orderBy('end_date', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CareHistory));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const followAgency = async (familyId: string, agencyId: string) => {
+  const path = 'family_agency_follows';
+  try {
+    const existingQuery = query(
+      collection(db, path),
+      where('family_id', '==', familyId),
+      where('agency_id', '==', agencyId)
+    );
+    const existingSnap = await getDocs(existingQuery);
+    if (!existingSnap.empty) return existingSnap.docs[0].id;
+
+    const docRef = await addDoc(collection(db, path), {
+      family_id: familyId,
+      agency_id: agencyId,
+      created_at: serverTimestamp()
+    });
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const unfollowAgency = async (familyId: string, agencyId: string) => {
+  const path = 'family_agency_follows';
+  try {
+    const q = query(
+      collection(db, path),
+      where('family_id', '==', familyId),
+      where('agency_id', '==', agencyId)
+    );
+    const snapshot = await getDocs(q);
+    await Promise.all(snapshot.docs.map(docItem => deleteDoc(docItem.ref)));
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    return false;
+  }
+};
+
+export const getFamilyFollowedAgencies = async (familyId: string): Promise<string[]> => {
+  const path = 'family_agency_follows';
+  try {
+    const q = query(collection(db, path), where('family_id', '==', familyId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => d.data().agency_id as string);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const addCareHistory = async (history: CareHistory) => {
+  const path = 'care_history';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      ...history,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const recordCareHistoryFromApplication = async (applicationId: string) => {
+  const appPath = `family_applications/${applicationId}`;
+  try {
+    const appDoc = await getDoc(doc(db, 'family_applications', applicationId));
+    if (!appDoc.exists()) return null;
+    const app = appDoc.data();
+
+    const jobDoc = await getDoc(doc(db, 'jobs', app.job_id));
+    const agencyDoc = await getDoc(doc(db, 'agency_profiles', app.agency_id));
+    const nannyDoc = await getDoc(doc(db, 'nanny_profiles', app.nanny_id));
+
+    const history: CareHistory = {
+      family_id: app.family_id,
+      job_id: app.job_id,
+      agency_id: app.agency_id,
+      nanny_id: app.nanny_id,
+      job_title: jobDoc.exists() ? (jobDoc.data() as any).title : undefined,
+      agency_name: agencyDoc.exists() ? (agencyDoc.data() as any).company_name : undefined,
+      nanny_name: nannyDoc.exists() ? `${(nannyDoc.data() as any).first_name || ''} ${(nannyDoc.data() as any).last_name || ''}`.trim() : undefined,
+      start_date: app.start_date || '',
+      end_date: new Date().toISOString(),
+      summary: '',
+      rating: 0,
+      review: ''
+    };
+
+    return await addCareHistory(history);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, appPath);
+  }
+};
+
+// --- REVIEWS ---
+export interface NannyReview {
+  id?: string;
+  nanny_id: string;
+  reviewer_id: string;
+  reviewer_role: 'family' | 'agency' | 'nanny';
+  rating: number;
+  comment: string;
+  created_at?: any;
+}
+
+export interface AgencyReview {
+  id?: string;
+  agency_id: string;
+  reviewer_id: string;
+  reviewer_role: 'family' | 'agency' | 'nanny';
+  rating: number;
+  comment: string;
+  created_at?: any;
+}
+
+export const getNannyReviews = async (nannyId: string): Promise<NannyReview[]> => {
+  const path = 'nanny_reviews';
+  try {
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NannyReview));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getAgencyReviews = async (agencyId: string): Promise<AgencyReview[]> => {
+  const path = 'agency_reviews';
+  try {
+    const q = query(collection(db, path), where('agency_id', '==', agencyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgencyReview));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const addNannyReview = async (review: NannyReview) => {
+  const path = 'nanny_reviews';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      ...review,
+      created_at: serverTimestamp()
+    });
+    const savedDoc = await getDoc(docRef);
+    return { id: savedDoc.id, ...savedDoc.data() } as NannyReview;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const addAgencyReview = async (review: AgencyReview) => {
+  const path = 'agency_reviews';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      ...review,
+      created_at: serverTimestamp()
+    });
+    const savedDoc = await getDoc(docRef);
+    return { id: savedDoc.id, ...savedDoc.data() } as AgencyReview;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const getNannyReviewStats = async (nannyId: string) => {
+  const reviews = await getNannyReviews(nannyId);
+  const count = reviews.length;
+  const avg = count > 0 ? reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / count : 0;
+  return { count, avg };
+};
+
+export const getAgencyReviewStats = async (agencyId: string) => {
+  const reviews = await getAgencyReviews(agencyId);
+  const count = reviews.length;
+  const avg = count > 0 ? reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / count : 0;
+  return { count, avg };
+};
+
+export const getAgencyPosts = async (agencyId: string): Promise<AgencyPost[]> => {
+  const path = 'agency_posts';
+  try {
+    const q = query(collection(db, path), where('agency_id', '==', agencyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgencyPost));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const addAgencyPost = async (agencyId: string, title: string, content: string) => {
+  const path = 'agency_posts';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      agency_id: agencyId,
+      title,
+      content,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+// --- FORWARDING NANNY PROFILES ---
+export interface ChildProfile {
+  name: string;
+  age: number;
+  allergies?: string[];
+  special_needs?: string;
+  notes?: string;
+}
+
+export interface FamilyProfileItem {
+  family_id: string;
+  family_name?: string;
+  email?: string;
+  phone?: string;
+  location_borough?: string;
+  location_neighborhood?: string;
+  children?: ChildProfile[];
+  care_needs?: string;
+  updated_at?: any;
+}
+
+export interface ForwardedNannyProfile {
+  id?: string;
+  agency_id: string;
+  family_id: string;
+  nanny_id: string;
+  job_id: string;
+  job_title: string;
+  message?: string;
+  nanny_snapshot: Partial<NannyProfile>;
+  certifications?: string[];
+  resume_url?: string;
+  created_at?: any;
+}
+
+export const forwardNannyToFamily = async (forward: ForwardedNannyProfile) => {
+  const path = 'nanny_forwards';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      ...forward,
+      created_at: serverTimestamp()
+    });
+    const savedDoc = await getDoc(docRef);
+    return { id: savedDoc.id, ...savedDoc.data() } as ForwardedNannyProfile;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const getFamilyForwards = async (familyId: string): Promise<ForwardedNannyProfile[]> => {
+  const path = 'nanny_forwards';
+  try {
+    const q = query(collection(db, path), where('family_id', '==', familyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ForwardedNannyProfile));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getFamilies = async (): Promise<FamilyProfileItem[]> => {
+  const path = 'families';
+  try {
+    const snapshot = await getDocs(collection(db, path));
+    return snapshot.docs.map(d => ({ family_id: d.id, ...d.data() } as FamilyProfileItem));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+export type NotificationType = 'application' | 'message' | 'review' | 'system';
+
+export interface FamilyNotification {
+  id?: string;
+  family_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link?: string;
+  read?: boolean;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export const getFamilyNotifications = async (familyId: string): Promise<FamilyNotification[]> => {
+  const path = 'family_notifications';
+  try {
+    const q = query(collection(db, path), where('family_id', '==', familyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FamilyNotification));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export interface AgencyInquiryPayload {
+  description: string;
+  schedule_type: 'date_range' | 'weekly_days';
+  start_date?: string;
+  end_date?: string;
+  weekdays?: string[];
+}
+
+export interface AgencyInquiryConversationInput {
+  familyId: string;
+  agencyId: string;
+  familyName: string;
+  familyEmail?: string;
+  familyPhone?: string;
+  familyBorough?: string;
+  agencyName?: string;
+  inquiry: AgencyInquiryPayload;
+}
+
+export const addFamilyNotification = async (familyId: string, title: string, message: string, link?: string) => {
+  const path = 'family_notifications';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      family_id: familyId,
+      type: 'application',
+      title,
+      message,
+      link: link || '/family/notifications',
+      read: false,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const markFamilyNotificationRead = async (notificationId: string) => {
+  const path = `family_notifications/${notificationId}`;
+  try {
+    const docRef = doc(db, 'family_notifications', notificationId);
+    await updateDoc(docRef, { read: true, updated_at: serverTimestamp() });
+    const updatedDoc = await getDoc(docRef);
+    return { id: updatedDoc.id, ...updatedDoc.data() };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const addNannyNotification = async (nannyId: string, title: string, message: string, link?: string) => {
+  const path = 'nanny_notifications';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      nanny_id: nannyId,
+      type: 'application',
+      title,
+      message,
+      link: link || '/nanny/notifications',
+      read: false,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
 // --- USERS ---
 export const getUsers = async () => {
   const path = 'users';
@@ -545,9 +1109,110 @@ export const getConversations = async (userId: string, role: 'family' | 'nanny' 
   try {
     let q = query(collection(db, path), where('participants', 'array-contains', userId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const toMillis = (value: any): number => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    return conversations.sort((a: any, b: any) => {
+      const aUpdated = toMillis(a.updated_at || a.created_at);
+      const bUpdated = toMillis(b.updated_at || b.created_at);
+      return bUpdated - aUpdated;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+  }
+};
+
+// Start or resume a direct conversation between a family and an agency.
+// Uses a deterministic doc ID so opening the same conversation twice is idempotent.
+export const startConversation = async (
+  familyId: string,
+  agencyId: string,
+  familyName: string,
+  agencyName: string
+): Promise<{ id: string } | null> => {
+  const path = 'conversations';
+  const conversationId = `${familyId}_${agencyId}`;
+  try {
+    const conversationRef = doc(db, path, conversationId);
+    await setDoc(conversationRef, {
+      participants: [familyId, agencyId],
+      family_id: familyId,
+      agency_id: agencyId,
+      family_name: familyName,
+      agency_name: agencyName,
+      updated_at: serverTimestamp(),
+      created_at: serverTimestamp()
+    }, { merge: true });
+    return { id: conversationId };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return null;
+  }
+};
+
+export const createAgencyInquiryConversation = async ({
+  familyId,
+  agencyId,
+  familyName,
+  familyEmail,
+  familyPhone,
+  familyBorough,
+  agencyName,
+  inquiry
+}: AgencyInquiryConversationInput) => {
+  const path = 'conversations';
+  try {
+    const conversationId = `${familyId}_${agencyId}`;
+    const conversationRef = doc(db, path, conversationId);
+
+    const scheduleSummary = inquiry.schedule_type === 'date_range'
+      ? `Date range: ${inquiry.start_date || 'TBD'} to ${inquiry.end_date || 'TBD'}`
+      : `Preferred weekdays: ${(inquiry.weekdays || []).join(', ')}`;
+
+    const introMessage = [
+      `New agency inquiry from ${familyName}.`,
+      familyEmail ? `Email: ${familyEmail}` : null,
+      familyPhone ? `Phone: ${familyPhone}` : null,
+      familyBorough ? `Borough: ${familyBorough}` : null,
+      scheduleSummary,
+      '',
+      inquiry.description
+    ].filter(Boolean).join('\n');
+
+    await setDoc(conversationRef, {
+      participants: [familyId, agencyId],
+      family_id: familyId,
+      agency_id: agencyId,
+      family_name: familyName,
+      agency_name: agencyName || 'Agency',
+      family_email: familyEmail || null,
+      family_phone: familyPhone || null,
+      family_borough: familyBorough || null,
+      inquiry_type: 'agency_intro',
+      inquiry_schedule_type: inquiry.schedule_type,
+      inquiry_start_date: inquiry.schedule_type === 'date_range' ? inquiry.start_date || null : null,
+      inquiry_end_date: inquiry.schedule_type === 'date_range' ? inquiry.end_date || null : null,
+      inquiry_weekdays: inquiry.schedule_type === 'weekly_days' ? (inquiry.weekdays || []) : [],
+      inquiry_description_preview: inquiry.description.slice(0, 280),
+      last_message: inquiry.description.slice(0, 280),
+      updated_at: serverTimestamp(),
+      created_at: serverTimestamp()
+    }, { merge: true });
+
+    const sent = await sendMessage(conversationId, 'family', familyId, introMessage);
+    if (!sent?.id) return null;
+
+    return { id: conversationId };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return null;
   }
 };
 
@@ -582,5 +1247,6 @@ export const sendMessage = async (conversationId: string, senderType: 'family' |
     return { id: newDoc.id, ...newDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+    return null;
   }
 };

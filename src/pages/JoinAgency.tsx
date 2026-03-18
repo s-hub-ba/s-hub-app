@@ -4,11 +4,9 @@ import { Baby, ArrowRight, Mail, Lock, Building2, User } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function JoinAgency() {
   const navigate = useNavigate();
-  const { loginMock } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,36 +16,45 @@ export default function JoinAgency() {
     setError(null);
     
     const formData = new FormData(e.currentTarget);
-    const agencyName = formData.get('agencyName') as string;
-    const contactName = formData.get('name') as string;
-    const email = formData.get('email') as string;
+    const agencyName = (formData.get('agencyName') as string).trim();
+    const contactName = (formData.get('name') as string).trim();
+    const email = (formData.get('email') as string).trim();
     const password = formData.get('password') as string;
 
+    if (!agencyName || !contactName || !email || !password) {
+      setError('All fields are required.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      // 1. Sign up the user
+      console.log('[JoinAgency] creating account', { email });
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      if (user) {
-        // 2. Create the user record
-        await setDoc(doc(db, 'users', user.uid), {
-          email: email,
-          role: 'agency_admin',
-          created_at: serverTimestamp()
-        });
-
-        // 3. Create the agency profile
-        await setDoc(doc(db, 'agency_profiles', user.uid), {
-          company_name: agencyName,
-          contact_person: contactName,
-          created_at: serverTimestamp()
-        });
-
-        // Navigate to agency dashboard
-        navigate('/agency/dashboard');
+      if (!user?.uid) {
+        throw new Error('Firebase did not return a user UID.');
       }
+
+      await setDoc(doc(db, 'users', user.uid), {
+        email,
+        role: 'agency_admin',
+        created_at: serverTimestamp()
+      });
+
+      await setDoc(doc(db, 'agency_profiles', user.uid), {
+        company_name: agencyName,
+        contact_person: contactName,
+        created_at: serverTimestamp()
+      });
+
+      console.log('[JoinAgency] created Firestore docs for', user.uid);
+      window.localStorage.setItem('userRole', 'agency_admin');
+      navigate('/agency/dashboard', { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+      console.error('[JoinAgency] signup error', err);
+      const code = err.code || '';
+      const message = err.message || 'Failed to create account';
+      setError(code ? `${code}: ${message}` : message);
     } finally {
       setIsSubmitting(false);
     }
@@ -190,26 +197,6 @@ export default function JoinAgency() {
                 {!isSubmitting && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
-
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-stone-100"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-stone-400">For Testing</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                loginMock('agency_admin');
-                navigate('/agency/dashboard');
-              }}
-              className="w-full py-3 px-4 border border-blue-200 rounded-xl text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
-            >
-              Skip to Dashboard (Demo Mode)
-            </button>
           </form>
         </div>
       </div>

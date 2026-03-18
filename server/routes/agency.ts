@@ -7,50 +7,104 @@ const router = Router();
 // Middleware to verify agency owner (Stubbed for MVP)
 const requireAgencyOwner = (req: any, res: any, next: any) => {
   // In production, verify JWT and ensure role === 'agency_admin'
-  req.agency_id = req.headers['x-agency-id']; 
-  if (!req.agency_id) return res.status(401).json({ error: 'Unauthorized' });
+  const rawAgencyId = req.headers['x-agency-id'];
+  const agencyId = Array.isArray(rawAgencyId) ? rawAgencyId[0] : rawAgencyId;
+  req.agency_id = agencyId;
+  if (!agencyId) return res.status(401).json({ error: 'Unauthorized' });
   next();
+};
+
+const generateUniqueInviteCode = async () => {
+  for (let i = 0; i < 10; i++) {
+    const code = Math.random().toString(36).substring(2, 10);
+    const existing = await db.collection('invite_links').doc(code).get();
+    if (!existing.exists) return code;
+  }
+  throw new Error('Failed to generate unique invite code');
 };
 
 // POST /api/agency/recruiter - Add a recruiter seat
 router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
   const { email, first_name, last_name } = req.body;
   const agency_id = req.agency_id;
-  
+
+  if (!agency_id || !email || !first_name || !last_name) {
+    return res.status(400).json({ error: 'agency_id, email, first_name, and last_name are required' });
+  }
+
   try {
-    // 1. Create user in auth
+    // Prevent duplicate recruiter seat for this agency by email
+    const existingRecruiterSnapshot = await db.collection('agency_recruiters')
+      .where('agency_id', '==', agency_id)
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    if (!existingRecruiterSnapshot.empty) {
+      return res.status(409).json({ error: 'Recruiter already exists in this agency' });
+    }
+
+    let existingAuthUser;
+    try {
+      existingAuthUser = await auth.getUserByEmail(email);
+    } catch (e: any) {
+      if (e.code !== 'auth/user-not-found') {
+        throw e;
+      }
+    }
+
+    if (existingAuthUser) {
+      return res.status(409).json({ error: 'Email is already used for another account' });
+    }
+
+    const password = Math.random().toString(36).slice(-12);
     const userRecord = await auth.createUser({
       email,
-      displayName: `${first_name} ${last_name}`
+      displayName: `${first_name} ${last_name}`,
+      password
     });
+
     const newUserId = userRecord.uid;
-    
-    // 2. Add to agency_recruiters
+
     await db.collection('agency_recruiters').add({
       agency_id,
       user_id: newUserId,
+      email,
+      first_name,
+      last_name,
       status: 'active',
       created_at: new Date().toISOString()
     });
-    
-    // 3. Update subscription pricing
+
+    // 3. Update or initialize subscription pricing
     const subSnapshot = await db.collection('subscriptions').where('agency_id', '==', agency_id).limit(1).get();
-      
+
     if (!subSnapshot.empty) {
       const subDoc = subSnapshot.docs[0];
       const sub = subDoc.data();
       const newCount = (sub.recruiter_count || 0) + 1;
       const newTotal = calculateSubscriptionPrice(newCount);
-      
-      await subDoc.ref.update({ 
-        recruiter_count: newCount, 
-        total_price: newTotal, 
-        updated_at: new Date().toISOString() 
+
+      await subDoc.ref.update({
+        recruiter_count: newCount,
+        total_price: newTotal,
+        updated_at: new Date().toISOString()
       });
-        
+
       console.log(`[Billing] Agency ${agency_id} price increased to $${newTotal}/mo`);
+    } else {
+      const newCount = 1;
+      const newTotal = calculateSubscriptionPrice(newCount);
+      await db.collection('subscriptions').add({
+        agency_id,
+        recruiter_count: newCount,
+        total_price: newTotal,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      console.log(`[Billing] Agency ${agency_id} subscription created: $${newTotal}/mo`);
     }
-    
+
     res.json({ success: true, message: 'Recruiter added and billing updated' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -59,38 +113,54 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
 
 // DELETE /api/agency/recruiter/:id - Remove a recruiter seat
 router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) => {
-  const { id: recruiter_user_id } = req.params;
+  const { id: recruiterId } = req.params;
   const agency_id = req.agency_id;
-  
+
+  if (!agency_id || !recruiterId) {
+    return res.status(400).json({ error: 'Missing agency_id or recruiter id' });
+  }
+
   try {
-    // 1. Remove from agency_recruiters
-    const recruiterSnapshot = await db.collection('agency_recruiters')
+    // Remove by doc ID first, then fallback to user_id match
+    let recruiterSnapshot = await db.collection('agency_recruiters').doc(recruiterId).get();
+    let docsToDelete = [];
+
+    if (recruiterSnapshot.exists && recruiterSnapshot.data()?.agency_id === agency_id) {
+      docsToDelete = [recruiterSnapshot];
+    } else {
+      const querySnapshot = await db.collection('agency_recruiters')
+        .where('agency_id', '==', agency_id)
+        .where('user_id', '==', recruiterId)
+        .get();
+      docsToDelete = querySnapshot.docs;
+    }
+
+    if (docsToDelete.length === 0) {
+      return res.status(404).json({ error: 'Recruiter record not found for this agency' });
+    }
+
+    await Promise.all(docsToDelete.map(d => d.ref.delete()));
+
+    // Re-calculate recruiter_count based on current active seats
+    const remainingSnapshot = await db.collection('agency_recruiters')
       .where('agency_id', '==', agency_id)
-      .where('user_id', '==', recruiter_user_id)
+      .where('status', '==', 'active')
       .get();
-    
-    await Promise.all(recruiterSnapshot.docs.map(d => d.ref.delete()));
-    
-    // 2. Update subscription pricing
+
+    const newCount = remainingSnapshot.size;
+    const newTotal = calculateSubscriptionPrice(newCount);
+
     const subSnapshot = await db.collection('subscriptions').where('agency_id', '==', agency_id).limit(1).get();
-      
     if (!subSnapshot.empty) {
       const subDoc = subSnapshot.docs[0];
-      const sub = subDoc.data();
-      if (sub.recruiter_count > 1) {
-        const newCount = sub.recruiter_count - 1;
-        const newTotal = calculateSubscriptionPrice(newCount);
-        
-        await subDoc.ref.update({ 
-          recruiter_count: newCount, 
-          total_price: newTotal, 
-          updated_at: new Date().toISOString() 
-        });
-          
-        console.log(`[Billing] Agency ${agency_id} price decreased to $${newTotal}/mo`);
-      }
+      await subDoc.ref.update({
+        recruiter_count: newCount,
+        total_price: newTotal,
+        updated_at: new Date().toISOString()
+      });
+      console.log(`[Billing] Agency ${agency_id} price updated to $${newTotal}/mo`);
     }
-    
+
     res.json({ success: true, message: 'Recruiter removed and billing updated' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -100,17 +170,16 @@ router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) =
 // POST /api/agency/invite-link - Generate a nanny invite link
 router.post('/invite-link', requireAgencyOwner, async (req: any, res: any) => {
   const agency_id = req.agency_id;
-  
-  // Generate a short unique code
-  const code = Math.random().toString(36).substring(2, 10);
-  
+
   try {
+    const code = await generateUniqueInviteCode();
+
     await db.collection('invite_links').doc(code).set({
       agency_id,
       code,
       created_at: new Date().toISOString()
     });
-    
+
     res.json({ 
       success: true, 
       invite_link: `https://shiftmeup.com/join/${code}`,
@@ -118,6 +187,84 @@ router.post('/invite-link', requireAgencyOwner, async (req: any, res: any) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/agency/inquiry - Create or update a family-agency conversation and add inquiry message
+router.post('/inquiry', async (req: any, res: any) => {
+  const {
+    familyId,
+    agencyId,
+    familyName,
+    familyEmail,
+    familyPhone,
+    familyBorough,
+    agencyName,
+    inquiry
+  } = req.body || {};
+
+  const callerUserId = Array.isArray(req.headers['x-user-id']) ? req.headers['x-user-id'][0] : req.headers['x-user-id'];
+  if (!familyId || !agencyId || !inquiry?.description || !inquiry?.schedule_type) {
+    return res.status(400).json({ error: 'Missing required inquiry fields' });
+  }
+
+  if (callerUserId && callerUserId !== familyId) {
+    return res.status(403).json({ error: 'Caller does not match family id' });
+  }
+
+  // Stable deterministic ID avoids compound query and composite index requirement
+  const conversationId = `${familyId}_${agencyId}`;
+
+  try {
+    console.log('[inquiry] family:', familyId, 'agency:', agencyId);
+
+    const scheduleSummary = inquiry.schedule_type === 'date_range'
+      ? `Date range: ${inquiry.start_date || 'TBD'} to ${inquiry.end_date || 'TBD'}`
+      : `Preferred weekdays: ${(inquiry.weekdays || []).join(', ')}`;
+
+    const introMessage = [
+      `New agency inquiry from ${familyName || 'Family'}.`,
+      familyEmail ? `Email: ${familyEmail}` : null,
+      familyPhone ? `Phone: ${familyPhone}` : null,
+      familyBorough ? `Borough: ${familyBorough}` : null,
+      scheduleSummary,
+      '',
+      String(inquiry.description)
+    ].filter(Boolean).join('\n');
+
+    const conversationRef = db.collection('conversations').doc(conversationId);
+
+    await conversationRef.set({
+      participants: [familyId, agencyId],
+      family_id: familyId,
+      agency_id: agencyId,
+      family_name: familyName || 'Family',
+      agency_name: agencyName || 'Agency',
+      family_email: familyEmail || null,
+      family_phone: familyPhone || null,
+      family_borough: familyBorough || null,
+      inquiry_type: 'agency_intro',
+      inquiry_schedule_type: inquiry.schedule_type,
+      inquiry_start_date: inquiry.schedule_type === 'date_range' ? inquiry.start_date || null : null,
+      inquiry_end_date: inquiry.schedule_type === 'date_range' ? inquiry.end_date || null : null,
+      inquiry_weekdays: inquiry.schedule_type === 'weekly_days' ? (inquiry.weekdays || []) : [],
+      inquiry_description_preview: String(inquiry.description).slice(0, 280),
+      last_message: String(inquiry.description).slice(0, 280),
+      updated_at: new Date().toISOString(),
+      created_at: new Date().toISOString()
+    }, { merge: true });
+
+    await conversationRef.collection('messages').add({
+      sender_id: familyId,
+      sender_type: 'family',
+      content: introMessage,
+      created_at: new Date().toISOString()
+    });
+
+    return res.json({ id: conversationId });
+  } catch (error: any) {
+    console.error('[inquiry] error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to create inquiry' });
   }
 });
 

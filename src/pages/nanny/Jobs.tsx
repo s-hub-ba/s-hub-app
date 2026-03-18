@@ -10,7 +10,7 @@ export default function NannyJobs() {
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const { user } = useAuth();
   
-  const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
   const nannyName = 'Sarah Jenkins';
 
   useEffect(() => {

@@ -14,7 +14,11 @@ export default function JobDetails() {
   const [hasApplied, setHasApplied] = useState(false);
   const [message, setMessage] = useState('');
   
-  const familyId = user?.id || 'f1111111-2222-3333-4444-555555555555';
+  const familyId = user?.uid || '';
+
+  if (!familyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to view job details and apply.</div>;
+  }
 
   useEffect(() => {
     const loadData = async () => {

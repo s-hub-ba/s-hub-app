@@ -13,7 +13,7 @@ export default function NannyProfile() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const nannyId = user?.id || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
 
   useEffect(() => {
     const loadData = async () => {

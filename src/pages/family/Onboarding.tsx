@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Baby, ArrowRight, MapPin, Users, Calendar, Clock, Heart } from 'lucide-react';
-import { updateFamilyProfile } from '../../lib/api';
+import { getFamilyProfile, updateFamilyProfile } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function FamilyOnboarding() {
@@ -9,32 +9,117 @@ export default function FamilyOnboarding() {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const familyId = user?.id || 'f1111111-2222-3333-4444-555555555555';
+  const familyId = user?.uid || '';
 
   const [formData, setFormData] = useState({
-    // Step 1: Basic Needs
-    children_count: '1',
-    children_ages: [] as string[],
-    care_type: 'Full-Time',
-    
-    // Step 2: Schedule & Location
+    // Step 1: Family & Children
+    family_name: '',
+    phone: '',
+    children: [{ name: '', age: '', allergies: '', special_needs: '' }],
+    care_needs: '',
+
+    // Step 2: Location
     location_borough: 'Manhattan',
     location_neighborhood: '',
-    schedule: '',
-    start_date: '',
-    live_in: false,
-    
-    // Step 3: Preferences
+
+    // Step 3: Preferences & Culture
     languages: [] as string[],
+    special_skills: [] as string[],
     driver_requirement: false,
     pet_friendly: false,
-    special_skills: [] as string[]
+    parenting_style: '',
+    dietary_preferences: '',
+    cultural_values: '',
+    additional_notes: ''
   });
+
+  useEffect(() => {
+    const loadExistingFamilyData = async () => {
+      if (!familyId) return;
+      try {
+        const familyData = await getFamilyProfile(familyId);
+        if (familyData) {
+          setFormData((prev) => ({
+            ...prev,
+            family_name: familyData.family_name || familyData.name || prev.family_name,
+            phone: familyData.phone || prev.phone,
+            location_borough: familyData.location_borough || prev.location_borough,
+            location_neighborhood: familyData.location_neighborhood || prev.location_neighborhood,
+            children: (Array.isArray(familyData.children) && familyData.children.length > 0)
+              ? familyData.children.map((child: any) => ({
+                  name: child.name || '',
+                  age: child.age?.toString() || '',
+                  allergies: Array.isArray(child.allergies) ? child.allergies.join(', ') : (child.allergies || ''),
+                  special_needs: child.special_needs || ''
+                }))
+              : prev.children,
+            care_needs: familyData.care_needs || prev.care_needs,
+            languages: familyData.languages || prev.languages,
+            special_skills: familyData.special_skills || prev.special_skills,
+            driver_requirement: familyData.driver_requirement ?? prev.driver_requirement,
+            pet_friendly: familyData.pet_friendly ?? prev.pet_friendly,
+            parenting_style: familyData.parenting_style || prev.parenting_style,
+            dietary_preferences: familyData.dietary_preferences || prev.dietary_preferences,
+            cultural_values: familyData.cultural_values || prev.cultural_values,
+            additional_notes: familyData.additional_notes || prev.additional_notes
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading family onboarding defaults:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadExistingFamilyData();
+  }, [familyId]);
+
+  if (!familyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to continue onboarding.</div>;
+  }
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-stone-500">Loading onboarding info…</div>;
+  }
 
   const handleNext = () => {
     setStep(s => Math.min(3, s + 1));
     window.scrollTo(0, 0);
+  };
+
+  const handleChildChange = (index: number, field: string, value: string) => {
+    setFormData(prev => {
+      const children = [...prev.children];
+      children[index] = { ...children[index], [field]: value };
+      return { ...prev, children };
+    });
+  };
+
+  const addChild = () => {
+    setFormData(prev => ({
+      ...prev,
+      children: [...prev.children, { name: '', age: '', allergies: '', special_needs: '' }]
+    }));
+  };
+
+  const removeChild = (index: number) => {
+    setFormData(prev => {
+      const children = prev.children.filter((_, i) => i !== index);
+      return { ...prev, children: children.length ? children : [{ name: '', age: '', allergies: '', special_needs: '' }] };
+    });
+  };
+
+  const toggleArrayItem = (field: 'languages' | 'special_skills', value: string) => {
+    setFormData(prev => {
+      const arr = prev[field] || [];
+      const hasItem = arr.includes(value);
+      return {
+        ...prev,
+        [field]: hasItem ? arr.filter((item: string) => item !== value) : [...arr, value]
+      };
+    });
   };
 
   const handleBack = () => {
@@ -45,45 +130,45 @@ export default function FamilyOnboarding() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     // Format data for API
     const profileData = {
       family: {
+        name: formData.family_name,
+        family_name: formData.family_name,
+        phone: formData.phone,
         location_borough: formData.location_borough,
         location_neighborhood: formData.location_neighborhood
       },
       profile: {
-        children_count: parseInt(formData.children_count),
-        children_ages: formData.children_ages,
-        schedule: formData.schedule,
-        care_type: formData.care_type,
-        live_in: formData.live_in,
-        start_date: formData.start_date,
-        preferences: {
-          languages: formData.languages,
-          driver_requirement: formData.driver_requirement,
-          pet_friendly: formData.pet_friendly,
-          special_skills: formData.special_skills
-        }
+        children: formData.children.map((child: any) => ({
+          name: child.name,
+          age: Number(child.age) || 0,
+          allergies: child.allergies ? child.allergies.split(',').map((a: string) => a.trim()) : [],
+          special_needs: child.special_needs
+        })),
+        care_needs: formData.care_needs,
+        languages: formData.languages,
+        special_skills: formData.special_skills,
+        driver_requirement: formData.driver_requirement,
+        pet_friendly: formData.pet_friendly,
+        parenting_style: formData.parenting_style,
+        dietary_preferences: formData.dietary_preferences,
+        cultural_values: formData.cultural_values,
+        additional_notes: formData.additional_notes,
+        onboarding_complete: true
       }
     };
 
     try {
-      await updateFamilyProfile(familyId, profileData);
+      const result = await updateFamilyProfile(familyId, profileData);
+      console.log('Family onboarding saved', result);
+      setIsSubmitting(false);
       navigate('/family/dashboard');
     } catch (error) {
       console.error('Error updating profile:', error);
       setIsSubmitting(false);
     }
-  };
-
-  const toggleArrayItem = (field: 'children_ages' | 'languages' | 'special_skills', value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: prev[field].includes(value)
-        ? prev[field].filter(item => item !== value)
-        : [...prev[field], value]
-    }));
   };
 
   return (
@@ -121,7 +206,7 @@ export default function FamilyOnboarding() {
           </div>
           <div className="flex justify-between mt-2 px-2 text-xs font-medium text-stone-500">
             <span>Basic Needs</span>
-            <span>Schedule</span>
+            <span>Location</span>
             <span>Preferences</span>
           </div>
         </div>
@@ -136,73 +221,112 @@ export default function FamilyOnboarding() {
                   <div>
                     <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2 mb-6">
                       <Users className="h-5 w-5 text-emerald-600" />
-                      Children Information
+                      Family & Children Info
                     </h2>
-                    
-                    <div className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6">
                       <div>
-                        <label className="block text-sm font-bold text-stone-900 mb-2">Number of Children needing care</label>
-                        <select 
-                          value={formData.children_count}
-                          onChange={e => setFormData({...formData, children_count: e.target.value})}
-                          className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
-                        >
-                          {[1, 2, 3, 4, '5+'].map(num => (
-                            <option key={num} value={num}>{num}</option>
-                          ))}
-                        </select>
+                        <label className="block text-sm font-bold text-stone-900 mb-2">Family Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.family_name}
+                          onChange={e => setFormData({ ...formData, family_name: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          placeholder="e.g. Smith Family"
+                        />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-bold text-stone-900 mb-3">Age Groups (Select all that apply)</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {['Newborn (0-3 mos)', 'Infant (3-12 mos)', 'Toddler (1-3 yrs)', 'Preschool (4-5 yrs)', 'School Age (6+ yrs)'].map(age => (
-                            <button
-                              type="button"
-                              key={age}
-                              onClick={() => toggleArrayItem('children_ages', age)}
-                              className={`px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
-                                formData.children_ages.includes(age)
-                                  ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
-                                  : 'border-stone-200 text-stone-600 hover:border-emerald-300 hover:bg-stone-50'
-                              }`}
-                            >
-                              {age}
-                            </button>
-                          ))}
-                        </div>
+                        <label className="block text-sm font-bold text-stone-900 mb-2">Contact Phone</label>
+                        <input
+                          type="tel"
+                          required
+                          value={formData.phone}
+                          onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          placeholder="(555) 123-4567"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-bold text-stone-900 mb-2">Care Needs Summary</label>
+                        <textarea
+                          rows={3}
+                          value={formData.care_needs}
+                          onChange={e => setFormData({ ...formData, care_needs: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          placeholder="E.g., special diet, early intervention, mobility support, etc."
+                        />
                       </div>
                     </div>
                   </div>
 
-                  <hr className="border-stone-100" />
-
                   <div>
-                    <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2 mb-6">
-                      <Heart className="h-5 w-5 text-emerald-600" />
-                      Care Type
-                    </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {['Full-Time', 'Part-Time', 'Temporary'].map(type => (
-                        <button
-                          type="button"
-                          key={type}
-                          onClick={() => setFormData({...formData, care_type: type})}
-                          className={`px-4 py-4 rounded-xl border text-center font-bold transition-all ${
-                            formData.care_type === type
-                              ? 'border-emerald-600 bg-emerald-600 text-white shadow-md'
-                              : 'border-stone-200 text-stone-600 hover:border-emerald-300 hover:bg-stone-50'
-                          }`}
-                        >
-                          {type}
-                        </button>
+                    <h3 className="text-lg font-semibold text-stone-900 mb-4">Child Details</h3>
+                    <div className="space-y-4">
+                      {formData.children.map((child: any, index: number) => (
+                        <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-stone-600">Name</label>
+                            <input
+                              type="text"
+                              value={child.name}
+                              onChange={e => handleChildChange(index, 'name', e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                              placeholder="Child Name"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-stone-600">Age</label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={child.age}
+                              onChange={e => handleChildChange(index, 'age', e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                              placeholder="Age"
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-stone-600">Allergies (comma-separated)</label>
+                            <input
+                              type="text"
+                              value={child.allergies}
+                              onChange={e => handleChildChange(index, 'allergies', e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                              placeholder="E.g., peanuts, dairy"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-stone-600">Special Needs</label>
+                            <input
+                              type="text"
+                              value={child.special_needs}
+                              onChange={e => handleChildChange(index, 'special_needs', e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                              placeholder="Optional note"
+                            />
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => removeChild(index)}
+                              className="px-3 py-2 text-xs rounded-xl border border-red-200 text-red-600 hover:bg-red-50"
+                            >Remove</button>
+                          </div>
+                        </div>
                       ))}
                     </div>
+                    <button
+                      type="button"
+                      onClick={addChild}
+                      className="mt-2 px-4 py-2 text-sm rounded-xl border border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                    >Add Another Child</button>
                   </div>
                 </div>
               )}
 
-              {/* Step 2: Schedule & Location */}
+              {/* Step 2: Location */}
               {step === 2 && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div>
@@ -238,52 +362,6 @@ export default function FamilyOnboarding() {
                       </div>
                     </div>
                   </div>
-
-                  <hr className="border-stone-100" />
-
-                  <div>
-                    <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2 mb-6">
-                      <Clock className="h-5 w-5 text-emerald-600" />
-                      Schedule Details
-                    </h2>
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-bold text-stone-900 mb-2">General Schedule</label>
-                        <input 
-                          type="text"
-                          required
-                          placeholder="e.g. Monday - Friday, 8am - 6pm"
-                          value={formData.schedule}
-                          onChange={e => setFormData({...formData, schedule: e.target.value})}
-                          className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
-                        />
-                      </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-sm font-bold text-stone-900 mb-2">Desired Start Date</label>
-                          <input 
-                            type="date"
-                            required
-                            value={formData.start_date}
-                            onChange={e => setFormData({...formData, start_date: e.target.value})}
-                            className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
-                          />
-                        </div>
-                        <div className="flex items-end">
-                          <label className="flex items-center gap-3 p-3 w-full border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50 transition-colors">
-                            <input 
-                              type="checkbox"
-                              checked={formData.live_in}
-                              onChange={e => setFormData({...formData, live_in: e.target.checked})}
-                              className="w-5 h-5 text-emerald-600 rounded border-stone-300 focus:ring-emerald-500"
-                            />
-                            <span className="font-bold text-stone-900">Require Live-in Nanny</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -311,6 +389,41 @@ export default function FamilyOnboarding() {
                               {lang}
                             </button>
                           ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-bold text-stone-900 mb-2">Parenting Style</label>
+                          <input
+                            type="text"
+                            value={formData.parenting_style}
+                            onChange={e => setFormData({ ...formData, parenting_style: e.target.value })}
+                            placeholder="E.g. positive reinforcement, structured routine"
+                            className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-bold text-stone-900 mb-2">Dietary Preferences</label>
+                          <input
+                            type="text"
+                            value={formData.dietary_preferences}
+                            onChange={e => setFormData({ ...formData, dietary_preferences: e.target.value })}
+                            placeholder="E.g. vegetarian, allergy-aware, farm-to-table"
+                            className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-bold text-stone-900 mb-2">Cultural Values</label>
+                          <input
+                            type="text"
+                            value={formData.cultural_values}
+                            onChange={e => setFormData({ ...formData, cultural_values: e.target.value })}
+                            placeholder="E.g. bilingual home, faith-based, arts-focused"
+                            className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          />
                         </div>
                       </div>
 

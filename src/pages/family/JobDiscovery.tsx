@@ -12,7 +12,11 @@ export default function JobDiscovery() {
   const [selectedBorough, setSelectedBorough] = useState('All');
   const [selectedSchedule, setSelectedSchedule] = useState('All');
   
-  const familyId = user?.id || 'f1111111-2222-3333-4444-555555555555';
+  const familyId = user?.uid || '';
+
+  if (!familyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to search jobs.</div>;
+  }
 
   useEffect(() => {
     const loadData = async () => {

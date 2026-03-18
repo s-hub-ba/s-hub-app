@@ -39,9 +39,8 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
 
   const familyNav = [
     { name: 'Dashboard', href: '/family/dashboard', icon: LayoutDashboard },
-    { name: 'Find a Nanny', href: '/family/jobs', icon: Search },
-    { name: 'Saved Jobs', href: '/family/saved', icon: Heart },
-    { name: 'Applications', href: '/family/applications', icon: FileText },
+    { name: 'Find an Agency', href: '/family/agencies', icon: Search },
+    { name: 'Past Care', href: '/family/saved', icon: Heart },
     { name: 'Messages', href: '/family/messages', icon: MessageSquare },
     { name: 'Profile', href: '/family/profile', icon: User },
   ];

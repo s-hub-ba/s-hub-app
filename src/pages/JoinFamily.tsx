@@ -4,11 +4,9 @@ import { Baby, ArrowRight, Mail, Lock, User, Users } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function JoinFamily() {
   const navigate = useNavigate();
-  const { loginMock } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -29,32 +27,38 @@ export default function JoinFamily() {
     setError(null);
 
     try {
-      // 1. Sign up with Firebase Auth
+      console.log('[JoinFamily] creating account', { email: formData.email });
+
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       const user = userCredential.user;
-
-      if (user) {
-        // 2. Create the user record in the users collection
-        await setDoc(doc(db, 'users', user.uid), {
-          email: formData.email,
-          role: 'family',
-          created_at: serverTimestamp()
-        });
-
-        // 3. Create the family record
-        await setDoc(doc(db, 'families', user.uid), {
-          name: formData.name,
-          email: formData.email,
-          location_borough: formData.location_borough,
-          location_neighborhood: formData.location_neighborhood,
-          created_at: serverTimestamp()
-        });
-
-        // Navigate to family onboarding
-        navigate('/family/onboarding');
+      if (!user?.uid) {
+        throw new Error('Failed to create Firebase user.');
       }
+
+      await setDoc(doc(db, 'users', user.uid), {
+        email: formData.email,
+        role: 'family',
+        created_at: serverTimestamp()
+      });
+
+      await setDoc(doc(db, 'families', user.uid), {
+        name: formData.name,
+        family_name: formData.name,
+        email: formData.email,
+        location_borough: formData.location_borough,
+        location_neighborhood: formData.location_neighborhood,
+        created_at: serverTimestamp()
+      });
+
+      console.log('[JoinFamily] created Firestore docs for', user.uid);
+      window.localStorage.setItem('userRole', 'family');
+      navigate('/family/onboarding', { replace: true });
+
     } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+      console.error('[JoinFamily] signup error', err);
+      const code = err.code || '';
+      const message = err.message || 'Failed to create account';
+      setError(code ? `${code}: ${message}` : message);
     } finally {
       setIsSubmitting(false);
     }
@@ -205,26 +209,6 @@ export default function JoinFamily() {
                 {!isSubmitting && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
-
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-stone-100"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-stone-400">For Testing</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                loginMock('family');
-                navigate('/family/onboarding');
-              }}
-              className="w-full py-3 px-4 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors"
-            >
-              Skip to Onboarding (Demo Mode)
-            </button>
           </form>
         </div>
       </div>

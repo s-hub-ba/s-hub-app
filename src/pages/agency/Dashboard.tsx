@@ -12,10 +12,14 @@ export default function AgencyDashboard() {
     activeJobs: 0,
     newApps: 0,
     talentPool: 0,
-    inquiries: 3 // Mock static value for now
+    inquiries: 0
   });
 
-  const agencyId = user?.id || 'a1b2c3d4-e5f6-7890-1234-56789abcdef0';
+  const agencyId = user?.uid || '';
+
+  if (!agencyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to view agency dashboard.</div>;
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -35,7 +39,7 @@ export default function AgencyDashboard() {
           activeJobs: agencyJobs.length,
           newApps: newApps.length,
           talentPool: nannies.length,
-          inquiries: 3
+          inquiries: 0
         });
       } catch (error) {
         console.error('Error loading dashboard stats:', error);

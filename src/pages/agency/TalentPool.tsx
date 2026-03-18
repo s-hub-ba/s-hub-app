@@ -33,15 +33,7 @@ export default function TalentPool() {
     const loadData = async () => {
       try {
         const nannies = await getNannies();
-        // Add mock data for agency-specific fields (status, tags, notes)
-        const enrichedNannies = nannies.map((nanny: any, index: number) => ({
-          ...nanny,
-          status: index === 0 ? 'top_candidate' : index === 1 ? 'interviewed' : 'saved',
-          tags: index === 0 ? ['Newborn Expert', 'Reliable'] : ['Bilingual', 'Flexible'],
-          latestNote: index === 0 ? 'Incredible interview. Very knowledgeable about sleep training.' : 'Solid candidate. Good communication skills.',
-          shiftScore: 90 - index * 5
-        }));
-        setTalentPool(enrichedNannies);
+        setTalentPool(nannies);
       } catch (error) {
         console.error('Error loading talent pool:', error);
       }
@@ -211,8 +203,6 @@ export default function TalentPool() {
               <button
                 onClick={() => {
                   setShowInviteModal(false);
-                  // Mock success
-                  console.log('Invitation sent!');
                 }}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors"
               >
@@ -248,8 +238,6 @@ export default function TalentPool() {
               <button
                 onClick={() => {
                   setShowImportModal(false);
-                  // Mock success
-                  console.log('Import started!');
                 }}
                 className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-xl transition-colors"
               >
