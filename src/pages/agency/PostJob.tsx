@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
-import { createJob } from '../../lib/api';
+import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function PostJob() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const [resolvedAgencyId, setResolvedAgencyId] = useState('');
+  const [inquiryContext, setInquiryContext] = useState<any>(null);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -29,6 +33,24 @@ export default function PostJob() {
     status: 'published'
   });
 
+  useEffect(() => {
+    const loadContext = async () => {
+      if (!user?.uid) return;
+      const agency = await resolveAgencyIdForUser(user.uid);
+      setResolvedAgencyId(agency || '');
+
+      const inquiryId = searchParams.get('inquiry');
+      if (!inquiryId) return;
+
+      const convo = await getConversationById(inquiryId);
+      if (convo?.inquiry_type === 'agency_intro') {
+        setInquiryContext(convo);
+      }
+    };
+
+    loadContext();
+  }, [searchParams, user]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -49,13 +71,32 @@ export default function PostJob() {
         throw new Error('Sign in as an agency to post jobs.');
       }
 
-      await createJob({
+      if (!resolvedAgencyId) {
+        throw new Error('Could not resolve your agency. Please reload and try again.');
+      }
+
+      const created = await createJob({
         ...formData,
-        agency_id: user.uid,
+        agency_id: resolvedAgencyId,
+        family_id: inquiryContext?.family_id || null,
+        source_inquiry_id: inquiryContext?.id || null,
+        linked_from_inquiry: !!inquiryContext?.id,
         pay_min: parseFloat(formData.pay_min),
         pay_max: parseFloat(formData.pay_max),
         required_experience_years: parseInt(formData.required_experience_years) || 0
       });
+
+      if (created?.id && inquiryContext?.family_id) {
+        await ensureFamilyApplicationForInquiryJob(
+          inquiryContext.family_id,
+          created.id,
+          resolvedAgencyId,
+          inquiryContext.id
+        );
+        if (inquiryContext.id) {
+          await linkInquiryConversationToJob(inquiryContext.id, created.id);
+        }
+      }
       
       setIsSubmitting(false);
       setIsSuccess(true);
@@ -112,6 +153,11 @@ export default function PostJob() {
         </div>
 
         <div className="p-6 md:p-8">
+          {inquiryContext && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-sm">
+              This job will be linked to inquiry from {inquiryContext.family_name || 'Family'}. On publish, their case is automatically attached for follow-through and past-care tracking.
+            </div>
+          )}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm flex items-center gap-2">
               <AlertCircle className="h-5 w-5 shrink-0" />

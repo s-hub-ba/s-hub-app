@@ -5,7 +5,7 @@ import { auth, db } from '../lib/firebase';
 
 type AuthContextType = {
   user: User | null;
-  role: 'nanny' | 'agency_admin' | 'agency_recruiter' | 'superadmin' | 'family' | null;
+  role: 'nanny' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin' | 'family' | null;
   loading: boolean;
   logout: () => void;
 };
@@ -40,7 +40,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const userDoc = await getDoc(doc(db, 'users', userId));
       if (userDoc.exists()) {
-        const resolvedRole = userDoc.data().role as AuthContextType['role'];
+        const rawRole = userDoc.data().role as string | undefined;
+        // Backward compatibility: legacy accounts may still store role as "agency".
+        const resolvedRole = (rawRole === 'agency' ? 'agency_admin' : rawRole) as AuthContextType['role'];
         setRole(resolvedRole);
         if (resolvedRole) window.localStorage.setItem('userRole', resolvedRole);
         return;
@@ -52,7 +54,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (err: any) {
       console.error('[AuthContext] Error fetching role:', err);
       const cachedRole = window.localStorage.getItem('userRole');
-      if (cachedRole === 'nanny' || cachedRole === 'family' || cachedRole === 'agency_admin' || cachedRole === 'agency_recruiter' || cachedRole === 'superadmin') {
+      if (cachedRole === 'nanny' || cachedRole === 'family' || cachedRole === 'agency' || cachedRole === 'agency_admin' || cachedRole === 'agency_recruiter' || cachedRole === 'superadmin') {
         setRole(cachedRole);
       } else {
         // Default to family for real Firebase users

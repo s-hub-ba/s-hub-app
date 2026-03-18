@@ -190,6 +190,53 @@ router.post('/invite-link', requireAgencyOwner, async (req: any, res: any) => {
   }
 });
 
+// POST /api/agency/posts - Create an agency post via server (admin SDK bypasses client rules)
+router.post('/posts', requireAgencyOwner, async (req: any, res: any) => {
+  const agency_id = req.agency_id as string;
+  const { title, content } = req.body || {};
+  const callerUserId = Array.isArray(req.headers['x-user-id']) ? req.headers['x-user-id'][0] : req.headers['x-user-id'];
+
+  if (!agency_id || !callerUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!title || !content || String(title).trim().length === 0 || String(content).trim().length === 0) {
+    return res.status(400).json({ error: 'title and content are required' });
+  }
+
+  try {
+    const callerIsAgencyOwner = callerUserId === agency_id;
+
+    let callerIsRecruiterForAgency = false;
+    if (!callerIsAgencyOwner) {
+      const recruiterSnap = await db.collection('agency_recruiters')
+        .where('agency_id', '==', agency_id)
+        .where('user_id', '==', callerUserId)
+        .limit(1)
+        .get();
+      callerIsRecruiterForAgency = !recruiterSnap.empty;
+    }
+
+    if (!callerIsAgencyOwner && !callerIsRecruiterForAgency) {
+      return res.status(403).json({ error: 'Forbidden: user does not belong to this agency' });
+    }
+
+    const docRef = await db.collection('agency_posts').add({
+      agency_id,
+      title: String(title).trim(),
+      content: String(content).trim(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by: callerUserId
+    });
+
+    return res.json({ id: docRef.id });
+  } catch (error: any) {
+    console.error('[agency/posts] error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to create post' });
+  }
+});
+
 // POST /api/agency/inquiry - Create or update a family-agency conversation and add inquiry message
 router.post('/inquiry', async (req: any, res: any) => {
   const {

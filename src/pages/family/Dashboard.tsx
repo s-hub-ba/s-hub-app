@@ -161,7 +161,7 @@ export default function FamilyDashboard() {
         <div className="lg:col-span-2 space-y-8">
 
 
-          {/* Saved Jobs */}
+          {/* Past Care */}
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="p-6 md:p-8 border-b border-stone-100 flex items-center justify-between">
               <h2 className="text-xl font-bold text-stone-900">Past Care</h2>
@@ -171,27 +171,27 @@ export default function FamilyDashboard() {
             </div>
             
             <div className="divide-y divide-stone-100">
-              {savedJobs.length === 0 ? (
+              {careHistory.length === 0 ? (
                 <div className="p-8 text-center">
                   <Heart className="h-12 w-12 text-stone-300 mx-auto mb-4" />
                   <h3 className="text-lg font-bold text-stone-900">No past care history</h3>
                   <p className="text-stone-500 mt-1">Once care is completed, you’ll see past agencies/nannies here and can leave reviews.</p>
                 </div>
               ) : (
-                savedJobs.slice(0, 3).map(saved => (
-                  <div key={saved.id} className="p-6 hover:bg-stone-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                careHistory.slice(0, 3).map((history) => (
+                  <div key={history.id} className="p-6 hover:bg-stone-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      <h3 className="font-bold text-stone-900 mb-1">{saved.job.title}</h3>
+                      <h3 className="font-bold text-stone-900 mb-1">{history.job_title || 'Past Care Role'}</h3>
                       <div className="flex items-center gap-3 text-sm text-stone-500">
-                        <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {saved.job.location_neighborhood}</span>
-                        <span className="flex items-center gap-1"><DollarSign className="h-4 w-4" /> ${saved.job.pay_min}-${saved.job.pay_max}/hr</span>
+                        <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {history.location_neighborhood || 'NYC'}{history.location_borough ? `, ${history.location_borough}` : ''}</span>
+                        <span className="flex items-center gap-1"><DollarSign className="h-4 w-4" /> Completed</span>
                       </div>
                     </div>
-                    <Link 
-                      to={`/family/jobs/${saved.job.id}`}
+                    <Link
+                      to="/family/saved"
                       className="bg-stone-100 hover:bg-stone-200 text-stone-900 px-4 py-2 rounded-xl text-sm font-bold transition-colors"
                     >
-                      Apply Now
+                      Leave Review
                     </Link>
                   </div>
                 ))

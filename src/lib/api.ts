@@ -27,6 +27,9 @@ export interface User {
 export interface Job {
   id: string;
   agency_id: string;
+  family_id?: string | null;
+  source_inquiry_id?: string | null;
+  linked_from_inquiry?: boolean;
   title: string;
   description: string;
   location_borough: string;
@@ -46,6 +49,14 @@ export interface Application {
   agency_id: string;
   status: 'applied' | 'reviewing' | 'interviewing' | 'hired' | 'rejected';
   cover_letter: string;
+  call_status?: 'pending_nanny' | 'confirmed' | 'declined' | null;
+  call_scheduled_for?: string | null;
+  call_timezone?: string | null;
+  call_note?: string | null;
+  call_proposed_by?: 'agency' | 'nanny' | null;
+  call_proposed_at?: any;
+  call_confirmed_at?: any;
+  call_declined_at?: any;
   created_at: any;
   updated_at: any;
   jobs?: Job | null;
@@ -85,6 +96,12 @@ export interface ShiftScoreResult {
     familyRatingCount: number;
     agencyRatingCount: number;
   };
+}
+
+export interface JobCompatibilityResult {
+  score: number;
+  tier: 'excellent' | 'good' | 'fair' | 'low';
+  reasons: string[];
 }
 
 export const computeShiftScore = (
@@ -135,6 +152,81 @@ export const computeShiftScore = (
       agencyRatingCount
     }
   };
+};
+
+export const computeNannyJobCompatibility = (
+  job: Partial<Job> | null,
+  nanny: Partial<NannyProfile> | null,
+  reviewAvg = 0,
+  reviewCount = 0
+): JobCompatibilityResult => {
+  if (!job || !nanny) {
+    return { score: 0, tier: 'low', reasons: ['Missing job or nanny data'] };
+  }
+
+  let points = 0;
+  const reasons: string[] = [];
+
+  const requiredExp = Number((job as any).required_experience_years || 0);
+  const nannyExp = Number(nanny.years_experience || 0);
+  if (requiredExp <= 0 || nannyExp >= requiredExp) {
+    points += 30;
+    reasons.push('Experience level matches');
+  } else {
+    const ratio = Math.max(0, Math.min(1, nannyExp / requiredExp));
+    points += Math.round(30 * ratio);
+    reasons.push(`Experience: ${nannyExp}y vs required ${requiredExp}y`);
+  }
+
+  if (job.location_borough && nanny.location_borough) {
+    if (job.location_borough === nanny.location_borough) {
+      points += 20;
+      reasons.push('Same borough');
+    } else {
+      points += 5;
+      reasons.push('Different borough');
+    }
+  }
+
+  const minPay = Number((job as any).pay_min || 0);
+  const maxPay = Number((job as any).pay_max || 0);
+  const expectedMin = Number(nanny.expected_pay_min || 0);
+  const expectedMax = Number(nanny.expected_pay_max || 0);
+  if (minPay > 0 || maxPay > 0) {
+    const overlaps = (!expectedMin || maxPay >= expectedMin) && (!expectedMax || minPay <= expectedMax || maxPay <= expectedMax);
+    if (overlaps) {
+      points += 20;
+      reasons.push('Pay range overlaps');
+    } else {
+      points += 6;
+      reasons.push('Pay range may be below expectations');
+    }
+  }
+
+  const certCount = Array.isArray(nanny.certifications) ? nanny.certifications.length : 0;
+  if (certCount >= 2) {
+    points += 10;
+    reasons.push('Multiple certifications');
+  } else if (certCount === 1) {
+    points += 6;
+    reasons.push('Has certification');
+  }
+
+  const ratingScore = reviewCount > 0 ? Math.round((Math.max(0, Math.min(5, reviewAvg)) / 5) * 20) : 10;
+  points += ratingScore;
+  if (reviewCount > 0) {
+    reasons.push(`${reviewAvg.toFixed(1)} avg review (${reviewCount})`);
+  } else {
+    reasons.push('No reviews yet');
+  }
+
+  const score = Math.max(0, Math.min(100, points));
+  const tier: JobCompatibilityResult['tier'] =
+    score >= 85 ? 'excellent' :
+    score >= 70 ? 'good' :
+    score >= 50 ? 'fair' : 'low';
+
+  return { score, tier, reasons };
 };
 
 export interface AgencyProfile {
@@ -200,12 +292,20 @@ export interface CareHistory {
   job_id: string;
   agency_id: string;
   nanny_id: string;
+  family_application_id?: string;
+  agency_application_id?: string;
+  source_inquiry_id?: string;
   job_title?: string;
+  job_type?: string;
+  location_borough?: string;
+  location_neighborhood?: string;
   agency_name?: string;
   nanny_name?: string;
   start_date?: string;
   end_date?: string;
   summary?: string;
+  reviewed_agency_by_family?: boolean;
+  reviewed_nanny_by_family?: boolean;
   rating?: number;
   review?: string;
   created_at?: any;
@@ -332,6 +432,67 @@ export const createJob = async (jobData: any) => {
   }
 };
 
+export const ensureFamilyApplicationForInquiryJob = async (
+  familyId: string,
+  jobId: string,
+  agencyId: string,
+  sourceInquiryId?: string
+) => {
+  const path = 'family_applications';
+  try {
+    const existing = query(
+      collection(db, path),
+      where('family_id', '==', familyId),
+      where('job_id', '==', jobId)
+    );
+    const existingSnap = await getDocs(existing);
+    if (!existingSnap.empty) {
+      return { id: existingSnap.docs[0].id };
+    }
+
+    const docRef = await addDoc(collection(db, path), {
+      family_id: familyId,
+      job_id: jobId,
+      agency_id: agencyId,
+      status: 'reviewing',
+      source_inquiry_id: sourceInquiryId || null,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return null;
+  }
+};
+
+export const getConversationById = async (conversationId: string): Promise<any | null> => {
+  const path = `conversations/${conversationId}`;
+  try {
+    const convoDoc = await getDoc(doc(db, 'conversations', conversationId));
+    if (!convoDoc.exists()) return null;
+    return { id: convoDoc.id, ...convoDoc.data() };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+};
+
+export const linkInquiryConversationToJob = async (conversationId: string, jobId: string) => {
+  const path = `conversations/${conversationId}`;
+  try {
+    await updateDoc(doc(db, 'conversations', conversationId), {
+      linked_job_id: jobId,
+      inquiry_stage: 'done',
+      updated_at: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return false;
+  }
+};
+
 export const updateJob = async (id: string, updates: any) => {
   const path = `jobs/${id}`;
   try {
@@ -440,6 +601,98 @@ export const updateApplicationStatus = async (id: string, status: string) => {
   }
 };
 
+export const scheduleApplicationCall = async ({
+  applicationId,
+  nannyId,
+  agencyId,
+  agencyName,
+  jobTitle,
+  scheduledFor,
+  timezone,
+  note
+}: {
+  applicationId: string;
+  nannyId: string;
+  agencyId: string;
+  agencyName?: string;
+  jobTitle?: string;
+  scheduledFor: string;
+  timezone?: string;
+  note?: string;
+}) => {
+  const path = `applications/${applicationId}`;
+  try {
+    const docRef = doc(db, 'applications', applicationId);
+    await updateDoc(docRef, {
+      status: 'interview_invited',
+      call_status: 'pending_nanny',
+      call_scheduled_for: scheduledFor,
+      call_timezone: timezone || 'America/New_York',
+      call_note: note?.trim() || '',
+      call_proposed_by: 'agency',
+      call_proposed_at: serverTimestamp(),
+      call_confirmed_at: null,
+      call_declined_at: null,
+      updated_at: serverTimestamp()
+    });
+
+    await addNannyNotification(
+      nannyId,
+      'Call proposed',
+      `${agencyName || 'An agency'} proposed a call for ${new Date(scheduledFor).toLocaleString()}.`,
+      '/nanny/applications'
+    );
+
+    const updatedDoc = await getDoc(docRef);
+    return { id: updatedDoc.id, ...updatedDoc.data() };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
+export const respondToApplicationCall = async ({
+  applicationId,
+  response,
+  agencyId,
+  nannyName,
+  jobTitle,
+  scheduledFor
+}: {
+  applicationId: string;
+  response: 'confirmed' | 'declined';
+  agencyId: string;
+  nannyName?: string;
+  jobTitle?: string;
+  scheduledFor?: string | null;
+}) => {
+  const path = `applications/${applicationId}`;
+  try {
+    const docRef = doc(db, 'applications', applicationId);
+    await updateDoc(docRef, {
+      call_status: response,
+      call_confirmed_at: response === 'confirmed' ? serverTimestamp() : null,
+      call_declined_at: response === 'declined' ? serverTimestamp() : null,
+      updated_at: serverTimestamp()
+    });
+
+    await addAgencyNotification(
+      agencyId,
+      response === 'confirmed' ? 'Call confirmed' : 'Call declined',
+      response === 'confirmed'
+        ? `${nannyName || 'The nanny'} confirmed the scheduled call${scheduledFor ? ` for ${new Date(scheduledFor).toLocaleString()}` : ''}.`
+        : `${nannyName || 'The nanny'} declined the proposed call${jobTitle ? ` for ${jobTitle}` : ''}.`,
+      '/agency/applications'
+    );
+
+    const updatedDoc = await getDoc(docRef);
+    return { id: updatedDoc.id, ...updatedDoc.data() };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
 // --- NANNIES ---
 export const getNannies = async (): Promise<NannyProfile[]> => {
   const path = 'nanny_profiles';
@@ -507,6 +760,30 @@ export const getAgencyById = async (id: string): Promise<AgencyProfile | null> =
     handleFirestoreError(error, OperationType.GET, path);
     return null;
   }
+};
+
+export const resolveAgencyIdForUser = async (userId: string): Promise<string | null> => {
+  if (!userId) return null;
+
+  const agencyDoc = await getDoc(doc(db, 'agency_profiles', userId));
+  if (agencyDoc.exists()) return userId;
+
+  const userDoc = await getDoc(doc(db, 'users', userId));
+  if (userDoc.exists()) {
+    const directAgencyId = userDoc.data().agency_id;
+    if (typeof directAgencyId === 'string' && directAgencyId) return directAgencyId;
+  }
+
+  const recruiterQuery = query(collection(db, 'agency_recruiters'), where('user_id', '==', userId));
+  const recruiterSnap = await getDocs(recruiterQuery);
+  if (!recruiterSnap.empty) {
+    const activeSeat = recruiterSnap.docs.find((d) => d.data().status === 'active');
+    const seat = activeSeat || recruiterSnap.docs[0];
+    const agencyId = seat.data().agency_id;
+    if (typeof agencyId === 'string' && agencyId) return agencyId;
+  }
+
+  return null;
 };
 
 export const updateAgencyProfile = async (id: string, updates: any) => {
@@ -781,27 +1058,59 @@ export const addCareHistory = async (history: CareHistory) => {
 };
 
 export const recordCareHistoryFromApplication = async (applicationId: string) => {
-  const appPath = `family_applications/${applicationId}`;
+  const appPath = `application/${applicationId}`;
   try {
-    const appDoc = await getDoc(doc(db, 'family_applications', applicationId));
-    if (!appDoc.exists()) return null;
-    const app = appDoc.data();
+    const familyAppDoc = await getDoc(doc(db, 'family_applications', applicationId));
+    const agencyAppDoc = familyAppDoc.exists() ? null : await getDoc(doc(db, 'applications', applicationId));
 
-    const jobDoc = await getDoc(doc(db, 'jobs', app.job_id));
-    const agencyDoc = await getDoc(doc(db, 'agency_profiles', app.agency_id));
-    const nannyDoc = await getDoc(doc(db, 'nanny_profiles', app.nanny_id));
+    if (!familyAppDoc.exists() && !agencyAppDoc?.exists()) return null;
+
+    const fromFamilyApplication = familyAppDoc.exists();
+    const app = fromFamilyApplication ? familyAppDoc.data() : agencyAppDoc!.data();
+    const jobId = app.job_id;
+    const nannyId = app.nanny_id;
+    if (!jobId || !nannyId) return null;
+
+    const jobDoc = await getDoc(doc(db, 'jobs', jobId));
+    const jobData = jobDoc.exists() ? (jobDoc.data() as any) : null;
+    const agencyId = app.agency_id || jobData?.agency_id;
+    const familyId = app.family_id || jobData?.family_id || null;
+
+    if (!familyId || !agencyId) return null;
+
+    const existingQ = query(
+      collection(db, 'care_history'),
+      where('family_id', '==', familyId),
+      where('job_id', '==', jobId),
+      where('nanny_id', '==', nannyId)
+    );
+    const existingSnap = await getDocs(existingQ);
+    if (!existingSnap.empty) {
+      return { id: existingSnap.docs[0].id };
+    }
+
+    const agencyDoc = await getDoc(doc(db, 'agency_profiles', agencyId));
+    const nannyDoc = await getDoc(doc(db, 'nanny_profiles', nannyId));
 
     const history: CareHistory = {
-      family_id: app.family_id,
-      job_id: app.job_id,
-      agency_id: app.agency_id,
-      nanny_id: app.nanny_id,
-      job_title: jobDoc.exists() ? (jobDoc.data() as any).title : undefined,
+      family_id: familyId,
+      job_id: jobId,
+      agency_id: agencyId,
+      nanny_id: nannyId,
+      family_application_id: fromFamilyApplication ? applicationId : undefined,
+      agency_application_id: fromFamilyApplication ? undefined : applicationId,
+      source_inquiry_id: app.source_inquiry_id || jobData?.source_inquiry_id || undefined,
+      job_title: jobData?.title,
+      job_type: jobData?.job_type,
+      location_borough: jobData?.location_borough,
+      location_neighborhood: jobData?.location_neighborhood,
       agency_name: agencyDoc.exists() ? (agencyDoc.data() as any).company_name : undefined,
       nanny_name: nannyDoc.exists() ? `${(nannyDoc.data() as any).first_name || ''} ${(nannyDoc.data() as any).last_name || ''}`.trim() : undefined,
       start_date: app.start_date || '',
       end_date: new Date().toISOString(),
-      summary: '',
+      summary: app.call_note || 'Care placement completed.',
+      reviewed_agency_by_family: false,
+      reviewed_nanny_by_family: false,
       rating: 0,
       review: ''
     };
@@ -899,6 +1208,60 @@ export const getAgencyReviewStats = async (agencyId: string) => {
   return { count, avg };
 };
 
+export const submitCareHistoryReview = async ({
+  careHistoryId,
+  familyId,
+  target,
+  agencyId,
+  nannyId,
+  rating,
+  comment
+}: {
+  careHistoryId: string;
+  familyId: string;
+  target: 'agency' | 'nanny';
+  agencyId?: string;
+  nannyId?: string;
+  rating: number;
+  comment: string;
+}) => {
+  const path = `care_history/${careHistoryId}`;
+  try {
+    if (target === 'agency' && agencyId) {
+      await addAgencyReview({
+        agency_id: agencyId,
+        reviewer_id: familyId,
+        reviewer_role: 'family',
+        rating,
+        comment
+      });
+      await updateDoc(doc(db, 'care_history', careHistoryId), {
+        reviewed_agency_by_family: true,
+        updated_at: serverTimestamp()
+      });
+    }
+
+    if (target === 'nanny' && nannyId) {
+      await addNannyReview({
+        nanny_id: nannyId,
+        reviewer_id: familyId,
+        reviewer_role: 'family',
+        rating,
+        comment
+      });
+      await updateDoc(doc(db, 'care_history', careHistoryId), {
+        reviewed_nanny_by_family: true,
+        updated_at: serverTimestamp()
+      });
+    }
+
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    return false;
+  }
+};
+
 export const getAgencyPosts = async (agencyId: string): Promise<AgencyPost[]> => {
   const path = 'agency_posts';
   try {
@@ -924,6 +1287,33 @@ export const addAgencyPost = async (agencyId: string, title: string, content: st
     return { id: docRef.id };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+
+    // Fallback: route through backend (admin SDK) when client-side Firestore rules deny writes.
+    try {
+      const callerUserId = auth.currentUser?.uid;
+      if (!callerUserId || !agencyId) return;
+
+      const response = await fetch('/api/agency/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-agency-id': agencyId,
+          'x-user-id': callerUserId
+        },
+        body: JSON.stringify({ title, content })
+      });
+
+      if (!response.ok) {
+        const serverErr = await response.json().catch(() => ({}));
+        console.error('[addAgencyPost] server fallback failed:', serverErr?.error || response.statusText);
+        return;
+      }
+
+      const payload = await response.json();
+      if (payload?.id) return { id: payload.id as string };
+    } catch (fallbackError) {
+      console.error('[addAgencyPost] server fallback error:', fallbackError);
+    }
   }
 };
 
@@ -1043,6 +1433,20 @@ export interface AgencyInquiryConversationInput {
   inquiry: AgencyInquiryPayload;
 }
 
+export type InquiryStage = 'new' | 'communicated' | 'done';
+
+export interface AgencyTalentPoolItem {
+  id: string;
+  agency_id: string;
+  nanny_id: string;
+  status?: string;
+  tags?: string[];
+  latest_note?: string;
+  created_at?: any;
+  updated_at?: any;
+  nanny_profile?: NannyProfile | null;
+}
+
 export const addFamilyNotification = async (familyId: string, title: string, message: string, link?: string) => {
   const path = 'family_notifications';
   try {
@@ -1090,6 +1494,30 @@ export const addNannyNotification = async (nannyId: string, title: string, messa
     return { id: docRef.id };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export interface NannyNotification {
+  id?: string;
+  nanny_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link?: string;
+  read?: boolean;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export const getNannyNotifications = async (nannyId: string): Promise<NannyNotification[]> => {
+  const path = 'nanny_notifications';
+  try {
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NannyNotification));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
   }
 };
 
@@ -1195,6 +1623,98 @@ export const getConversations = async (userId: string, role: 'family' | 'nanny' 
   }
 };
 
+export const getAgencyConversations = async (agencyId: string) => {
+  const path = 'conversations';
+  try {
+    const q = query(collection(db, path), where('agency_id', '==', agencyId));
+    const snapshot = await getDocs(q);
+    const conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const toMillis = (value: any): number => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    return conversations.sort((a: any, b: any) => {
+      const aUpdated = toMillis(a.updated_at || a.created_at);
+      const bUpdated = toMillis(b.updated_at || b.created_at);
+      return bUpdated - aUpdated;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const updateInquiryStage = async (conversationId: string, stage: InquiryStage) => {
+  const path = `conversations/${conversationId}`;
+  try {
+    const convoRef = doc(db, 'conversations', conversationId);
+    await updateDoc(convoRef, {
+      inquiry_stage: stage,
+      updated_at: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return false;
+  }
+};
+
+export const getAgencyTalentPool = async (agencyId: string): Promise<AgencyTalentPoolItem[]> => {
+  const path = 'agency_talent_pool';
+  try {
+    const q = query(collection(db, path), where('agency_id', '==', agencyId));
+    const snapshot = await getDocs(q);
+
+    const items = await Promise.all(snapshot.docs.map(async (d) => {
+      const data = d.data();
+      const nannyDoc = await getDoc(doc(db, 'nanny_profiles', data.nanny_id));
+      return {
+        id: d.id,
+        ...data,
+        nanny_profile: nannyDoc.exists() ? ({ id: nannyDoc.id, ...nannyDoc.data() } as NannyProfile) : null
+      } as AgencyTalentPoolItem;
+    }));
+
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const addNannyToAgencyTalentPool = async (agencyId: string, nannyId: string) => {
+  const path = 'agency_talent_pool';
+  try {
+    const existingQ = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      where('nanny_id', '==', nannyId)
+    );
+    const existingSnap = await getDocs(existingQ);
+    if (!existingSnap.empty) {
+      return { id: existingSnap.docs[0].id };
+    }
+
+    const docRef = await addDoc(collection(db, path), {
+      agency_id: agencyId,
+      nanny_id: nannyId,
+      status: 'new',
+      tags: [],
+      latest_note: '',
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
 // Start or resume a direct conversation between a family and an agency.
 // Uses a deterministic doc ID so opening the same conversation twice is idempotent.
 export const startConversation = async (
@@ -1213,6 +1733,33 @@ export const startConversation = async (
       agency_id: agencyId,
       family_name: familyName,
       agency_name: agencyName,
+      updated_at: serverTimestamp(),
+      created_at: serverTimestamp()
+    }, { merge: true });
+    return { id: conversationId };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return null;
+  }
+};
+
+export const startAgencyNannyConversation = async (
+  agencyId: string,
+  nannyId: string,
+  agencyName: string,
+  nannyName: string
+): Promise<{ id: string } | null> => {
+  const path = 'conversations';
+  const conversationId = `${agencyId}_${nannyId}`;
+  try {
+    const conversationRef = doc(db, path, conversationId);
+    await setDoc(conversationRef, {
+      participants: [agencyId, nannyId],
+      agency_id: agencyId,
+      nanny_id: nannyId,
+      agency_name: agencyName || 'Agency',
+      nanny_name: nannyName || 'Nanny',
+      conversation_type: 'agency_nanny',
       updated_at: serverTimestamp(),
       created_at: serverTimestamp()
     }, { merge: true });
@@ -1262,6 +1809,7 @@ export const createAgencyInquiryConversation = async ({
       family_phone: familyPhone || null,
       family_borough: familyBorough || null,
       inquiry_type: 'agency_intro',
+      inquiry_stage: 'new',
       inquiry_schedule_type: inquiry.schedule_type,
       inquiry_start_date: inquiry.schedule_type === 'date_range' ? inquiry.start_date || null : null,
       inquiry_end_date: inquiry.schedule_type === 'date_range' ? inquiry.end_date || null : null,
@@ -1311,14 +1859,20 @@ export const sendMessage = async (conversationId: string, senderType: 'family' |
       created_at: serverTimestamp()
     });
     
-    // Update last message in conversation
-    await updateDoc(doc(db, 'conversations', conversationId), {
-      last_message: message,
-      updated_at: serverTimestamp()
-    });
-    
     const newDoc = await getDoc(docRef);
-    return { id: newDoc.id, ...newDoc.data() };
+    const createdMessage = { id: newDoc.id, ...newDoc.data() };
+
+    // Update last message in conversation (non-blocking for send success)
+    try {
+      await updateDoc(doc(db, 'conversations', conversationId), {
+        last_message: message,
+        updated_at: serverTimestamp()
+      });
+    } catch (updateError) {
+      handleFirestoreError(updateError, OperationType.UPDATE, `conversations/${conversationId}`);
+    }
+
+    return createdMessage;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
     return null;

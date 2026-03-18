@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Send, User, Baby } from 'lucide-react';
-import { getConversations, getMessages, sendMessage } from '../../lib/api';
+import { Link, useSearchParams } from 'react-router-dom';
+import { getAgencyConversations, getMessages, resolveAgencyIdForUser, sendMessage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function AgencyMessages() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [agencyId, setAgencyId] = useState('');
+
+  const requestedConversationId = searchParams.get('conversation');
+  const currentUserId = user?.uid || '';
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -43,25 +49,47 @@ export default function AgencyMessages() {
     return null;
   };
   
-  const agencyId = user?.uid || '';
+  useEffect(() => {
+    const resolveAgency = async () => {
+      if (!currentUserId) {
+        setAgencyId('');
+        return;
+      }
+
+      const resolved = await resolveAgencyIdForUser(currentUserId);
+      setAgencyId(resolved || '');
+    };
+
+    resolveAgency();
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!agencyId) return;
+
     const loadData = async () => {
       try {
-        const convos = (await getConversations(agencyId, 'agency')) || [];
+        const convos = (await getAgencyConversations(agencyId)) || [];
         setConversations(convos);
+
         if (convos.length > 0) {
-          setActiveConversation(convos[0]);
-          const msgs = await getMessages(convos[0].id);
-          setMessages(msgs);
+          const nextActive = requestedConversationId
+            ? convos.find((convo) => convo.id === requestedConversationId) || convos[0]
+            : convos[0];
+
+          setActiveConversation(nextActive);
+          const msgs = await getMessages(nextActive.id);
+          setMessages((msgs || []).filter(Boolean));
+        } else {
+          setActiveConversation(null);
+          setMessages([]);
         }
       } catch (error) {
         console.error('Error loading conversations:', error);
       }
     };
+
     loadData();
-  }, [agencyId]);
+  }, [agencyId, requestedConversationId]);
 
   if (!agencyId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to view messages.</div>;
@@ -69,12 +97,14 @@ export default function AgencyMessages() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !activeConversation) return;
+    if (!newMessage.trim() || !activeConversation || !currentUserId) return;
 
     try {
-      const msg = await sendMessage(activeConversation.id, 'agency', agencyId, newMessage);
-      setMessages(prev => [...prev, msg]);
-      setNewMessage('');
+      const msg = await sendMessage(activeConversation.id, 'agency', currentUserId, newMessage);
+      if (msg?.id) {
+        setMessages(prev => [...prev, msg]);
+        setNewMessage('');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -108,7 +138,7 @@ export default function AgencyMessages() {
                   onClick={async () => {
                     setActiveConversation(convo);
                     const msgs = await getMessages(convo.id);
-                    setMessages(msgs);
+                    setMessages((msgs || []).filter(Boolean));
                   }}
                   className={`w-full p-4 text-left border-b border-stone-100 transition-colors ${
                     activeConversation?.id === convo.id 
@@ -123,7 +153,7 @@ export default function AgencyMessages() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                       <h3 className="font-bold text-stone-900 text-sm">
-                        {convo.family_name || (convo.family_id ? `Family ID: ${convo.family_id.substring(0, 8)}...` : `Nanny ID: ${convo.nanny_id.substring(0, 8)}...`)}
+                        {convo.family_name || convo.nanny_name || (convo.family_id ? `Family ID: ${convo.family_id.substring(0, 8)}...` : `Nanny ID: ${convo.nanny_id.substring(0, 8)}...`)}
                       </h3>
                         <span className="text-[11px] text-stone-400 shrink-0">{formatConversationTime(convo)}</span>
                       </div>
@@ -146,14 +176,22 @@ export default function AgencyMessages() {
                 </div>
                 <div>
                   <h3 className="font-bold text-stone-900">
-                    {activeConversation.family_name || (activeConversation.family_id ? `Family ID: ${activeConversation.family_id.substring(0, 8)}...` : `Nanny ID: ${activeConversation.nanny_id.substring(0, 8)}...`)}
+                    {activeConversation.family_name || activeConversation.nanny_name || (activeConversation.family_id ? `Family ID: ${activeConversation.family_id.substring(0, 8)}...` : `Nanny ID: ${activeConversation.nanny_id.substring(0, 8)}...`)}
                   </h3>
                   <p className="text-xs text-stone-500">Active now</p>
                 </div>
               </div>
               {activeConversation.inquiry_type === 'agency_intro' && (
                 <div className="mx-4 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                  <p className="font-semibold uppercase tracking-wider">Inquiry Details</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold uppercase tracking-wider">Inquiry Details</p>
+                    <Link
+                      to={`/agency/jobs/new?inquiry=${activeConversation.id}`}
+                      className="inline-flex px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-700 font-semibold hover:bg-emerald-100 transition-colors"
+                    >
+                      Create Job From Inquiry
+                    </Link>
+                  </div>
                   {activeConversation.family_email && <p className="mt-1">Email: {activeConversation.family_email}</p>}
                   {activeConversation.family_phone && <p className="mt-1">Phone: {activeConversation.family_phone}</p>}
                   {activeConversation.family_borough && <p className="mt-1">Borough: {activeConversation.family_borough}</p>}
@@ -170,8 +208,8 @@ export default function AgencyMessages() {
                     <p>No messages yet. Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.map((msg, idx) => {
-                    const isMe = msg.sender_type === 'agency' && msg.sender_id === agencyId;
+                  messages.filter(Boolean).map((msg, idx) => {
+                    const isMe = msg.sender_type === 'agency' && msg.sender_id === currentUserId;
                     return (
                       <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${

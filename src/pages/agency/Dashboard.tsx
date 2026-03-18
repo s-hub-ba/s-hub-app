@@ -1,13 +1,29 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
 import { Briefcase, Users, MessageSquare, Star, Search, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getJobs, getApplicationsForAgency, getNannies, getAgencyById } from '../../lib/api';
+import {
+  getJobs,
+  getApplicationsForAgency,
+  getAgencyById,
+  resolveAgencyIdForUser,
+  getAgencyConversations,
+  updateInquiryStage,
+  getAgencyTalentPool,
+  type InquiryStage
+} from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+
+const INQUIRY_STAGE_LABELS: Record<InquiryStage, string> = {
+  new: 'New',
+  communicated: 'Communicated',
+  done: 'Done'
+};
 
 export default function AgencyDashboard() {
   const { user } = useAuth();
+  const [agencyId, setAgencyId] = useState('');
   const [agency, setAgency] = useState<any>(null);
+  const [inquiries, setInquiries] = useState<any[]>([]);
   const [stats, setStats] = useState({
     activeJobs: 0,
     newApps: 0,
@@ -15,42 +31,76 @@ export default function AgencyDashboard() {
     inquiries: 0
   });
 
-  const agencyId = user?.uid || '';
+  const toDate = (value: any): Date | null => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
 
-  if (!agencyId) {
-    return <div className="p-8 text-center text-stone-500">Please sign in to view agency dashboard.</div>;
-  }
+  const formatDate = (value: any) => {
+    const date = toDate(value);
+    if (!date) return 'Unknown date';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  useEffect(() => {
+    const resolveAgency = async () => {
+      if (!user?.uid) return;
+      const resolved = await resolveAgencyIdForUser(user.uid);
+      setAgencyId(resolved || '');
+    };
+    resolveAgency();
+  }, [user]);
 
   useEffect(() => {
     const loadData = async () => {
+      if (!agencyId) return;
       try {
-        const agencyData = await getAgencyById(agencyId);
-        setAgency(agencyData);
-        
-        const jobs = await getJobs();
-        const agencyJobs = jobs.filter(j => j.agency_id === agencyId);
-        
-        const apps = await getApplicationsForAgency(agencyId);
-        const newApps = apps.filter(a => a.status === 'applied');
-        
-        const nannies = await getNannies();
+        const [agencyData, jobs, apps, conversations, talentPoolItems] = await Promise.all([
+          getAgencyById(agencyId),
+          getJobs(),
+          getApplicationsForAgency(agencyId),
+          getAgencyConversations(agencyId),
+          getAgencyTalentPool(agencyId)
+        ]);
 
+        setAgency(agencyData);
+
+        const agencyJobs = jobs.filter(j => j.agency_id === agencyId);
+        const newApps = apps.filter(a => a.status === 'applied');
+        const inquiryThreads = (conversations || []).filter((c: any) => c.inquiry_type === 'agency_intro');
+
+        setInquiries(inquiryThreads.slice(0, 5));
         setStats({
           activeJobs: agencyJobs.length,
           newApps: newApps.length,
-          talentPool: nannies.length,
-          inquiries: 0
+          talentPool: talentPoolItems.length,
+          inquiries: inquiryThreads.length
         });
       } catch (error) {
         console.error('Error loading dashboard stats:', error);
       }
     };
     loadData();
-  }, []);
+  }, [agencyId]);
+
+  if (!agencyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to view agency dashboard.</div>;
+  }
+
+  const handleInquiryStageChange = async (conversationId: string, nextStage: InquiryStage) => {
+    const ok = await updateInquiryStage(conversationId, nextStage);
+    if (!ok) return;
+
+    setInquiries(prev => prev.map((inq) => (
+      inq.id === conversationId ? { ...inq, inquiry_stage: nextStage } : inq
+    )));
+  };
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{agency?.company_name || 'Agency Dashboard'}</h1>
@@ -64,7 +114,6 @@ export default function AgencyDashboard() {
         </div>
       </div>
 
-      {/* Subscription Banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
@@ -80,7 +129,6 @@ export default function AgencyDashboard() {
         </Link>
       </div>
 
-      {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-4">
@@ -124,7 +172,6 @@ export default function AgencyDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Quick Actions */}
         <div className="space-y-6">
           <h2 className="text-xl font-bold text-stone-900">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -139,22 +186,45 @@ export default function AgencyDashboard() {
               <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-blue-100 group-hover:text-blue-600 mb-3 transition-colors">
                 <Users className="h-5 w-5" />
               </div>
-              <h3 className="font-bold text-stone-900 mb-1">Invite Nannies</h3>
-              <p className="text-xs text-stone-500">Add your existing roster to Shift Me Up.</p>
+              <h3 className="font-bold text-stone-900 mb-1">Talent Pool</h3>
+              <p className="text-xs text-stone-500">Invite nannies from search into your private pool.</p>
             </Link>
           </div>
         </div>
 
-        {/* Recent Parent Inquiries */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-stone-900">Recent Inquiries</h2>
             <Link to="/agency/messages" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
           </div>
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="p-6 text-sm text-stone-500">
-              No recent inquiries yet. New family messages will appear here.
-            </div>
+            {inquiries.length === 0 ? (
+              <div className="p-6 text-sm text-stone-500">No recent inquiries yet. New family messages will appear here.</div>
+            ) : (
+              <div className="divide-y divide-stone-100">
+                {inquiries.map((inq) => {
+                  const stage = (inq.inquiry_stage || 'new') as InquiryStage;
+                  return (
+                    <div key={inq.id} className="p-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-stone-900 truncate">{inq.family_name || 'Family'} inquiry</p>
+                        <p className="text-xs text-stone-500 mt-0.5 truncate">{inq.inquiry_description_preview || inq.last_message || 'No details'}</p>
+                        <p className="text-[11px] text-stone-400 mt-1">{formatDate(inq.updated_at || inq.created_at)}</p>
+                      </div>
+                      <select
+                        value={stage}
+                        onChange={(e) => handleInquiryStageChange(inq.id, e.target.value as InquiryStage)}
+                        className="text-xs font-semibold rounded-lg px-2 py-1 border border-stone-200 bg-white text-stone-700"
+                      >
+                        {Object.entries(INQUIRY_STAGE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

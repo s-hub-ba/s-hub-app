@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Bell, MessageSquare, Briefcase, Star } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { getFamilyNotifications, getAgencyNotifications } from '../lib/api';
+import { getFamilyNotifications, getAgencyNotifications, getNannyNotifications } from '../lib/api';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export type NotificationType = 'application' | 'message' | 'review' | 'system';
 
@@ -70,7 +72,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       } else if (role === 'agency_admin' || role === 'agency_recruiter') {
         try {
-          const agencyNotifs = await getAgencyNotifications(user.uid);
+          let agencyId = user.uid;
+          if (role === 'agency_recruiter') {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            agencyId = userDoc.exists() ? (userDoc.data().agency_id || '') : '';
+          }
+
+          if (!agencyId) {
+            setNotifications([]);
+            return;
+          }
+
+          const agencyNotifs = await getAgencyNotifications(agencyId);
           if (agencyNotifs?.length) {
             setNotifications(agencyNotifs.map((notif) => ({
               id: notif.id || createNotificationId(),
@@ -84,6 +97,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           }
         } catch (error) {
           console.error('Error loading agency notifications:', error);
+        }
+      } else if (role === 'nanny') {
+        try {
+          const nannyNotifs = await getNannyNotifications(user.uid);
+          if (nannyNotifs?.length) {
+            setNotifications(nannyNotifs.map((notif) => ({
+              id: notif.id || createNotificationId(),
+              type: notif.type,
+              title: notif.title,
+              message: notif.message,
+              time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
+              read: notif.read ?? false,
+              link: notif.link
+            })));
+          } else {
+            setNotifications([]);
+          }
+        } catch (error) {
+          console.error('Error loading nanny notifications:', error);
         }
       }
     };

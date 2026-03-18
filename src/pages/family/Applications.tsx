@@ -70,9 +70,10 @@ export default function FamilyApplications() {
     setIsSubmittingReview(true);
 
     try {
-      if (selectedApp.job?.agency_id) {
+      const agencyId = selectedApp.agency_id || selectedApp.jobs?.agency_id;
+      if (agencyId) {
         await addAgencyReview({
-          agency_id: selectedApp.job.agency_id,
+          agency_id: agencyId,
           reviewer_id: familyId,
           reviewer_role: 'family',
           rating,
@@ -174,9 +175,9 @@ export default function FamilyApplications() {
                     <p className="text-sm font-medium text-emerald-600 mb-4">{app.jobs?.agency_profiles?.company_name || 'Agency'}</p>
                     
                     <div className="flex flex-wrap gap-4 text-sm text-stone-600">
-                      <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-stone-400" /> {app.job.location_neighborhood}, {app.job.location_borough}</span>
-                      <span className="flex items-center gap-1.5"><DollarSign className="h-4 w-4 text-stone-400" /> ${app.job.pay_min}-${app.job.pay_max}/hr</span>
-                      <span className="flex items-center gap-1.5"><Briefcase className="h-4 w-4 text-stone-400" /> {app.job.job_type}</span>
+                      <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-stone-400" /> {app.jobs?.location_neighborhood || 'N/A'}, {app.jobs?.location_borough || 'N/A'}</span>
+                      <span className="flex items-center gap-1.5"><DollarSign className="h-4 w-4 text-stone-400" /> ${app.jobs?.pay_min ?? 'N/A'}-${app.jobs?.pay_max ?? 'N/A'}/hr</span>
+                      <span className="flex items-center gap-1.5"><Briefcase className="h-4 w-4 text-stone-400" /> {app.jobs?.job_type || 'N/A'}</span>
                     </div>
                   </div>
                   
@@ -214,7 +215,7 @@ export default function FamilyApplications() {
                       </button>
                     )}
                     <Link 
-                      to={`/family/jobs/${app.job.id}`}
+                      to={app.jobs?.id ? `/family/jobs/${app.jobs.id}` : '/family/jobs'}
                       className="bg-white border border-stone-200 text-stone-700 hover:bg-stone-50 px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
                     >
                       View Job

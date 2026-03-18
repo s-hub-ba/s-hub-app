@@ -28,6 +28,8 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
     { name: 'Applications', href: '/agency/applications', icon: FileText },
     { name: 'Nannies', href: '/agency/search', icon: Search },
     { name: 'Talent Pool', href: '/agency/talent', icon: Users },
+    { name: 'Messages', href: '/agency/messages', icon: MessageSquare },
+    { name: 'Profile', href: '/agency/profile', icon: User },
     { name: 'Billing', href: '/agency/billing', icon: CreditCard },
   ];
 

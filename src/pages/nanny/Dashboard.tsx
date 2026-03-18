@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
-import { getJobs, getApplicationsForNanny, getNannyById, getNannyReviewStats, getAgencyReviewStats, getNannyReviews, computeShiftScore } from '../../lib/api';
+import { getJobs, getApplicationsForNanny, getNannyById, getNannyReviews, computeShiftScore } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function NannyDashboard() {
@@ -40,31 +40,38 @@ export default function NannyDashboard() {
         setProfile(fetchedProfile);
 
         const activeApps = apps.filter(a => ['applied', 'reviewing', 'interviewing', 'interview_scheduled'].includes(a.status));
-
-        const nannyReviewStats = await getNannyReviewStats(nannyId);
-        const agencyReviewStats = fetchedProfile?.agency_id ? await getAgencyReviewStats(fetchedProfile.agency_id) : { count: 0, avg: 0 };
-
         const reviews = await getNannyReviews(nannyId);
+
+        const familyReviews = reviews.filter((r) => r.reviewer_role === 'family');
+        const agencyReviews = reviews.filter((r) => r.reviewer_role === 'agency');
+        const familyRatingCount = familyReviews.length;
+        const agencyRatingCount = agencyReviews.length;
+        const familyRatingAvg = familyRatingCount > 0
+          ? familyReviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / familyRatingCount
+          : 0;
+        const agencyRatingAvg = agencyRatingCount > 0
+          ? agencyReviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / agencyRatingCount
+          : 0;
 
         const shiftScoreData = computeShiftScore(
           fetchedProfile,
           apps.length,
-          nannyReviewStats.avg,
-          nannyReviewStats.count,
-          agencyReviewStats.avg,
-          agencyReviewStats.count
+          familyRatingAvg,
+          familyRatingCount,
+          agencyRatingAvg,
+          agencyRatingCount
         );
-        const profileCompletion = Math.round((shiftScoreData.score / 100) * 100);
+        const profileCompletion = Math.round((shiftScoreData.details.completedFields / shiftScoreData.details.totalFields) * 100);
 
         setStats(prev => ({
           ...prev,
           activeApps: activeApps.length,
           shiftScore: shiftScoreData.score,
           profileCompletion,
-          familyRatingAvg: nannyReviewStats.avg,
-          familyRatingCount: nannyReviewStats.count,
-          agencyRatingAvg: agencyReviewStats.avg,
-          agencyRatingCount: agencyReviewStats.count
+          familyRatingAvg,
+          familyRatingCount,
+          agencyRatingAvg,
+          agencyRatingCount
         }));
 
         setRecentReviews(reviews);

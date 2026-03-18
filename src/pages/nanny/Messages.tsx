@@ -47,7 +47,7 @@ export default function NannyMessages() {
         if (convos.length > 0) {
           setActiveConversation(convos[0]);
           const msgs = await getMessages(convos[0].id);
-          setMessages(msgs);
+          setMessages((msgs || []).filter(Boolean));
         }
       } catch (error) {
         console.error('Error loading conversations:', error);
@@ -62,8 +62,10 @@ export default function NannyMessages() {
 
     try {
       const msg = await sendMessage(activeConversation.id, 'nanny', nannyId, newMessage);
-      setMessages(prev => [...prev, msg]);
-      setNewMessage('');
+      if (msg?.id) {
+        setMessages(prev => [...prev, msg].filter(Boolean));
+        setNewMessage('');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -97,7 +99,7 @@ export default function NannyMessages() {
                   onClick={async () => {
                     setActiveConversation(convo);
                     const msgs = await getMessages(convo.id);
-                    setMessages(msgs);
+                    setMessages((msgs || []).filter(Boolean));
                   }}
                   className={`w-full p-4 text-left border-b border-stone-100 transition-colors ${
                     activeConversation?.id === convo.id 
@@ -143,7 +145,7 @@ export default function NannyMessages() {
                     <p>No messages yet. Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.map((msg, idx) => {
+                  messages.filter(Boolean).map((msg, idx) => {
                     const isMe = msg.sender_type === 'nanny' && msg.sender_id === nannyId;
                     return (
                       <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>

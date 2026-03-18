@@ -59,7 +59,7 @@ export default function FamilyMessages() {
           const nextActive = preferred || convos[0];
           setActiveConversation(nextActive);
           const msgs = await getMessages(nextActive.id);
-          setMessages(msgs);
+          setMessages((msgs || []).filter(Boolean));
         }
       } catch (error) {
         console.error('Error loading conversations:', error);
@@ -78,8 +78,10 @@ export default function FamilyMessages() {
 
     try {
       const msg = await sendMessage(activeConversation.id, 'family', familyId, newMessage);
-      setMessages(prev => [...prev, msg]);
-      setNewMessage('');
+      if (msg?.id) {
+        setMessages(prev => [...prev, msg].filter(Boolean));
+        setNewMessage('');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -113,7 +115,7 @@ export default function FamilyMessages() {
                   onClick={async () => {
                     setActiveConversation(convo);
                     const msgs = await getMessages(convo.id);
-                    setMessages(msgs);
+                    setMessages((msgs || []).filter(Boolean));
                   }}
                   className={`w-full p-4 text-left border-b border-stone-100 transition-colors ${
                     activeConversation?.id === convo.id 
@@ -168,9 +170,9 @@ export default function FamilyMessages() {
                     <p className="text-sm">Send a message to start the conversation.</p>
                   </div>
                 ) : (
-                  messages.map(msg => (
+                  messages.filter(Boolean).map(msg => (
                     <div 
-                      key={msg.id} 
+                      key={msg.id || `${msg.sender_id || 'unknown'}-${msg.created_at?.seconds || Date.now()}`} 
                       className={`flex flex-col max-w-[80%] ${
                         msg.sender_type === 'family' ? 'ml-auto items-end' : 'mr-auto items-start'
                       }`}

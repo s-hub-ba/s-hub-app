@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, CheckCircle2, Clock, XCircle, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getApplicationsForNanny, getJobById, updateApplicationStatus, addFamilyNotification } from '../../lib/api';
+import { getApplicationsForNanny, getJobById, updateApplicationStatus, addFamilyNotification, respondToApplicationCall } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_CONFIG = {
@@ -55,6 +55,41 @@ export default function NannyApplications() {
     }
   };
 
+  const toDate = (value: any): Date | null => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatCallDate = (value?: string | null) => {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return 'Not scheduled';
+    return date.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+
+  const handleCallResponse = async (app: any, response: 'confirmed' | 'declined') => {
+    try {
+      await respondToApplicationCall({
+        applicationId: app.id,
+        response,
+        agencyId: app.agency_id,
+        nannyName: app.nanny_profiles?.first_name ? `${app.nanny_profiles.first_name} ${app.nanny_profiles?.last_name || ''}`.trim() : 'The nanny',
+        jobTitle: app.job_title,
+        scheduledFor: app.call_scheduled_for
+      });
+      await loadData();
+    } catch (error) {
+      console.error('Error responding to call proposal:', error);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -103,18 +138,46 @@ export default function NannyApplications() {
                   
                   <div className="flex flex-col md:items-end gap-2 text-sm border-t md:border-t-0 border-stone-100 pt-4 md:pt-0">
                     <div className="text-stone-500">
-                      Applied: <span className="font-medium text-stone-900">{new Date(app.created_at).toLocaleDateString()}</span>
+                      Applied: <span className="font-medium text-stone-900">{toDate(app.created_at)?.toLocaleDateString() || '—'}</span>
                     </div>
                     <div className="text-stone-400 text-xs">
-                      Last update: {new Date(app.updated_at).toLocaleDateString()}
+                      Last update: {toDate(app.updated_at)?.toLocaleDateString() || '—'}
                     </div>
-                    {app.status === 'interview_invited' && (
-                      <Link 
-                        to="/nanny/messages"
-                        className="mt-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors inline-flex items-center justify-center"
-                      >
-                        View Message
-                      </Link>
+                    {app.call_status === 'pending_nanny' && (
+                      <div className="mt-3 w-full max-w-md rounded-2xl border border-orange-200 bg-orange-50 p-4 text-left">
+                        <p className="text-xs font-bold uppercase tracking-wider text-orange-700">Call Proposal</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-900">{formatCallDate(app.call_scheduled_for)}</p>
+                        {app.call_note && <p className="mt-2 text-sm text-stone-600 whitespace-pre-wrap">{app.call_note}</p>}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => handleCallResponse(app, 'confirmed')}
+                            className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors"
+                          >
+                            Confirm Call
+                          </button>
+                          <button
+                            onClick={() => handleCallResponse(app, 'declined')}
+                            className="px-3 py-2 bg-white border border-stone-300 text-stone-700 text-xs font-bold rounded-lg hover:bg-stone-50 transition-colors"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {app.call_status === 'confirmed' && (
+                      <div className="mt-3 w-full max-w-md rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Call Confirmed</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-900">{formatCallDate(app.call_scheduled_for)}</p>
+                        {app.call_note && <p className="mt-2 text-sm text-stone-600 whitespace-pre-wrap">{app.call_note}</p>}
+                      </div>
+                    )}
+
+                    {app.call_status === 'declined' && (
+                      <div className="mt-3 w-full max-w-md rounded-2xl border border-stone-200 bg-stone-50 p-4 text-left">
+                        <p className="text-xs font-bold uppercase tracking-wider text-stone-600">Call Declined</p>
+                        <p className="mt-2 text-sm text-stone-600">You declined the last proposed call. The agency can send a new time.</p>
+                      </div>
                     )}
 
                     {app.status === 'accepted' && (

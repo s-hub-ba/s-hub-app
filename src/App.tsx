@@ -38,6 +38,7 @@ import Billing from './pages/agency/Billing';
 
 import AgencyMessages from './pages/agency/Messages';
 import NannyMessages from './pages/nanny/Messages';
+import AgencyProfilePage from './pages/agency/Profile';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminAgencies from './pages/admin/Agencies';
@@ -117,6 +118,7 @@ export default function App() {
               <Route path="search" element={<GlobalSearch />} />
               <Route path="talent" element={<TalentPool />} />
               <Route path="billing" element={<Billing />} />
+                          <Route path="profile" element={<AgencyProfilePage />} />
             </Route>
           </Route>
 

@@ -1,37 +1,81 @@
 import { useState, useEffect } from 'react';
-import { Search as SearchIcon, Filter, MapPin, Star, ShieldCheck, BookmarkPlus } from 'lucide-react';
+import { Search as SearchIcon, Filter, MapPin, Star, ShieldCheck, BookmarkPlus, Check } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getNannies } from '../../lib/api';
+import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function GlobalSearch() {
+  const { user } = useAuth();
+  const [agencyId, setAgencyId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [nannies, setNannies] = useState<any[]>([]);
+  const [savedNannyIds, setSavedNannyIds] = useState<Set<string>>(new Set());
+  const [savingNannyIds, setSavingNannyIds] = useState<Set<string>>(new Set());
   const [selectedBorough, setSelectedBorough] = useState('All');
-  const [selectedTier, setSelectedTier] = useState('All');
   const [minExperience, setMinExperience] = useState(0);
+
+  useEffect(() => {
+    const resolveAgency = async () => {
+      if (!user?.uid) return;
+      const resolved = await resolveAgencyIdForUser(user.uid);
+      setAgencyId(resolved || '');
+    };
+    resolveAgency();
+  }, [user]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         const fetchedNannies = await getNannies();
         setNannies(fetchedNannies);
+
+        if (agencyId) {
+          const pool = await getAgencyTalentPool(agencyId);
+          setSavedNannyIds(new Set(pool.map((item) => item.nanny_id)));
+        }
       } catch (error) {
         console.error('Error loading nannies:', error);
       }
     };
     loadData();
-  }, []);
+  }, [agencyId]);
+
+  const handleAddToPool = async (nannyId: string) => {
+    if (!agencyId || !nannyId || savedNannyIds.has(nannyId)) return;
+
+    setSavingNannyIds((prev) => new Set(prev).add(nannyId));
+    try {
+      const added = await addNannyToAgencyTalentPool(agencyId, nannyId);
+      if (added?.id) {
+        setSavedNannyIds((prev) => {
+          const next = new Set(prev);
+          next.add(nannyId);
+          return next;
+        });
+      }
+    } catch (error) {
+      console.error('Error adding nanny to talent pool:', error);
+    } finally {
+      setSavingNannyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(nannyId);
+        return next;
+      });
+    }
+  };
 
   const filteredNannies = nannies.filter(nanny => {
-    const matchesSearch = nanny.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          nanny.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          nanny.specialties?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesBorough = selectedBorough === 'All' || nanny.location_borough === selectedBorough;
-    const matchesTier = selectedTier === 'All' || nanny.tier === selectedTier;
-    const matchesExperience = nanny.experience >= minExperience;
+    const query = searchQuery.toLowerCase();
+    const matchesSearch =
+      nanny.first_name?.toLowerCase().includes(query) ||
+      nanny.last_name?.toLowerCase().includes(query) ||
+      nanny.location_borough?.toLowerCase().includes(query) ||
+      (Array.isArray(nanny.certifications) && nanny.certifications.some((s: string) => s.toLowerCase().includes(query)));
 
-    return matchesSearch && matchesBorough && matchesTier && matchesExperience;
+    const matchesBorough = selectedBorough === 'All' || nanny.location_borough === selectedBorough;
+    const matchesExperience = (nanny.years_experience || 0) >= minExperience;
+
+    return matchesSearch && matchesBorough && matchesExperience;
   });
 
   return (
@@ -39,18 +83,17 @@ export default function GlobalSearch() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Global Nanny Search</h1>
-          <p className="text-stone-500 mt-1">Discover verified childcare professionals across NYC.</p>
+          <p className="text-stone-500 mt-1">Search the global directory, then invite selected nannies into your private talent pool.</p>
         </div>
       </div>
 
-      {/* Search & Filters */}
       <div className="space-y-4">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400" />
-            <input 
-              type="text" 
-              placeholder="Search by name, specialty, or keyword..." 
+            <input
+              type="text"
+              placeholder="Search by name, borough, or certification..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -61,7 +104,7 @@ export default function GlobalSearch() {
         <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
             <MapPin className="h-4 w-4 text-stone-400" />
-            <select 
+            <select
               value={selectedBorough}
               onChange={(e) => setSelectedBorough(e.target.value)}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
@@ -76,21 +119,8 @@ export default function GlobalSearch() {
           </div>
 
           <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
-            <Star className="h-4 w-4 text-stone-400" />
-            <select 
-              value={selectedTier}
-              onChange={(e) => setSelectedTier(e.target.value)}
-              className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
-            >
-              <option value="All">All Tiers</option>
-              <option value="Elite">Elite</option>
-              <option value="Professional">Professional</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
             <Filter className="h-4 w-4 text-stone-400" />
-            <select 
+            <select
               value={minExperience}
               onChange={(e) => setMinExperience(Number(e.target.value))}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
@@ -101,97 +131,79 @@ export default function GlobalSearch() {
               <option value="10">10+ Years</option>
             </select>
           </div>
-
-          {(selectedBorough !== 'All' || selectedTier !== 'All' || minExperience !== 0 || searchQuery !== '') && (
-            <button 
-              onClick={() => {
-                setSelectedBorough('All');
-                setSelectedTier('All');
-                setMinExperience(0);
-                setSearchQuery('');
-              }}
-              className="text-sm font-medium text-red-500 hover:text-red-600 px-2"
-            >
-              Clear all
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Results */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {filteredNannies.length === 0 ? (
           <div className="col-span-full bg-white p-8 rounded-3xl border border-stone-200 text-center text-stone-500">
             No nannies found matching your search.
           </div>
         ) : (
-          filteredNannies.map((nanny, index) => (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: index * 0.1 }}
-              key={nanny.id} 
-              className="bg-white rounded-3xl border border-stone-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col"
-            >
-              <div className="p-6 flex-1">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-16 h-16 rounded-full bg-stone-200 flex items-center justify-center text-stone-500 font-bold border-2 border-stone-100 text-xl">
-                    {nanny.first_name?.charAt(0) || '?'}
-                  </div>
-                  <div className="flex flex-col items-end">
+          filteredNannies.map((nanny, index) => {
+            const isSaved = savedNannyIds.has(nanny.id);
+            const isSaving = savingNannyIds.has(nanny.id);
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.05 }}
+                key={nanny.id}
+                className="bg-white rounded-3xl border border-stone-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+              >
+                <div className="p-6 flex-1">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-16 h-16 rounded-full bg-stone-200 flex items-center justify-center text-stone-500 font-bold border-2 border-stone-100 text-xl">
+                      {nanny.first_name?.charAt(0) || '?'}
+                    </div>
                     <div className="flex items-center gap-1 bg-stone-100 px-2 py-1 rounded-lg">
                       <Star className="h-3.5 w-3.5 text-yellow-500 fill-current" />
-                      <span className="text-sm font-bold text-stone-900">{nanny.shiftScore}</span>
+                      <span className="text-sm font-bold text-stone-900">{nanny.years_experience ?? '—'}</span>
                     </div>
-                    <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wider mt-1">{nanny.tier}</span>
                   </div>
-                </div>
-                
-                <h3 className="text-lg font-bold text-stone-900 flex items-center gap-1.5">
-                  {nanny.first_name} {nanny.last_name}
-                  <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                </h3>
-                
-                <div className="flex items-center gap-1.5 text-sm text-stone-500 mt-1 mb-4">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {nanny.location_neighborhood}, {nanny.location_borough}
-                </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-1.5">Experience</p>
-                    <p className="text-sm text-stone-900 font-medium">{nanny.experience} years</p>
+                  <h3 className="text-lg font-bold text-stone-900 flex items-center gap-1.5">
+                    {nanny.first_name} {nanny.last_name}
+                    <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                  </h3>
+
+                  <div className="flex items-center gap-1.5 text-sm text-stone-500 mt-1 mb-4">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {nanny.location_borough || 'Unknown location'}
                   </div>
+
                   <div>
-                    <p className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-1.5">Specialties</p>
+                    <p className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-1.5">Certifications</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {nanny.specialties.map((spec: string) => (
+                      {(nanny.certifications || []).slice(0, 4).map((spec: string) => (
                         <span key={spec} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-stone-100 text-stone-600">
                           {spec}
                         </span>
                       ))}
+                      {(!nanny.certifications || nanny.certifications.length === 0) && (
+                        <span className="text-xs text-stone-400">No certifications listed</span>
+                      )}
                     </div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex gap-2">
-                <button 
-                  onClick={() => console.log(`View profile clicked for nanny ${nanny.id}`)}
-                  className="flex-1 text-center px-4 py-2.5 rounded-xl bg-white border border-stone-200 text-stone-900 text-sm font-medium hover:bg-stone-50 transition-colors"
-                >
-                  View Profile
-                </button>
-                <button 
-                  onClick={() => console.log(`Save to Talent Pool clicked for nanny ${nanny.id}`)}
-                  className="px-4 py-2.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors flex items-center justify-center" 
-                  title="Save to Talent Pool"
-                >
-                  <BookmarkPlus className="h-4 w-4" />
-                </button>
-              </div>
-            </motion.div>
-          ))
+
+                <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex gap-2">
+                  <button
+                    disabled={isSaved || isSaving || !agencyId}
+                    onClick={() => handleAddToPool(nanny.id)}
+                    className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
+                      isSaved
+                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                        : 'bg-stone-900 text-white hover:bg-stone-800'
+                    } disabled:opacity-60 disabled:cursor-not-allowed`}
+                  >
+                    {isSaved ? <Check className="h-4 w-4" /> : <BookmarkPlus className="h-4 w-4" />}
+                    {isSaved ? 'In Talent Pool' : isSaving ? 'Inviting...' : 'Invite to Talent Pool'}
+                  </button>
+                </div>
+              </motion.div>
+            );
+          })
         )}
       </div>
     </div>
