@@ -119,12 +119,16 @@ export default function AgencyProfile() {
     <div className="min-h-screen bg-stone-50 pb-20">
       {/* Cover Image */}
       <div className="h-64 md:h-80 w-full relative">
-        <img 
-          src={agency.cover || 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&q=80&w=1200&h=400'} 
-          alt="Agency Cover" 
-          className="w-full h-full object-cover"
-          referrerPolicy="no-referrer"
-        />
+        {agency.cover ? (
+          <img 
+            src={agency.cover}
+            alt="Agency Cover" 
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-r from-stone-200 to-stone-300" />
+        )}
         <div className="absolute inset-0 bg-black/20"></div>
       </div>
 
@@ -136,12 +140,18 @@ export default function AgencyProfile() {
             {/* Header Card */}
             <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-stone-200">
               <div className="flex flex-col md:flex-row gap-6 items-start">
-                <img 
-                  src={agency.logo || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=200&h=200'} 
-                  alt={`${agency.company_name} logo`} 
-                  className="w-32 h-32 rounded-2xl object-cover border-4 border-white shadow-md bg-white -mt-16 md:-mt-20"
-                  referrerPolicy="no-referrer"
-                />
+                {agency.logo ? (
+                  <img 
+                    src={agency.logo}
+                    alt={`${agency.company_name || 'Agency'} logo`} 
+                    className="w-32 h-32 rounded-2xl object-cover border-4 border-white shadow-md bg-white -mt-16 md:-mt-20"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-2xl border-4 border-white shadow-md bg-stone-100 -mt-16 md:-mt-20 flex items-center justify-center text-4xl font-bold text-stone-600">
+                    {(agency.company_name || 'A').charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{agency.company_name || 'Unnamed Agency'}</h1>

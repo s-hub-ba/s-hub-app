@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Bell, MessageSquare, Briefcase, Star } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { getFamilyNotifications } from '../lib/api';
+import { getFamilyNotifications, getAgencyNotifications } from '../lib/api';
 
 export type NotificationType = 'application' | 'message' | 'review' | 'system';
 
@@ -28,35 +28,14 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      type: 'application',
-      title: 'Application Update',
-      message: 'Your application for "Full-time Nanny in Brooklyn" has been reviewed.',
-      time: '2 hours ago',
-      read: false,
-      link: '/nanny/applications'
-    },
-    {
-      id: '2',
-      type: 'message',
-      title: 'New Message',
-      message: 'The Johnson Family sent you a message.',
-      time: '5 hours ago',
-      read: false,
-      link: '/nanny/messages'
-    },
-    {
-      id: '3',
-      type: 'review',
-      title: 'New Review',
-      message: 'You received a 5-star review from the Smith Family.',
-      time: '1 day ago',
-      read: true,
-      link: '/nanny/profile'
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const createNotificationId = () => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
     }
-  ]);
+    return `notif-${Date.now()}`;
+  };
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -70,12 +49,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const loadNotifications = async () => {
-      if (role === 'family' && user?.uid) {
+      if (!user?.uid) return;
+
+      if (role === 'family') {
         try {
           const familyNotifs = await getFamilyNotifications(user.uid);
           if (familyNotifs?.length) {
             setNotifications(familyNotifs.map((notif) => ({
-              id: notif.id || Math.random().toString(36).substr(2, 9),
+              id: notif.id || createNotificationId(),
               type: notif.type,
               title: notif.title,
               message: notif.message,
@@ -86,6 +67,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           }
         } catch (error) {
           console.error('Error loading family notifications:', error);
+        }
+      } else if (role === 'agency_admin' || role === 'agency_recruiter') {
+        try {
+          const agencyNotifs = await getAgencyNotifications(user.uid);
+          if (agencyNotifs?.length) {
+            setNotifications(agencyNotifs.map((notif) => ({
+              id: notif.id || createNotificationId(),
+              type: notif.type,
+              title: notif.title,
+              message: notif.message,
+              time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
+              read: notif.read ?? false,
+              link: notif.link
+            })));
+          }
+        } catch (error) {
+          console.error('Error loading agency notifications:', error);
         }
       }
     };
@@ -99,7 +97,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const addNotification = (notification: Omit<Notification, 'id' | 'time' | 'read'>) => {
     const newNotification: Notification = {
       ...notification,
-      id: Math.random().toString(36).substr(2, 9),
+      id: createNotificationId(),
       time: 'Just now',
       read: false
     };

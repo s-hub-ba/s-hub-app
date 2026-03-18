@@ -20,13 +20,21 @@ export default function NannyApplications() {
   const { user } = useAuth();
   const [applications, setApplications] = useState<any[]>([]);
 
-  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || '';
 
   useEffect(() => {
+    if (!nannyId) {
+      setApplications([]);
+      return;
+    }
     loadData();
-  }, []);
+  }, [nannyId]);
 
   const loadData = async () => {
+    if (!nannyId) {
+      return;
+    }
+
     try {
       const fetchedApps = await getApplicationsForNanny(nannyId);
       

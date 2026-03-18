@@ -10,7 +10,7 @@ export default function NannyMessages() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   
-  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || '';
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -34,6 +34,13 @@ export default function NannyMessages() {
 
   useEffect(() => {
     const loadData = async () => {
+      if (!nannyId) {
+        setConversations([]);
+        setActiveConversation(null);
+        setMessages([]);
+        return;
+      }
+
       try {
         const convos = await getConversations(nannyId, 'nanny');
         setConversations(convos);
@@ -47,11 +54,11 @@ export default function NannyMessages() {
       }
     };
     loadData();
-  }, []);
+  }, [nannyId]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !activeConversation) return;
+    if (!nannyId || !newMessage.trim() || !activeConversation) return;
 
     try {
       const msg = await sendMessage(activeConversation.id, 'nanny', nannyId, newMessage);

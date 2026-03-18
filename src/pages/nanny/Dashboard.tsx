@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
 import { getJobs, getApplicationsForNanny, getNannyById, getNannyReviewStats, getAgencyReviewStats, getNannyReviews, computeShiftScore } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -232,47 +232,6 @@ export default function NannyDashboard() {
 
         {/* Sidebar */}
         <div className="space-y-8">
-          {/* Followed Agencies */}
-          <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-            <h2 className="text-lg font-bold text-stone-900 mb-4">Followed Agencies</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden">
-                    <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=100&h=100" alt="Logo" className="w-full h-full object-cover" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-stone-900">Manhattan Elite</p>
-                    <p className="text-xs text-stone-500">2 new jobs</p>
-                  </div>
-                </div>
-                <button className="text-stone-400 hover:text-stone-600">
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden">
-                    <img src="https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=100&h=100" alt="Logo" className="w-full h-full object-cover" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-stone-900">Brooklyn Baby Co.</p>
-                    <p className="text-xs text-stone-500">No new jobs</p>
-                  </div>
-                </div>
-                <button className="text-stone-400 hover:text-stone-600">
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <Link 
-              to="/agencies"
-              className="block w-full mt-6 py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors text-center"
-            >
-              Find More Agencies
-            </Link>
-          </div>
-
           {/* Recent Reviews */}
           <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
             <h2 className="text-lg font-bold text-stone-900 mb-4">Recent Reviews</h2>

@@ -12,10 +12,17 @@ export default function NannyAvailability() {
   const [isSaving, setIsSaving] = useState(false);
   const [availability, setAvailability] = useState<Record<string, string[]>>({});
 
-  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || '';
 
   useEffect(() => {
     const loadData = async () => {
+      if (!nannyId) {
+        setAvailability({
+          Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], Sunday: []
+        });
+        return;
+      }
+
       try {
         const nanny = await getNannyById(nannyId);
         if (nanny && nanny.availability) {
@@ -30,7 +37,7 @@ export default function NannyAvailability() {
       }
     };
     loadData();
-  }, []);
+  }, [nannyId]);
 
   const handleToggle = (day: string, slot: string) => {
     setAvailability(prev => {
@@ -44,6 +51,10 @@ export default function NannyAvailability() {
   };
 
   const handleSave = async () => {
+    if (!nannyId) {
+      return;
+    }
+
     setIsSaving(true);
     try {
       await updateNannyProfile(nannyId, { availability });

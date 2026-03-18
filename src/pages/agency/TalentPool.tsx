@@ -96,7 +96,7 @@ export default function TalentPool() {
               <tr className="bg-stone-50 border-b border-stone-200 text-xs font-medium text-stone-500 uppercase tracking-wider">
                 <th className="p-4 pl-6">Nanny</th>
                 <th className="p-4">Status</th>
-                <th className="p-4">ShiftScore</th>
+                <th className="p-4">Exp. (yrs)</th>
                 <th className="p-4">Tags</th>
                 <th className="p-4">Latest Note</th>
                 <th className="p-4 pr-6 text-right">Actions</th>
@@ -143,12 +143,12 @@ export default function TalentPool() {
                     <td className="p-4">
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-500 fill-current" />
-                        <span className="font-bold text-stone-900">{talent.shiftScore}</span>
+                        <span className="font-bold text-stone-900">{talent.years_experience ?? '—'}</span>
                       </div>
                     </td>
                     <td className="p-4">
                       <div className="flex flex-wrap gap-1">
-                        {talent.tags.map((tag: string) => (
+                        {(talent.tags ?? []).map((tag: string) => (
                           <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200">
                             {tag}
                           </span>
@@ -158,7 +158,7 @@ export default function TalentPool() {
                     <td className="p-4 max-w-xs">
                       <div className="flex items-start gap-2">
                         <FileText className="h-4 w-4 text-stone-400 shrink-0 mt-0.5" />
-                        <p className="text-xs text-stone-600 line-clamp-2 italic">"{talent.latestNote}"</p>
+                        <p className="text-xs text-stone-600 line-clamp-2 italic">{talent.latest_note ? `"${talent.latest_note}"` : '—'}</p>
                       </div>
                     </td>
                     <td className="p-4 pr-6 text-right">

@@ -1,5 +1,4 @@
-import { ShieldCheck, Users, Building2, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
-import { motion } from 'motion/react';
+import { ShieldCheck, Users, Building2, AlertTriangle } from 'lucide-react';
 
 export default function AdminDashboard() {
   return (
@@ -19,7 +18,7 @@ export default function AdminDashboard() {
             </div>
             <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Total Agencies</p>
           </div>
-          <h2 className="text-3xl font-bold text-stone-900">42</h2>
+          <h2 className="text-3xl font-bold text-stone-900">-</h2>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col">
@@ -29,7 +28,7 @@ export default function AdminDashboard() {
             </div>
             <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Total Nannies</p>
           </div>
-          <h2 className="text-3xl font-bold text-stone-900">1,204</h2>
+          <h2 className="text-3xl font-bold text-stone-900">-</h2>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-orange-200 shadow-sm flex flex-col bg-orange-50/30">
@@ -39,7 +38,7 @@ export default function AdminDashboard() {
             </div>
             <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Pending Verification</p>
           </div>
-          <h2 className="text-3xl font-bold text-stone-900">5</h2>
+          <h2 className="text-3xl font-bold text-stone-900">-</h2>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-red-200 shadow-sm flex flex-col bg-red-50/30">
@@ -49,7 +48,7 @@ export default function AdminDashboard() {
             </div>
             <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Flagged Reviews</p>
           </div>
-          <h2 className="text-3xl font-bold text-stone-900">2</h2>
+          <h2 className="text-3xl font-bold text-stone-900">-</h2>
         </div>
       </div>
 
@@ -57,31 +56,8 @@ export default function AdminDashboard() {
         <div className="space-y-6">
           <h2 className="text-xl font-bold text-stone-900">Recent Agency Signups</h2>
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="divide-y divide-stone-100">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="p-4 flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold text-stone-900 text-sm">New York Nanny Co.</h4>
-                    <p className="text-xs text-stone-500 mt-0.5">Applied 2 hours ago • Manhattan</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => console.log('Approved agency')}
-                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" 
-                      title="Approve"
-                    >
-                      <CheckCircle2 className="h-5 w-5" />
-                    </button>
-                    <button 
-                      onClick={() => console.log('Rejected agency')}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
-                      title="Reject"
-                    >
-                      <XCircle className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="p-6 text-sm text-stone-500">
+              No pending agency signups to review.
             </div>
           </div>
         </div>

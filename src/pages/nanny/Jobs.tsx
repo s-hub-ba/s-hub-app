@@ -10,8 +10,7 @@ export default function NannyJobs() {
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const { user } = useAuth();
   
-  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
-  const nannyName = 'Sarah Jenkins';
+  const nannyId = user?.uid || '';
 
   useEffect(() => {
     loadData();
@@ -30,8 +29,12 @@ export default function NannyJobs() {
   };
 
   const handleApply = async (jobId: string, jobTitle: string) => {
+    if (!nannyId) {
+      return;
+    }
+
     try {
-      await createApplication(jobId, nannyId, 'Cover letter placeholder');
+      await createApplication(jobId, nannyId, 'Applied from job marketplace');
       await loadData();
       console.log('Application submitted successfully!');
     } catch (err: any) {

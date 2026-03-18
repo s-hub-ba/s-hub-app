@@ -5,79 +5,12 @@ import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { followAgency, unfollowAgency, getFamilyFollowedAgencies, getAgencies } from '../lib/api';
 
-const AGENCIES = [
-  {
-    id: '1',
-    name: 'Manhattan Elite Nannies',
-    logo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=100&h=100',
-    boroughs: ['Manhattan', 'Brooklyn'],
-    specialties: ['Newborn Care', 'Bilingual', 'High-Profile'],
-    description: 'Providing top-tier childcare professionals to discerning families across Manhattan and Brooklyn for over 10 years.',
-    isVerified: true,
-    isSponsored: true
-  },
-  {
-    id: '2',
-    name: 'Brooklyn Baby Co.',
-    logo: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=100&h=100',
-    boroughs: ['Brooklyn', 'Queens'],
-    specialties: ['Part-time', 'Creative Arts', 'Special Needs'],
-    description: 'A boutique agency focused on matching creative, engaging caregivers with modern Brooklyn families.',
-    isVerified: true,
-    isSponsored: false
-  },
-  {
-    id: '3',
-    name: 'NYC Night Nurses',
-    logo: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=100&h=100',
-    boroughs: ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'],
-    specialties: ['Overnight', 'Newborn Care Specialist', 'Lactation'],
-    description: 'Specialized overnight newborn care and sleep training across all five boroughs.',
-    isVerified: true,
-    isSponsored: false
-  }
-];
-
-// used to help local fallback and initial structure still
-const fallbackAgencies = [
-  {
-    id: '1',
-    name: 'Manhattan Elite Nannies',
-    logo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=100&h=100',
-    boroughs: ['Manhattan', 'Brooklyn'],
-    specialties: ['Newborn Care', 'Bilingual', 'High-Profile'],
-    description: 'Providing top-tier childcare professionals to discerning families across Manhattan and Brooklyn for over 10 years.',
-    isVerified: true,
-    isSponsored: true
-  },
-  {
-    id: '2',
-    name: 'Brooklyn Baby Co.',
-    logo: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=100&h=100',
-    boroughs: ['Brooklyn', 'Queens'],
-    specialties: ['Part-time', 'Creative Arts', 'Special Needs'],
-    description: 'A boutique agency focused on matching creative, engaging caregivers with modern Brooklyn families.',
-    isVerified: true,
-    isSponsored: false
-  },
-  {
-    id: '3',
-    name: 'NYC Night Nurses',
-    logo: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=100&h=100',
-    boroughs: ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'],
-    specialties: ['Overnight', 'Newborn Care Specialist', 'Lactation'],
-    description: 'Specialized overnight newborn care and sleep training across all five boroughs.',
-    isVerified: true,
-    isSponsored: false
-  }
-];
-
 const BOROUGHS = ['All', 'Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
 
 export default function AgencyDirectory() {
   const [selectedBorough, setSelectedBorough] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [agencies, setAgencies] = useState<any[]>(AGENCIES);
+  const [agencies, setAgencies] = useState<any[]>([]);
   const [followedAgencyIds, setFollowedAgencyIds] = useState<string[]>([]);
   const { user, role } = useAuth();
   const location = useLocation();
@@ -86,10 +19,10 @@ export default function AgencyDirectory() {
     const fetchAgencies = async () => {
       try {
         const dbAgencies = await getAgencies();
-        setAgencies(dbAgencies?.length ? dbAgencies : AGENCIES);
+        setAgencies(dbAgencies || []);
       } catch (err) {
         console.error('Error fetching agencies:', err);
-        setAgencies(AGENCIES);
+        setAgencies([]);
       }
     };
 
@@ -177,12 +110,18 @@ export default function AgencyDirectory() {
                   Featured
                 </div>
                 <div className="flex items-center gap-4 mb-4">
-                  <img 
-                    src={agency.logo || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=100&h=100'} 
-                    alt={agency.company_name || agency.name || 'Agency'} 
-                    className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm"
-                    referrerPolicy="no-referrer"
-                  />
+                  {agency.logo ? (
+                    <img 
+                      src={agency.logo}
+                      alt={agency.company_name || agency.name || 'Agency'} 
+                      className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl border-2 border-white shadow-sm bg-stone-100 flex items-center justify-center text-stone-600 font-bold">
+                      {(agency.company_name || agency.name || 'A').charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition-colors">{agency.company_name || agency.name || 'Agency'}</h3>
                     <div className="flex items-center gap-1 text-xs text-stone-500 mt-1">
@@ -252,12 +191,18 @@ export default function AgencyDirectory() {
               )}
               <div className="p-6 flex-1">
                 <div className="flex items-start gap-4 mb-4">
-                  <img 
-                    src={agency.logo || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=100&h=100'} 
-                    alt={`${agency.company_name || agency.name || 'Agency'} logo`} 
-                    className="w-16 h-16 rounded-xl object-cover border border-stone-100"
-                    referrerPolicy="no-referrer"
-                  />
+                  {agency.logo ? (
+                    <img 
+                      src={agency.logo}
+                      alt={`${agency.company_name || agency.name || 'Agency'} logo`} 
+                      className="w-16 h-16 rounded-xl object-cover border border-stone-100"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl border border-stone-100 bg-stone-100 flex items-center justify-center text-stone-600 font-bold">
+                      {(agency.company_name || agency.name || 'A').charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-lg font-bold text-stone-900 leading-tight flex items-center gap-1.5">
                       {agency.company_name || agency.name || 'Agency'}

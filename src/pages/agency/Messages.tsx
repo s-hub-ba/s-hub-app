@@ -45,11 +45,8 @@ export default function AgencyMessages() {
   
   const agencyId = user?.uid || '';
 
-  if (!agencyId) {
-    return <div className="p-8 text-center text-stone-500">Please sign in to view messages.</div>;
-  }
-
   useEffect(() => {
+    if (!agencyId) return;
     const loadData = async () => {
       try {
         const convos = (await getConversations(agencyId, 'agency')) || [];
@@ -64,7 +61,11 @@ export default function AgencyMessages() {
       }
     };
     loadData();
-  }, []);
+  }, [agencyId]);
+
+  if (!agencyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to view messages.</div>;
+  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

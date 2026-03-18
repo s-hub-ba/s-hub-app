@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Briefcase, Users, MessageSquare, Star, ArrowRight, Search, Plus } from 'lucide-react';
+import { Briefcase, Users, MessageSquare, Star, Search, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getJobs, getApplicationsForAgency, getNannies, getAgencyById } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -152,18 +152,8 @@ export default function AgencyDashboard() {
             <Link to="/agency/messages" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
           </div>
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="divide-y divide-stone-100">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="p-4 hover:bg-stone-50 transition-colors flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold text-stone-900 text-sm">The Johnson Family</h4>
-                    <p className="text-xs text-stone-500 mt-0.5">Looking for full-time nanny in Brooklyn</p>
-                  </div>
-                  <Link to="/agency/messages" className="text-stone-400 hover:text-stone-600">
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              ))}
+            <div className="p-6 text-sm text-stone-500">
+              No recent inquiries yet. New family messages will appear here.
             </div>
           </div>
         </div>

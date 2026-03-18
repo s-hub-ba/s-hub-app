@@ -118,7 +118,7 @@ export default function JoinNanny() {
                   type="text"
                   required
                   className="block w-full pl-10 pr-3 py-2.5 border border-stone-200 rounded-xl focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                  placeholder="Sarah Jenkins"
+                  placeholder="Your full name"
                 />
               </div>
             </div>

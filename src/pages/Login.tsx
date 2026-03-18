@@ -170,40 +170,6 @@ export default function Login() {
             </div>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-stone-200" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-stone-500">Demo Credentials</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3 text-xs text-center">
-              <div 
-                className="p-3 bg-stone-50 rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-100 transition-colors"
-                onClick={() => { setEmail('sarah@example.com'); setPassword('password123'); }}
-              >
-                <span className="block font-semibold text-stone-900 mb-1">Nanny</span>
-                <span className="text-stone-500">sarah@example.com</span>
-              </div>
-              <div 
-                className="p-3 bg-stone-50 rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-100 transition-colors"
-                onClick={() => { setEmail('admin@manhattanelite.com'); setPassword('password123'); }}
-              >
-                <span className="block font-semibold text-stone-900 mb-1">Agency</span>
-                <span className="text-stone-500">admin@manhattanelite.com</span>
-              </div>
-              <div 
-                className="p-3 bg-stone-50 rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-100 transition-colors"
-                onClick={() => { setEmail('family@example.com'); setPassword('password123'); }}
-              >
-                <span className="block font-semibold text-stone-900 mb-1">Family</span>
-                <span className="text-stone-500">family@example.com</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

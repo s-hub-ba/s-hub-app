@@ -1093,6 +1093,72 @@ export const addNannyNotification = async (nannyId: string, title: string, messa
   }
 };
 
+// --- AGENCY NOTIFICATIONS ---
+export interface AgencyNotification {
+  id?: string;
+  agency_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link?: string;
+  read?: boolean;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export const getAgencyNotifications = async (agencyId: string): Promise<AgencyNotification[]> => {
+  const path = 'agency_notifications';
+  try {
+    const q = query(collection(db, path), where('agency_id', '==', agencyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgencyNotification));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const addAgencyNotification = async (agencyId: string, title: string, message: string, link?: string) => {
+  const path = 'agency_notifications';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      agency_id: agencyId,
+      type: 'message' as NotificationType,
+      title,
+      message,
+      link: link || '/agency/messages',
+      read: false,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const markAgencyNotificationRead = async (notificationId: string) => {
+  const path = `agency_notifications/${notificationId}`;
+  try {
+    const docRef = doc(db, 'agency_notifications', notificationId);
+    await updateDoc(docRef, { read: true, updated_at: serverTimestamp() });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+// --- AGENCY POSTS (delete) ---
+export const deleteAgencyPost = async (postId: string) => {
+  const path = `agency_posts/${postId}`;
+  try {
+    await deleteDoc(doc(db, 'agency_posts', postId));
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    return false;
+  }
+};
+
 // --- USERS ---
 export const getUsers = async () => {
   const path = 'users';
@@ -1208,6 +1274,14 @@ export const createAgencyInquiryConversation = async ({
 
     const sent = await sendMessage(conversationId, 'family', familyId, introMessage);
     if (!sent?.id) return null;
+
+    // Notify the agency of the new inquiry (fire and forget)
+    addAgencyNotification(
+      agencyId,
+      `New inquiry from ${familyName}`,
+      inquiry.description.slice(0, 120),
+      `/agency/messages?conversation=${conversationId}`
+    ).catch(() => {/* non-critical */});
 
     return { id: conversationId };
   } catch (error) {

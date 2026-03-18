@@ -11,7 +11,7 @@ A modern, full-stack marketplace connecting top-tier nannies with verified NYC a
 ├── supabase/
 │   ├── migrations/
 │   │   └── 0001_initial_schema.sql # Database schema definitions
-│   └── seed.sql              # Mock data for local development
+│   └── seed.sql              # Optional local seed script
 ├── src/
 │   ├── components/           # Reusable UI components (ProtectedRoute, etc.)
 │   ├── contexts/             # React Contexts (AuthContext)
@@ -36,7 +36,6 @@ PAYPAL_WEBHOOK_ID=your_paypal_webhook_id
 ### Database Setup (Supabase)
 1. Create a new Supabase project.
 2. Run the SQL script located in `supabase/migrations/0001_initial_schema.sql` in the Supabase SQL Editor to create the tables and RLS policies.
-3. (Optional) Run `supabase/seed.sql` to populate mock data.
 
 ### Running the Application
 Install dependencies and start the full-stack development server:

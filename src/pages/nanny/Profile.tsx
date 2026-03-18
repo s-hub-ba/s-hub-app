@@ -13,11 +13,17 @@ export default function NannyProfile() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const nannyId = user?.uid || 'f0e9d8c7-b6a5-4321-0987-654321fedcba';
+  const nannyId = user?.uid || '';
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
+      if (!nannyId) {
+        setError('Please sign in to view your profile.');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const data = await getNannyById(nannyId);
         if (data) {
@@ -37,6 +43,10 @@ export default function NannyProfile() {
   }, [nannyId]);
 
   const handleSave = async () => {
+    if (!nannyId) {
+      return;
+    }
+
     try {
       const updated = await updateNannyProfile(nannyId, formData);
       if (updated) {
@@ -94,12 +104,18 @@ export default function NannyProfile() {
         {/* Header/Photo Section */}
         <div className="p-6 md:p-8 border-b border-stone-100 flex flex-col md:flex-row items-center md:items-start gap-6">
           <div className="relative group">
-            <img 
-              src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150&h=150" 
-              alt="Profile" 
-              className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
-              referrerPolicy="no-referrer"
-            />
+            {profile?.photo_url ? (
+              <img 
+                src={profile.photo_url}
+                alt="Profile" 
+                className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-32 h-32 rounded-full border-4 border-white shadow-md bg-stone-100 flex items-center justify-center text-4xl font-bold text-stone-600">
+                {(profile?.first_name?.charAt(0) || 'N').toUpperCase()}
+              </div>
+            )}
             {isEditing && (
               <button className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera className="h-6 w-6" />
@@ -130,7 +146,7 @@ export default function NannyProfile() {
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex items-center gap-2 text-stone-600">
                 <Mail className="h-4 w-4 text-stone-400" />
-                <span className="text-sm">sarah@example.com</span>
+                <span className="text-sm">{user?.email || 'No email available'}</span>
               </div>
               <div className="flex items-center gap-2 text-stone-600">
                 <MapPin className="h-4 w-4 text-stone-400" />
@@ -231,41 +247,9 @@ export default function NannyProfile() {
           <Star className="h-5 w-5 text-amber-500" />
           Parent Reviews
         </h3>
-        
-        <div className="space-y-6">
-          <div className="p-4 rounded-2xl border border-stone-100 bg-stone-50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-bold text-stone-900">The Smith Family</div>
-              <div className="flex text-amber-400">
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-              </div>
-            </div>
-            <p className="text-stone-600 text-sm leading-relaxed">
-              "Sarah was absolutely wonderful with our two kids. She is punctual, creative, and very patient. We highly recommend her!"
-            </p>
-            <div className="text-xs text-stone-400 mt-3">March 2026</div>
-          </div>
 
-          <div className="p-4 rounded-2xl border border-stone-100 bg-stone-50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-bold text-stone-900">The Johnson Family</div>
-              <div className="flex text-amber-400">
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 fill-current" />
-                <Star className="h-4 w-4 text-stone-300" />
-              </div>
-            </div>
-            <p className="text-stone-600 text-sm leading-relaxed">
-              "Great experience overall. Sarah helped us out during a busy week and the kids loved her."
-            </p>
-            <div className="text-xs text-stone-400 mt-3">February 2026</div>
-          </div>
+        <div className="text-sm text-stone-500">
+          No reviews available yet.
         </div>
       </div>
     </div>
