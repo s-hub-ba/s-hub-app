@@ -63,10 +63,12 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // In production, serve static files from dist
-    app.use(express.static('dist'));
-    app.get('*', (req, res) => {
-      res.sendFile('dist/index.html', { root: '.' });
+    // Production: frontend is on GitHub Pages, this server is API-only.
+    app.get('/', (req, res) => {
+      res.json({ status: 'ok', service: 'Shift Me Up API', timestamp: new Date().toISOString() });
+    });
+    app.use((req: any, res: any) => {
+      res.status(404).json({ error: 'Not found' });
     });
   }
 
