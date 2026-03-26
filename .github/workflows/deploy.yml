@@ -1,4 +1,4 @@
-name: Deploy to Firebase
+name: Build and Deploy to Firebase
 
 on:
   push:
@@ -11,15 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci --include=optional
+          npm rebuild @tailwindcss/oxide || true
       
       - name: Lint
         run: npm run lint
@@ -30,4 +33,5 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
       
       - name: Deploy to Firebase
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: npx firebase deploy --only hosting --project gen-lang-client-0420059855 --token ${{ secrets.FIREBASE_TOKEN }}
