@@ -37,6 +37,12 @@ import {
 } from './shiftScore';
 import { db, auth } from './firebase';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+function buildApiUrl(path: string): string {
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+}
+
 // --- Types ---
 export type AppUserRole = 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin';
 
@@ -1352,7 +1358,7 @@ export const startNannyPremiumCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
-  const response = await fetch('/api/paypal/nanny/premium/checkout', {
+  const response = await fetch(buildApiUrl('/api/paypal/nanny/premium/checkout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nannyId, userId, months, returnUrl, cancelUrl })
@@ -1378,7 +1384,7 @@ export const startNannyCreditsCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
-  const response = await fetch('/api/paypal/nanny/credits/checkout', {
+  const response = await fetch(buildApiUrl('/api/paypal/nanny/credits/checkout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nannyId, userId, credits, returnUrl, cancelUrl })
@@ -1400,7 +1406,7 @@ export const captureNannyPaypalOrder = async ({
   nannyId: string;
   userId: string;
 }) => {
-  const response = await fetch('/api/paypal/nanny/order/capture', {
+  const response = await fetch(buildApiUrl('/api/paypal/nanny/order/capture'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderId, nannyId, userId })
@@ -3230,7 +3236,7 @@ export const addAgencyPost = async (agencyId: string, title: string, content: st
       const callerUserId = auth.currentUser?.uid;
       if (!callerUserId || !agencyId) return;
 
-      const response = await fetch('/api/agency/posts', {
+      const response = await fetch(buildApiUrl('/api/agency/posts'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3778,7 +3784,7 @@ export const startAgencyPlanCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
-  const response = await fetch('/api/paypal/agency-plan/checkout', {
+  const response = await fetch(buildApiUrl('/api/paypal/agency-plan/checkout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agencyId, userId, planCode, returnUrl, cancelUrl })
@@ -3802,7 +3808,7 @@ export const finalizeAgencyPlanCheckout = async ({
   planCode: PlanCode;
   subscriptionId?: string;
 }) => {
-  const response = await fetch('/api/paypal/agency-plan/activate', {
+  const response = await fetch(buildApiUrl('/api/paypal/agency-plan/activate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agencyId, userId, planCode, subscriptionId })

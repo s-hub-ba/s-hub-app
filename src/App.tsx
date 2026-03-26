@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -64,10 +64,12 @@ import AgencyFamilyRequestDetail from './pages/agency/FamilyRequestDetail';
 import AgencyRequestSettings from './pages/agency/RequestSettings';
 
 export default function App() {
+  const Router = import.meta.env.VITE_USE_HASH_ROUTER === 'true' ? HashRouter : BrowserRouter;
+
   return (
     <AuthProvider>
       <NotificationProvider>
-        <BrowserRouter>
+        <Router>
           <Routes>
           {/* Public Routes */}
           <Route element={<PublicLayout />}>
@@ -152,7 +154,7 @@ export default function App() {
             </Route>
           </Route>
         </Routes>
-      </BrowserRouter>
+      </Router>
       </NotificationProvider>
     </AuthProvider>
   );
