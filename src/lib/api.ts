@@ -2370,7 +2370,17 @@ export const getAgencies = async (): Promise<AgencyProfile[]> => {
     return agencies;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
-    return [];
+
+    try {
+      const response = await fetch(buildApiUrl('/api/agency/public-list'));
+      if (!response.ok) return [];
+      const payload = await response.json().catch(() => ({}));
+      const agencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
+      return agencies.map((agency: any) => ({ ...agency, users: null })) as AgencyProfile[];
+    } catch (fallbackError) {
+      console.error('[getAgencies] fallback failed', fallbackError);
+      return [];
+    }
   }
 };
 

@@ -51,6 +51,35 @@ const generateUniqueInviteCode = async () => {
   throw new Error('Failed to generate unique invite code');
 };
 
+// GET /api/agency/public-list - Public directory list for unauthenticated visitors
+router.get('/public-list', async (_req: any, res: any) => {
+  try {
+    const snapshot = await db.collection('agency_profiles').get();
+    const agencies = snapshot.docs.map((docSnap) => {
+      const data = docSnap.data() || {};
+      return {
+        id: docSnap.id,
+        company_name: data.company_name || data.name || 'Agency',
+        name: data.name || data.company_name || 'Agency',
+        logo: data.logo || null,
+        boroughs: Array.isArray(data.boroughs) ? data.boroughs : [],
+        specialties: Array.isArray(data.specialties) ? data.specialties : [],
+        description: data.description || data.bio || '',
+        bio: data.bio || data.description || '',
+        plan_tier: data.plan_tier || null,
+        sponsored: !!data.sponsored,
+        isSponsored: !!data.isSponsored,
+        isVerified: data.isVerified ?? data.is_verified ?? false,
+      };
+    });
+
+    return res.json({ agencies });
+  } catch (error: any) {
+    console.error('[agency/public-list] error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to load agencies' });
+  }
+});
+
 // POST /api/agency/recruiter - Add a recruiter seat
 router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
   const { email, first_name, last_name } = req.body;
