@@ -95,12 +95,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function normalizeWeights<T extends Record<string, number>>(weights: T): T {
-  const total = Object.values(weights).reduce((sum, value) => sum + Math.max(0, value), 0);
+function normalizeWeights<T extends { [K in keyof T]: number }>(weights: T): T {
+  const entries = Object.entries(weights) as Array<[keyof T, number]>;
+  const total = entries.reduce((sum, [, value]) => sum + Math.max(0, value), 0);
   if (total <= 0) return weights;
 
   return Object.fromEntries(
-    Object.entries(weights).map(([key, value]) => [key, Math.max(0, value) / total])
+    entries.map(([key, value]) => [key, Math.max(0, value) / total])
   ) as T;
 }
 
