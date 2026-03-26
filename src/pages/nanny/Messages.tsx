@@ -90,9 +90,16 @@ export default function NannyMessages() {
 
     let cancelled = false;
     const loadMessages = async () => {
-      const msgs = await getMessages(activeConversation.id);
-      if (!cancelled) {
-        setMessages((msgs || []).filter(Boolean));
+      try {
+        const msgs = await getMessages(activeConversation.id);
+        if (!cancelled) {
+          setMessages((msgs || []).filter(Boolean));
+        }
+      } catch (error) {
+        console.error('Error loading messages:', error);
+        if (!cancelled) {
+          setLoadError('Unable to refresh messages right now. Please try again shortly.');
+        }
       }
     };
 
@@ -112,6 +119,7 @@ export default function NannyMessages() {
 
     setIsSending(true);
     try {
+      setLoadError(null);
       const msg = await sendMessage(activeConversation.id, 'nanny', nannyId, trimmedMessage);
       if (msg?.id) {
         setMessages(prev => [...prev, msg].filter(Boolean));
@@ -128,7 +136,7 @@ export default function NannyMessages() {
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      setLoadError('Unable to send your message. Please try again.');
+      setLoadError(error instanceof Error ? error.message : 'Unable to send your message. Please try again.');
     } finally {
       setIsSending(false);
     }

@@ -4,6 +4,7 @@ import { Baby, ArrowRight, Mail, Lock, Building2, User } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { isValidEmail } from '../lib/validation';
 
 export default function JoinAgency() {
   const navigate = useNavigate();
@@ -23,6 +24,18 @@ export default function JoinAgency() {
 
     if (!agencyName || !contactName || !email || !password) {
       setError('All fields are required.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid work email address.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       setIsSubmitting(false);
       return;
     }

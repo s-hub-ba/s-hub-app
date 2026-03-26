@@ -4,13 +4,41 @@ import { calculateSubscriptionPrice } from '../services/billing.js';
 
 const router = Router();
 
-// Middleware to verify agency owner (Stubbed for MVP)
-const requireAgencyOwner = (req: any, res: any, next: any) => {
-  // In production, verify JWT and ensure role === 'agency_admin'
+const getHeaderValue = (value: unknown): string => {
+  if (Array.isArray(value)) return String(value[0] || '').trim();
+  return String(value || '').trim();
+};
+
+const getBearerToken = (req: any): string => {
+  const authHeader = getHeaderValue(req.headers?.authorization);
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return '';
+  return authHeader.slice(7).trim();
+};
+
+// Middleware to verify agency-scoped request identity.
+const requireAgencyOwner = async (req: any, res: any, next: any) => {
   const rawAgencyId = req.headers['x-agency-id'];
   const agencyId = Array.isArray(rawAgencyId) ? rawAgencyId[0] : rawAgencyId;
+  const fallbackUserId = getHeaderValue(req.headers['x-user-id']);
+  const token = getBearerToken(req);
+
+  let callerUserId = '';
+  if (token) {
+    try {
+      const decoded = await auth.verifyIdToken(token);
+      callerUserId = String(decoded.uid || '');
+    } catch (error) {
+      return res.status(401).json({ error: 'Unauthorized: invalid auth token' });
+    }
+  } else if (process.env.NODE_ENV !== 'production') {
+    callerUserId = fallbackUserId;
+  }
+
   req.agency_id = agencyId;
-  if (!agencyId) return res.status(401).json({ error: 'Unauthorized' });
+  req.user_id = callerUserId;
+  if (!agencyId || !callerUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   next();
 };
 
@@ -194,7 +222,7 @@ router.post('/invite-link', requireAgencyOwner, async (req: any, res: any) => {
 router.post('/posts', requireAgencyOwner, async (req: any, res: any) => {
   const agency_id = req.agency_id as string;
   const { title, content } = req.body || {};
-  const callerUserId = Array.isArray(req.headers['x-user-id']) ? req.headers['x-user-id'][0] : req.headers['x-user-id'];
+  const callerUserId = req.user_id as string;
 
   if (!agency_id || !callerUserId) {
     return res.status(401).json({ error: 'Unauthorized' });

@@ -4,6 +4,7 @@ import { Baby, ArrowRight, Mail, Lock, User } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { isValidEmail } from '../lib/validation';
 
 export default function JoinNanny() {
   const navigate = useNavigate();
@@ -22,6 +23,18 @@ export default function JoinNanny() {
 
     if (!name || !email || !password) {
       setError('Full name, email and password are required.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       setIsSubmitting(false);
       return;
     }

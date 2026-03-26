@@ -3,12 +3,36 @@ import { db, auth } from '../firebase.js';
 
 const router = Router();
 
+const getHeaderValue = (value: unknown): string => {
+  if (Array.isArray(value)) return String(value[0] || '').trim();
+  return String(value || '').trim();
+};
+
+const getBearerToken = (req: any): string => {
+  const authHeader = getHeaderValue(req.headers?.authorization);
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return '';
+  return authHeader.slice(7).trim();
+};
+
 // Middleware to verify nanny user (stub for MVP)
 const requireNannyAuth = async (req: any, res: any, next: any) => {
-  const rawUserId = req.headers['x-user-id'];
-  const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
+  const fallbackUserId = getHeaderValue(req.headers['x-user-id']);
+  const token = getBearerToken(req);
+  let userId = '';
+
+  if (token) {
+    try {
+      const decoded = await auth.verifyIdToken(token);
+      userId = String(decoded.uid || '');
+    } catch (error) {
+      return res.status(401).json({ error: 'Unauthorized - invalid auth token' });
+    }
+  } else if (process.env.NODE_ENV !== 'production') {
+    userId = fallbackUserId;
+  }
+
   if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized - missing x-user-id header' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {

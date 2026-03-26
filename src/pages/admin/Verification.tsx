@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ShieldAlert } from 'lucide-react';
+import { Search, ShieldAlert, X } from 'lucide-react';
 import { getAdminVerificationAnalytics, updateNannyDocumentStatus, VerificationRange } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -11,6 +11,8 @@ export default function AdminVerification() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'cv' | 'certification' | 'id' | 'reference' | 'other'>('all');
   const [processingDocId, setProcessingDocId] = useState<string | null>(null);
+  const [rejectDocId, setRejectDocId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const loadQueue = async () => {
     setLoading(true);
@@ -38,14 +40,8 @@ export default function AdminVerification() {
     });
   }, [queue, searchQuery, typeFilter]);
 
-  const handleDocumentAction = async (docId: string, status: 'approved' | 'rejected') => {
+  const handleDocumentAction = async (docId: string, status: 'approved' | 'rejected', rejectionReason?: string) => {
     if (processingDocId || !user?.uid) return;
-
-    let rejectionReason: string | undefined;
-    if (status === 'rejected') {
-      rejectionReason = window.prompt('Add rejection reason (required):')?.trim();
-      if (!rejectionReason) return;
-    }
 
     try {
       setProcessingDocId(docId);
@@ -59,6 +55,13 @@ export default function AdminVerification() {
     } finally {
       setProcessingDocId(null);
     }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectDocId || !rejectReason.trim() || processingDocId) return;
+    await handleDocumentAction(rejectDocId, 'rejected', rejectReason.trim());
+    setRejectDocId(null);
+    setRejectReason('');
   };
 
   return (
@@ -163,7 +166,10 @@ export default function AdminVerification() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDocumentAction(item.id, 'rejected')}
+                          onClick={() => {
+                            setRejectDocId(item.id);
+                            setRejectReason('');
+                          }}
                           disabled={processingDocId === item.id}
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
                         >
@@ -178,6 +184,53 @@ export default function AdminVerification() {
           </div>
         )}
       </div>
+
+      {rejectDocId && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden">
+            <div className="relative px-6 py-5 bg-red-600 text-white">
+              <button
+                type="button"
+                onClick={() => setRejectDocId(null)}
+                className="absolute top-3 right-3 p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <h2 className="text-lg font-bold">Reject Document</h2>
+              <p className="text-sm text-red-100 mt-1">A rejection reason is required and will be visible in audit history.</p>
+            </div>
+
+            <div className="px-6 py-5">
+              <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Rejection Reason</label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={4}
+                className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-red-400 resize-none transition"
+                placeholder="Explain why this document is being rejected"
+              />
+            </div>
+
+            <div className="px-6 py-4 border-t border-stone-100 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setRejectDocId(null)}
+                className="px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-semibold hover:bg-stone-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                disabled={!rejectReason.trim() || processingDocId === rejectDocId}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {processingDocId === rejectDocId ? 'Rejecting...' : 'Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

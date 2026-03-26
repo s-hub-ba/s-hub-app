@@ -16,6 +16,8 @@ export default function AdminBgAudit() {
   const [overrideConfidence, setOverrideConfidence] = useState('80');
   const [overrideExpiresAt, setOverrideExpiresAt] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
+  const [clearOverrideRow, setClearOverrideRow] = useState<any>(null);
+  const [clearOverrideReason, setClearOverrideReason] = useState('');
   const [isSavingOverride, setIsSavingOverride] = useState(false);
 
   const loadData = async () => {
@@ -120,17 +122,17 @@ export default function AdminBgAudit() {
     }
   };
 
-  const handleClearOverride = async (row: any) => {
-    if (!row?.nanny_id || !user?.uid || isSavingOverride) return;
-    const reason = window.prompt('Reason for clearing this override (required):')?.trim();
-    if (!reason) return;
+  const handleClearOverride = async () => {
+    if (!clearOverrideRow?.nanny_id || !user?.uid || !clearOverrideReason.trim() || isSavingOverride) return;
     setIsSavingOverride(true);
     try {
       await clearAdminBgPublicStatusOverride({
-        nannyId: row.nanny_id,
+        nannyId: clearOverrideRow.nanny_id,
         adminUserId: user.uid,
-        reason
+        reason: clearOverrideReason.trim()
       });
+      setClearOverrideRow(null);
+      setClearOverrideReason('');
       await loadData();
     } finally {
       setIsSavingOverride(false);
@@ -231,7 +233,10 @@ export default function AdminBgAudit() {
                         {row.override_active && (
                           <button
                             type="button"
-                            onClick={() => handleClearOverride(row)}
+                            onClick={() => {
+                              setClearOverrideRow(row);
+                              setClearOverrideReason('');
+                            }}
                             disabled={isSavingOverride}
                             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-60"
                           >
@@ -371,6 +376,59 @@ export default function AdminBgAudit() {
                 {isSavingOverride ? (
                   <span className="flex items-center justify-center gap-2"><span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Saving…</span>
                 ) : 'Save Override'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {clearOverrideRow && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg shadow-2xl overflow-hidden"
+          >
+            <div className="relative bg-gradient-to-br from-amber-600 via-amber-500 to-orange-500 px-6 pt-8 pb-10 overflow-hidden">
+              <button type="button" onClick={() => setClearOverrideRow(null)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/35 text-white rounded-full transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-4 relative z-10">
+                <div>
+                  <p className="text-amber-100 text-xs font-semibold uppercase tracking-widest mb-0.5">Clear Override</p>
+                  <h2 className="text-xl font-bold text-white leading-tight">Confirm BG Override Removal</h2>
+                  <p className="text-amber-100/80 text-sm mt-0.5">{clearOverrideRow.nanny_name || clearOverrideRow.nanny_email || clearOverrideRow.nanny_id}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 pt-6 pb-4 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Reason (required)</label>
+                <textarea
+                  value={clearOverrideReason}
+                  onChange={(e) => setClearOverrideReason(e.target.value)}
+                  rows={4}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none transition"
+                  placeholder="Why should this override be cleared?"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-stone-100 flex items-center gap-3">
+              <button type="button" onClick={() => setClearOverrideRow(null)} className="px-5 py-2.5 rounded-2xl border-2 border-stone-200 text-stone-600 font-semibold hover:bg-stone-50 transition-colors text-sm">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearOverride}
+                disabled={!clearOverrideReason.trim() || isSavingOverride}
+                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-500 text-white font-bold shadow-md shadow-amber-200/60 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm"
+              >
+                {isSavingOverride ? (
+                  <span className="flex items-center justify-center gap-2"><span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Clearing…</span>
+                ) : 'Clear Override'}
               </button>
             </div>
           </motion.div>

@@ -4,6 +4,7 @@ import { Baby, ArrowRight, Mail, Lock, User, Users } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { isValidEmail } from '../lib/validation';
 
 export default function JoinFamily() {
   const navigate = useNavigate();
@@ -26,27 +27,56 @@ export default function JoinFamily() {
     setIsSubmitting(true);
     setError(null);
 
-    try {
-      console.log('[JoinFamily] creating account', { email: formData.email });
+    const name = formData.name.trim();
+    const email = formData.email.trim();
+    const password = formData.password;
+    const neighborhood = formData.location_neighborhood.trim();
 
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+    if (name.length < 2) {
+      setError('Please enter your full family name.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!neighborhood) {
+      setError('Please enter your neighborhood.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      console.log('[JoinFamily] creating account', { email });
+
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       if (!user?.uid) {
         throw new Error('Failed to create Firebase user.');
       }
 
       await setDoc(doc(db, 'users', user.uid), {
-        email: formData.email,
+        email,
         role: 'family',
         created_at: serverTimestamp()
       });
 
       await setDoc(doc(db, 'families', user.uid), {
-        name: formData.name,
-        family_name: formData.name,
-        email: formData.email,
+        name,
+        family_name: name,
+        email,
         location_borough: formData.location_borough,
-        location_neighborhood: formData.location_neighborhood,
+        location_neighborhood: neighborhood,
         created_at: serverTimestamp()
       });
 

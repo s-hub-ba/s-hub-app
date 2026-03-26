@@ -33,8 +33,44 @@ async function startServer() {
   const preferredPort = Number(process.env.PORT || 3000);
   const port = await findAvailablePort(preferredPort);
 
-  app.use(cors());
-  app.use(express.json());
+  const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://s-hub-ba.github.io'
+  ];
+
+  const allowedOrigins = configuredOrigins.length > 0 ? configuredOrigins : defaultOrigins;
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-agency-id'],
+    credentials: true,
+  }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // API Routes
   app.get('/api/health', (req, res) => {

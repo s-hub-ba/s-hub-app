@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Send, Sparkles, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFamilyProfile, submitFamilyRequestAndMatch, type FamilyRequestInput } from '../../lib/api';
+import { isValidEmail, isValidPhone } from '../../lib/validation';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
 const AGE_GROUPS = ['newborn', 'infant', 'toddler', 'preschool', 'school-age', 'teen'];
@@ -88,7 +89,8 @@ export default function FamilyRequestForm() {
   const canSubmit = useMemo(() => {
     return (
       form.parent_name.trim().length >= 2
-      && form.email.trim().length > 3
+      && isValidEmail(form.email)
+      && (!form.phone || isValidPhone(form.phone))
       && form.borough.trim().length > 0
       && form.children_count > 0
       && form.child_age_groups.length > 0
@@ -122,7 +124,27 @@ export default function FamilyRequestForm() {
 
   const submitRequest = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canSubmit || submitting) return;
+    if (submitting) return;
+
+    if (form.parent_name.trim().length < 2) {
+      setError('Please enter a valid parent name.');
+      return;
+    }
+
+    if (!isValidEmail(form.email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (form.phone && !isValidPhone(form.phone)) {
+      setError('Please enter a valid phone number with at least 10 digits.');
+      return;
+    }
+
+    if (!canSubmit) {
+      setError('Please complete all required fields before submitting.');
+      return;
+    }
 
     setSubmitting(true);
     setError('');

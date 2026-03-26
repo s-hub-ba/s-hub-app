@@ -39,8 +39,41 @@ import { db, auth } from './firebase';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
+function resolveApiBaseUrl(): string {
+  if (API_BASE_URL) return API_BASE_URL;
+
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
+    throw new Error('Missing VITE_API_BASE_URL. Configure your backend API URL for GitHub Pages builds.');
+  }
+
+  return '';
+}
+
 function buildApiUrl(path: string): string {
-  return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+  const base = resolveApiBaseUrl();
+  return base ? `${base}${path}` : path;
+}
+
+async function buildApiHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extra,
+  };
+
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch (error) {
+    console.warn('Unable to resolve auth token for API request');
+  }
+
+  if (auth.currentUser?.uid && !headers['x-user-id']) {
+    headers['x-user-id'] = auth.currentUser.uid;
+  }
+
+  return headers;
 }
 
 // --- Types ---
@@ -1358,9 +1391,10 @@ export const startNannyPremiumCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
+  const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/nanny/premium/checkout'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ nannyId, userId, months, returnUrl, cancelUrl })
   });
 
@@ -1384,9 +1418,10 @@ export const startNannyCreditsCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
+  const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/nanny/credits/checkout'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ nannyId, userId, credits, returnUrl, cancelUrl })
   });
 
@@ -1406,9 +1441,10 @@ export const captureNannyPaypalOrder = async ({
   nannyId: string;
   userId: string;
 }) => {
+  const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/nanny/order/capture'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ orderId, nannyId, userId })
   });
 
@@ -3236,13 +3272,13 @@ export const addAgencyPost = async (agencyId: string, title: string, content: st
       const callerUserId = auth.currentUser?.uid;
       if (!callerUserId || !agencyId) return;
 
+      const headers = await buildApiHeaders({
+        'x-agency-id': agencyId,
+      });
+
       const response = await fetch(buildApiUrl('/api/agency/posts'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-agency-id': agencyId,
-          'x-user-id': callerUserId
-        },
+        headers,
         body: JSON.stringify({ title, content })
       });
 
@@ -3784,9 +3820,10 @@ export const startAgencyPlanCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
+  const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/agency-plan/checkout'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ agencyId, userId, planCode, returnUrl, cancelUrl })
   });
 
@@ -3808,9 +3845,10 @@ export const finalizeAgencyPlanCheckout = async ({
   planCode: PlanCode;
   subscriptionId?: string;
 }) => {
+  const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/agency-plan/activate'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ agencyId, userId, planCode, subscriptionId })
   });
 

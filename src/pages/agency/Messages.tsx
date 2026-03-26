@@ -100,9 +100,16 @@ export default function AgencyMessages() {
 
     let cancelled = false;
     const loadMessages = async () => {
-      const msgs = await getMessages(activeConversation.id);
-      if (!cancelled) {
-        setMessages((msgs || []).filter(Boolean));
+      try {
+        const msgs = await getMessages(activeConversation.id);
+        if (!cancelled) {
+          setMessages((msgs || []).filter(Boolean));
+        }
+      } catch (error) {
+        console.error('Error loading messages:', error);
+        if (!cancelled) {
+          setLoadError('Unable to refresh messages right now. Please try again shortly.');
+        }
       }
     };
 
@@ -126,6 +133,7 @@ export default function AgencyMessages() {
 
     setIsSending(true);
     try {
+      setLoadError(null);
       const msg = await sendMessage(activeConversation.id, 'agency', currentUserId, trimmedMessage);
       if (msg?.id) {
         setMessages(prev => [...prev, msg]);
@@ -147,7 +155,7 @@ export default function AgencyMessages() {
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      setLoadError('Unable to send your message. Please try again.');
+      setLoadError(error instanceof Error ? error.message : 'Unable to send your message. Please try again.');
     } finally {
       setIsSending(false);
     }
