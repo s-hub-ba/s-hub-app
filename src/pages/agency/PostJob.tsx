@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { ArrowLeft, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
-import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob } from '../../lib/api';
+import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob, getActiveJobCount } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAgencyEntitlements } from '../../lib/entitlements';
+import { formatLimit } from '../../lib/plans';
 
 export default function PostJob() {
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
@@ -16,6 +19,9 @@ export default function PostJob() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeJobCount, setActiveJobCount] = useState(0);
+
+  const { entitlements } = useAgencyEntitlements(resolvedAgencyId);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -27,9 +33,11 @@ export default function PostJob() {
     private_job_address: '',
     pay_min: '',
     pay_max: '',
+    schedule_type: 'weekly_days',
     start_date: '',
+    end_date: '',
+    weekdays: [] as string[],
     required_experience_years: '',
-    schedule_summary: '',
     status: 'published'
   });
 
@@ -39,21 +47,83 @@ export default function PostJob() {
       const agency = await resolveAgencyIdForUser(user.uid);
       setResolvedAgencyId(agency || '');
 
+      if (agency) {
+        const count = await getActiveJobCount(agency);
+        setActiveJobCount(count);
+      }
+
       const inquiryId = searchParams.get('inquiry');
       if (!inquiryId) return;
 
       const convo = await getConversationById(inquiryId);
       if (convo?.inquiry_type === 'agency_intro') {
         setInquiryContext(convo);
+        setFormData(prev => ({
+          ...prev,
+          schedule_type: convo.inquiry_schedule_type === 'date_range' ? 'date_range' : 'weekly_days',
+          start_date: convo.inquiry_schedule_type === 'date_range' ? (convo.inquiry_start_date || '') : prev.start_date,
+          end_date: convo.inquiry_schedule_type === 'date_range' ? (convo.inquiry_end_date || '') : '',
+          weekdays: convo.inquiry_schedule_type === 'weekly_days' && Array.isArray(convo.inquiry_weekdays)
+            ? convo.inquiry_weekdays
+            : prev.weekdays
+        }));
       }
     };
 
     loadContext();
   }, [searchParams, user]);
 
+  // Job limit gate: show upgrade prompt if limit is reached
+  const jobLimitReached =
+    entitlements !== null &&
+    !entitlements.canCreateJobPosting(activeJobCount);
+
+  if (jobLimitReached && entitlements) {
+    const limit = entitlements.activeJobLimit;
+    return (
+      <div className="max-w-lg mx-auto py-16 text-center px-4">
+        <div className="h-16 w-16 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4">
+          <Lock className="h-8 w-8 text-amber-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-stone-900 mb-2">Job Posting Limit Reached</h2>
+        <p className="text-stone-500 mb-2">
+          Your <span className="font-semibold">{entitlements.plan.name}</span> plan allows up to{' '}
+          <span className="font-semibold">{formatLimit(limit)}</span> active job{limit === 1 ? '' : 's'}.
+          You currently have <span className="font-semibold">{activeJobCount}</span> active.
+        </p>
+        <p className="text-stone-400 text-sm mb-6">
+          Upgrade to Professional or Enterprise for unlimited job listings.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link
+            to="/agency/subscription"
+            className="bg-stone-900 hover:bg-stone-800 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors"
+          >
+            Upgrade Plan
+          </Link>
+          <Link
+            to="/agency/jobs"
+            className="bg-white border border-stone-200 text-stone-700 px-6 py-3 rounded-xl text-sm font-bold shadow-sm hover:bg-stone-50 transition-colors"
+          >
+            View My Jobs
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleToggleWeekday = (day: string) => {
+    setFormData(prev => ({
+      ...prev,
+      weekdays: prev.weekdays.includes(day)
+        ? prev.weekdays.filter(item => item !== day)
+        : [...prev.weekdays, day]
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,12 +145,28 @@ export default function PostJob() {
         throw new Error('Could not resolve your agency. Please reload and try again.');
       }
 
+      if (formData.schedule_type === 'date_range' && (!formData.start_date || !formData.end_date)) {
+        throw new Error('Please include both start and end dates for a date-range schedule.');
+      }
+
+      if (formData.schedule_type === 'weekly_days' && formData.weekdays.length === 0) {
+        throw new Error('Please select at least one weekday for a weekly schedule.');
+      }
+
+      const scheduleSummary = formData.schedule_type === 'date_range'
+        ? `Date range: ${formData.start_date || 'TBD'} to ${formData.end_date || 'TBD'}`
+        : `Weekdays: ${formData.weekdays.join(', ') || 'Not specified'}`;
+
       const created = await createJob({
         ...formData,
         agency_id: resolvedAgencyId,
         family_id: inquiryContext?.family_id || null,
         source_inquiry_id: inquiryContext?.id || null,
         linked_from_inquiry: !!inquiryContext?.id,
+        end_date: formData.schedule_type === 'date_range' ? formData.end_date : null,
+        weekdays: formData.schedule_type === 'weekly_days' ? formData.weekdays : [],
+        schedule_summary: scheduleSummary,
+        schedule: scheduleSummary,
         pay_min: parseFloat(formData.pay_min),
         pay_max: parseFloat(formData.pay_max),
         required_experience_years: parseInt(formData.required_experience_years) || 0
@@ -255,19 +341,74 @@ export default function PostJob() {
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-bold text-stone-900 mb-2">Start Date</label>
-                    <input name="start_date" value={formData.start_date} onChange={handleChange} type="date" required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" />
-                  </div>
-                  <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Required Experience (Years)</label>
                     <input name="required_experience_years" value={formData.required_experience_years} onChange={handleChange} type="number" required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="3" />
                   </div>
+                  <div>
+                    <label className="block text-sm font-bold text-stone-900 mb-2">Schedule Type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, schedule_type: 'weekly_days', start_date: '', end_date: '' }))}
+                        className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                          formData.schedule_type === 'weekly_days'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                        }`}
+                      >
+                        Weekly days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, schedule_type: 'date_range', weekdays: [] }))}
+                        className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                          formData.schedule_type === 'date_range'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                        }`}
+                      >
+                        Date range
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-stone-900 mb-2">Schedule Summary</label>
-                  <input name="schedule_summary" value={formData.schedule_summary} onChange={handleChange} type="text" required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="e.g. Mon-Fri, 8am-6pm" />
-                </div>
+                {formData.schedule_type === 'weekly_days' ? (
+                  <div>
+                    <label className="block text-sm font-bold text-stone-900 mb-2">Preferred Weekdays</label>
+                    <div className="flex flex-wrap gap-2">
+                      {weekdays.map((day) => {
+                        const selected = formData.weekdays.includes(day);
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => handleToggleWeekday(day)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
+                              selected
+                                ? 'bg-emerald-600 border-emerald-600 text-white'
+                                : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-sm text-stone-500">Choose the recurring days this role usually covers.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-bold text-stone-900 mb-2">Start Date</label>
+                      <input name="start_date" value={formData.start_date} onChange={handleChange} type="date" required={formData.schedule_type === 'date_range'} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-stone-900 mb-2">End Date</label>
+                      <input name="end_date" value={formData.end_date} onChange={handleChange} type="date" required={formData.schedule_type === 'date_range'} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Required Certifications</label>

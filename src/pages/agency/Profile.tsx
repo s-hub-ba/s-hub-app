@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Save, Plus, X, Image, Globe, Calendar, MapPin, FileText, Newspaper, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import {
   getAgencyById,
   updateAgencyProfile,
@@ -11,6 +9,7 @@ import {
   addAgencyPost,
   deleteAgencyPost,
   AgencyPost,
+  resolveAgencyIdForUser,
 } from '../../lib/api';
 
 const PREDEFINED_SERVICES = [
@@ -80,28 +79,15 @@ export default function AgencyProfilePage() {
         return;
       }
 
-      if (role === 'agency_admin' || role === 'agency') {
-        setAgencyId(user.uid);
+      try {
+        const resolved = await resolveAgencyIdForUser(user.uid);
+        setAgencyId(resolved || '');
+      } catch (error) {
+        console.error('Error resolving agency profile id:', error);
+        setAgencyId('');
+      } finally {
         setResolvingAgency(false);
-        return;
       }
-
-      if (role === 'agency_recruiter') {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const mappedAgencyId = userDoc.exists() ? (userDoc.data().agency_id as string | undefined) : undefined;
-          setAgencyId(mappedAgencyId || '');
-        } catch (error) {
-          console.error('Error resolving recruiter agency:', error);
-          setAgencyId('');
-        } finally {
-          setResolvingAgency(false);
-        }
-        return;
-      }
-
-      setAgencyId('');
-      setResolvingAgency(false);
     };
 
     resolveAgencyId();

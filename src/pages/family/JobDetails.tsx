@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, Briefcase, Clock, DollarSign, Heart, Baby, Calendar, CheckCircle2, ArrowLeft, Send } from 'lucide-react';
 import { getJobById, saveJob, unsaveJob, getSavedJobs, applyToJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobSchedule, toDate } from '../../lib/utils';
 
 export default function JobDetails() {
   const { id } = useParams();
@@ -187,7 +188,7 @@ export default function JobDetails() {
                 <Clock className="h-5 w-5 text-stone-400 shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-stone-900">Schedule</p>
-                  <p className="text-sm text-stone-600">{job.schedule}</p>
+                  <p className="text-sm text-stone-600">{formatJobSchedule(job)}</p>
                 </div>
               </div>
               
@@ -195,7 +196,7 @@ export default function JobDetails() {
                 <Calendar className="h-5 w-5 text-stone-400 shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-stone-900">Start Date</p>
-                  <p className="text-sm text-stone-600">{job.start_date}</p>
+                  <p className="text-sm text-stone-600">{job.schedule_type === 'weekly_days' ? 'Recurring weekly schedule' : (toDate(job.start_date)?.toLocaleDateString() || 'TBD')}</p>
                 </div>
               </div>
             </div>

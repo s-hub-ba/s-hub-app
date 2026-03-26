@@ -1,11 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, MapPin, ShieldCheck, Star, Filter, ArrowRight } from 'lucide-react';
+import { Search, MapPin, ShieldCheck, Star, Filter, ArrowRight, Zap, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { followAgency, unfollowAgency, getFamilyFollowedAgencies, getAgencies } from '../lib/api';
+import { PLAN_CODES } from '../lib/plans';
 
 const BOROUGHS = ['All', 'Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
+
+const TIER_CONFIG: Record<string, { label: string; className: string; sortOrder: number }> = {
+  [PLAN_CODES.ENTERPRISE]: {
+    label: 'Enterprise',
+    className: 'bg-red-100 text-red-700 border border-red-200',
+    sortOrder: 0,
+  },
+  [PLAN_CODES.PROFESSIONAL]: {
+    label: 'Pro',
+    className: 'bg-blue-100 text-blue-700 border border-blue-200',
+    sortOrder: 1,
+  },
+  [PLAN_CODES.STARTER]: {
+    label: 'Starter',
+    className: 'bg-stone-100 text-stone-600 border border-stone-200',
+    sortOrder: 2,
+  },
+};
 
 export default function AgencyDirectory() {
   const [selectedBorough, setSelectedBorough] = useState('All');
@@ -61,13 +80,23 @@ export default function AgencyDirectory() {
     }
   };
 
-  const filteredAgencies = agencies.filter(agency => {
-    const matchesBorough = selectedBorough === 'All' || (agency.boroughs || [])?.includes(selectedBorough);
-    const agencyName = (agency.company_name || agency.name || '').toLowerCase();
-    const matchesSearch = agencyName.includes(searchQuery.toLowerCase()) || 
-      (agency.specialties || [])?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesBorough && matchesSearch;
-  });
+  const filteredAgencies = agencies
+    .filter(agency => {
+      const matchesBorough = selectedBorough === 'All' || (agency.boroughs || [])?.includes(selectedBorough);
+      const agencyName = (agency.company_name || agency.name || '').toLowerCase();
+      const matchesSearch = agencyName.includes(searchQuery.toLowerCase()) || 
+        (agency.specialties || [])?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesBorough && matchesSearch;
+    })
+    .sort((a, b) => {
+      // Enterprise > Professional > Starter > none; sponsored (Featured boost) within each tier first
+      const aTier = TIER_CONFIG[a.plan_tier ?? '']?.sortOrder ?? 3;
+      const bTier = TIER_CONFIG[b.plan_tier ?? '']?.sortOrder ?? 3;
+      if (aTier !== bTier) return aTier - bTier;
+      const aSponsored = a.sponsored || a.isSponsored ? -1 : 0;
+      const bSponsored = b.sponsored || b.isSponsored ? -1 : 0;
+      return aSponsored - bSponsored;
+    });
 
   const getAgencyHref = (agencyId: string) => {
     if (role === 'family' || location.pathname.startsWith('/family/')) {
@@ -212,6 +241,16 @@ export default function AgencyDirectory() {
                       <MapPin className="h-3.5 w-3.5" />
                       {(agency.boroughs || []).join(', ') || 'NYC'}
                     </div>
+                    {agency.plan_tier && agency.plan_tier !== PLAN_CODES.STARTER && (
+                      <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${TIER_CONFIG[agency.plan_tier]?.className ?? ''}`}>
+                        {agency.plan_tier === PLAN_CODES.ENTERPRISE ? (
+                          <TrendingUp className="h-3 w-3" />
+                        ) : (
+                          <Zap className="h-3 w-3" />
+                        )}
+                        {TIER_CONFIG[agency.plan_tier]?.label}
+                      </span>
+                    )}
                   </div>
                 </div>
                 

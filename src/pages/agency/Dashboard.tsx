@@ -20,8 +20,9 @@ const INQUIRY_STAGE_LABELS: Record<InquiryStage, string> = {
 };
 
 export default function AgencyDashboard() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [agencyId, setAgencyId] = useState('');
+  const [isResolvingAgency, setIsResolvingAgency] = useState(true);
   const [agency, setAgency] = useState<any>(null);
   const [inquiries, setInquiries] = useState<any[]>([]);
   const [stats, setStats] = useState({
@@ -47,12 +48,33 @@ export default function AgencyDashboard() {
 
   useEffect(() => {
     const resolveAgency = async () => {
-      if (!user?.uid) return;
-      const resolved = await resolveAgencyIdForUser(user.uid);
-      setAgencyId(resolved || '');
+      if (!user?.uid) {
+        setAgencyId('');
+        setIsResolvingAgency(false);
+        return;
+      }
+
+      try {
+        const resolved = await resolveAgencyIdForUser(user.uid);
+        // Agency admins can safely fallback to their UID (legacy/profile-id pattern).
+        if (!resolved && (role === 'agency_admin' || role === 'agency')) {
+          setAgencyId(user.uid);
+        } else {
+          setAgencyId(resolved || '');
+        }
+      } catch (error) {
+        console.error('Error resolving agency id:', error);
+        if (role === 'agency_admin' || role === 'agency') {
+          setAgencyId(user.uid);
+        } else {
+          setAgencyId('');
+        }
+      } finally {
+        setIsResolvingAgency(false);
+      }
     };
     resolveAgency();
-  }, [user]);
+  }, [role, user]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -60,7 +82,7 @@ export default function AgencyDashboard() {
       try {
         const [agencyData, jobs, apps, conversations, talentPoolItems] = await Promise.all([
           getAgencyById(agencyId),
-          getJobs(),
+          getJobs(agencyId),
           getApplicationsForAgency(agencyId),
           getAgencyConversations(agencyId),
           getAgencyTalentPool(agencyId)
@@ -68,13 +90,12 @@ export default function AgencyDashboard() {
 
         setAgency(agencyData);
 
-        const agencyJobs = jobs.filter(j => j.agency_id === agencyId);
         const newApps = apps.filter(a => a.status === 'applied');
         const inquiryThreads = (conversations || []).filter((c: any) => c.inquiry_type === 'agency_intro');
 
         setInquiries(inquiryThreads.slice(0, 5));
         setStats({
-          activeJobs: agencyJobs.length,
+          activeJobs: jobs.length,
           newApps: newApps.length,
           talentPool: talentPoolItems.length,
           inquiries: inquiryThreads.length
@@ -85,6 +106,10 @@ export default function AgencyDashboard() {
     };
     loadData();
   }, [agencyId]);
+
+  if (isResolvingAgency) {
+    return <div className="p-8 text-center text-stone-500">Loading agency dashboard...</div>;
+  }
 
   if (!agencyId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to view agency dashboard.</div>;
@@ -188,6 +213,20 @@ export default function AgencyDashboard() {
               </div>
               <h3 className="font-bold text-stone-900 mb-1">Talent Pool</h3>
               <p className="text-xs text-stone-500">Invite nannies from search into your private pool.</p>
+            </Link>
+            <Link to="/agency/family-requests" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group">
+              <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-orange-100 group-hover:text-orange-600 mb-3 transition-colors">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-stone-900 mb-1">Family Request Inbox</h3>
+              <p className="text-xs text-stone-500">Review matched family leads and respond quickly.</p>
+            </Link>
+            <Link to="/agency/request-settings" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group">
+              <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-purple-100 group-hover:text-purple-600 mb-3 transition-colors">
+                <Star className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-stone-900 mb-1">Matching Settings</h3>
+              <p className="text-xs text-stone-500">Tune service areas, care types, and budget fit signals.</p>
             </Link>
           </div>
         </div>

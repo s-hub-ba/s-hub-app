@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, Heart, MessageSquare, Clock, MapPin, DollarSign, CheckCircle2, XCircle, AlertCircle, Baby } from 'lucide-react';
-import { getFamilyProfile, getFamilyCareHistory, getSavedJobs, getConversations, getFamilyFollowedAgencies } from '../../lib/api';
+import { Briefcase, Heart, MessageSquare, Clock, MapPin, AlertCircle } from 'lucide-react';
+import { getFamilyProfile, getFamilyCareHistory, getSavedJobs, getConversations, getFamilyFollowedAgencies, getFamilyPlacementApplications } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function FamilyDashboard() {
@@ -9,6 +9,7 @@ export default function FamilyDashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [savedJobs, setSavedJobs] = useState<any[]>([]);
   const [careHistory, setCareHistory] = useState<any[]>([]);
+  const [placements, setPlacements] = useState<any[]>([]);
   const [conversations, setConversations] = useState<any[]>([]);
   const [followedAgencyIds, setFollowedAgencyIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,17 +27,19 @@ export default function FamilyDashboard() {
           getFamilyProfile(familyId),
           getSavedJobs(familyId),
           getFamilyCareHistory(familyId),
+          getFamilyPlacementApplications(familyId),
           getConversations(familyId, 'family'),
           getFamilyFollowedAgencies(familyId)
         ]);
 
-        const [prof, saved, history, convos, follows] = results.map(result =>
+        const [prof, saved, history, placementApps, convos, follows] = results.map(result =>
           result.status === 'fulfilled' ? result.value : null
         );
 
         if (prof) setProfile(prof as any);
         setSavedJobs((saved as any[]) || []);
         setCareHistory((history as any[]) || []);
+        setPlacements((placementApps as any[]) || []);
         setConversations((convos as any[]) || []);
         setFollowedAgencyIds((follows as string[]) || []);
 
@@ -94,6 +97,36 @@ export default function FamilyDashboard() {
 
   const progress = getOnboardingProgress(profile);
 
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const formatDate = (value: any): string | null => {
+    const ts = toMillis(value);
+    if (!ts) return null;
+    return new Date(ts).toLocaleDateString();
+  };
+
+  const now = Date.now();
+  const nextScheduledPlacement = placements
+    .filter((app) => ['accepted', 'hired', 'active', 'pending_family_approval'].includes(app.status))
+    .map((app) => {
+      const callAt = toMillis(app.call_scheduled_for);
+      const startAt = toMillis((app as any).start_date);
+      const nextAt = callAt > now ? callAt : (startAt > now ? startAt : 0);
+      return {
+        app,
+        nextAt,
+        label: callAt > now ? 'Call' : (startAt > now ? 'Start' : null)
+      };
+    })
+    .filter((item) => item.nextAt > 0)
+    .sort((a, b) => a.nextAt - b.nextAt)[0] || null;
+
   return (
     <div className="space-y-8 pb-12">
       {!isOnboardingComplete && (
@@ -120,6 +153,13 @@ export default function FamilyDashboard() {
         >
           <Briefcase className="h-4 w-4" />
           Find an Agency
+        </Link>
+        <Link
+          to="/family/request-care"
+          className="bg-white border border-stone-200 text-stone-800 px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center justify-center gap-2"
+        >
+          <Clock className="h-4 w-4" />
+          Submit Care Request
         </Link>
       </div>
 
@@ -161,40 +201,39 @@ export default function FamilyDashboard() {
         <div className="lg:col-span-2 space-y-8">
 
 
-          {/* Past Care */}
+          {/* Next Care */}
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="p-6 md:p-8 border-b border-stone-100 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-stone-900">Past Care</h2>
-              <Link to="/family/saved" className="text-sm font-bold text-emerald-600 hover:text-emerald-700">
-                View All
+              <h2 className="text-xl font-bold text-stone-900">Next Care</h2>
+              <Link to="/family/placements" className="text-sm font-bold text-emerald-600 hover:text-emerald-700">
+                View Placements
               </Link>
             </div>
             
             <div className="divide-y divide-stone-100">
-              {careHistory.length === 0 ? (
+              {!nextScheduledPlacement ? (
                 <div className="p-8 text-center">
-                  <Heart className="h-12 w-12 text-stone-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-bold text-stone-900">No past care history</h3>
-                  <p className="text-stone-500 mt-1">Once care is completed, you’ll see past agencies/nannies here and can leave reviews.</p>
+                  <Clock className="h-12 w-12 text-stone-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-stone-900">No scheduled care yet</h3>
+                  <p className="text-stone-500 mt-1">When an agency schedules your next care step, it will appear here.</p>
                 </div>
               ) : (
-                careHistory.slice(0, 3).map((history) => (
-                  <div key={history.id} className="p-6 hover:bg-stone-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <h3 className="font-bold text-stone-900 mb-1">{history.job_title || 'Past Care Role'}</h3>
-                      <div className="flex items-center gap-3 text-sm text-stone-500">
-                        <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {history.location_neighborhood || 'NYC'}{history.location_borough ? `, ${history.location_borough}` : ''}</span>
-                        <span className="flex items-center gap-1"><DollarSign className="h-4 w-4" /> Completed</span>
-                      </div>
+                <div className="p-6 hover:bg-stone-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-stone-900 mb-1">{nextScheduledPlacement.app.jobs?.title || 'Upcoming Placement'}</h3>
+                    <p className="text-sm text-emerald-700 font-semibold mb-2">{nextScheduledPlacement.label}: {formatDate(nextScheduledPlacement.nextAt)}</p>
+                    <div className="flex items-center gap-3 text-sm text-stone-500">
+                      <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {nextScheduledPlacement.app.jobs?.location_neighborhood || 'NYC'}{nextScheduledPlacement.app.jobs?.location_borough ? `, ${nextScheduledPlacement.app.jobs?.location_borough}` : ''}</span>
+                      <span>{nextScheduledPlacement.app.jobs?.agency_profiles?.company_name || 'Agency partner'}</span>
                     </div>
-                    <Link
-                      to="/family/saved"
-                      className="bg-stone-100 hover:bg-stone-200 text-stone-900 px-4 py-2 rounded-xl text-sm font-bold transition-colors"
-                    >
-                      Leave Review
-                    </Link>
                   </div>
-                ))
+                  <Link
+                    to="/family/placements"
+                    className="bg-stone-100 hover:bg-stone-200 text-stone-900 px-4 py-2 rounded-xl text-sm font-bold transition-colors"
+                  >
+                    Open Placements
+                  </Link>
+                </div>
               )}
             </div>
           </div>
@@ -202,38 +241,26 @@ export default function FamilyDashboard() {
 
         {/* Sidebar */}
         <div className="space-y-8">
-          {/* Profile Snapshot */}
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6">
-            <h3 className="font-bold text-stone-900 mb-4">Family Profile</h3>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <MapPin className="h-5 w-5 text-stone-400 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-stone-900">Location</p>
-                  <p className="text-sm text-stone-600">{profile.location_neighborhood}, {profile.location_borough}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Baby className="h-5 w-5 text-stone-400 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-stone-900">Children</p>
-                  <p className="text-sm text-stone-600">{profile.children_count} ({profile.children_ages?.join(', ')})</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <Clock className="h-5 w-5 text-stone-400 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-stone-900">Care Needed</p>
-                  <p className="text-sm text-stone-600">{profile.care_type}</p>
-                </div>
-              </div>
+          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-stone-100 flex items-center justify-between">
+              <h3 className="font-bold text-stone-900">Past Care</h3>
+              <Link to="/family/saved" className="text-sm font-bold text-emerald-600 hover:text-emerald-700">
+                View All
+              </Link>
             </div>
-            <Link 
-              to="/family/profile"
-              className="mt-6 block w-full py-2.5 border border-stone-200 rounded-xl text-sm font-bold text-stone-600 text-center hover:bg-stone-50 transition-colors"
-            >
-              Edit Profile
-            </Link>
+            <div className="divide-y divide-stone-100">
+              {careHistory.length === 0 ? (
+                <div className="p-6 text-sm text-stone-500">No past care history yet.</div>
+              ) : (
+                careHistory.slice(0, 2).map((history) => (
+                  <div key={history.id} className="p-6">
+                    <p className="font-semibold text-stone-900">{history.job_title || 'Past Care Role'}</p>
+                    <p className="mt-1 text-sm text-stone-500">{history.agency_name || 'Agency'} • {history.nanny_name || 'Nanny'}</p>
+                    <p className="mt-1 text-xs text-stone-400">Completed</p>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Privacy Notice */}

@@ -187,7 +187,7 @@ export default function FamilyApplications() {
                         to="/family/messages"
                         className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors text-center"
                       >
-                        Message Agency
+                        Send Inquiry
                       </Link>
                     )}
                     {app.status === 'pending_family_approval' && (

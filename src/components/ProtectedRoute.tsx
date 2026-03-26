@@ -6,7 +6,7 @@ type ProtectedRouteProps = {
 };
 
 export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
-  const { user, role, loading } = useAuth();
+  const { user, role, status, loading } = useAuth();
 
   if (loading) {
     return (
@@ -18,6 +18,10 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
 
   // If not logged in, redirect to login
   if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (status === 'inactive') {
     return <Navigate to="/login" replace />;
   }
 

@@ -1,14 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, BookmarkPlus, Check, Phone } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats } from '../../lib/api';
+import { addFamilyNotification, addNannyNotification, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_COLORS = {
   applied: 'bg-stone-100 text-stone-700',
   reviewing: 'bg-blue-100 text-blue-700',
+  interviewing: 'bg-orange-100 text-orange-700',
   interview_invited: 'bg-orange-100 text-orange-700',
   accepted: 'bg-emerald-100 text-emerald-700',
+  hired: 'bg-emerald-100 text-emerald-700',
+  active: 'bg-teal-100 text-teal-700',
+  pending_family_approval: 'bg-indigo-100 text-indigo-700',
   completed: 'bg-indigo-100 text-indigo-700',
   rejected: 'bg-red-100 text-red-700',
   withdrawn: 'bg-stone-200 text-stone-500'
@@ -17,8 +21,12 @@ const STATUS_COLORS = {
 const STATUS_LABELS = {
   applied: 'New',
   reviewing: 'Reviewing',
+  interviewing: 'Interviewing',
   interview_invited: 'Interview Invited',
-  accepted: 'Accepted',
+  accepted: 'Offer Extended',
+  hired: 'Accepted',
+  active: 'Placement Active',
+  pending_family_approval: 'Awaiting Family Sign-off',
   completed: 'Completed',
   rejected: 'Rejected',
   withdrawn: 'Withdrawn'
@@ -29,6 +37,7 @@ export default function AgencyApplications() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [agencyId, setAgencyId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [queueFilter, setQueueFilter] = useState<'all' | 'followups'>('all');
   const [applications, setApplications] = useState<any[]>([]);
   const [talentPoolIds, setTalentPoolIds] = useState<Set<string>>(new Set());
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -38,10 +47,20 @@ export default function AgencyApplications() {
   const [selectedApp, setSelectedApp] = useState<any>(null);
   const [callDateTime, setCallDateTime] = useState('');
   const [callNote, setCallNote] = useState('');
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState('');
+  const [reviewReliability, setReviewReliability] = useState(5);
+  const [reviewCommunication, setReviewCommunication] = useState(5);
+  const [reviewPunctuality, setReviewPunctuality] = useState(true);
+  const [reviewRehire, setReviewRehire] = useState(true);
+  const [reviewStrengths, setReviewStrengths] = useState('');
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewRelationshipContext, setReviewRelationshipContext] = useState<'managed' | 'applied' | 'interviewed' | 'placed' | 'trial_completed' | 'placement_completed'>('placed');
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [isCallSubmitting, setIsCallSubmitting] = useState(false);
+  const [overdueCallPromptOpen, setOverdueCallPromptOpen] = useState(false);
+  const [overdueCallApp, setOverdueCallApp] = useState<any>(null);
+  const [callOutcome, setCallOutcome] = useState<'happened' | 'no_show' | 'cancelled'>('happened');
+  const [callOutcomeNotes, setCallOutcomeNotes] = useState('');
+  const [isSavingCallOutcome, setIsSavingCallOutcome] = useState(false);
   const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState(false);
 
   useEffect(() => {
@@ -93,6 +112,41 @@ export default function AgencyApplications() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!applications.length || overdueCallPromptOpen) return;
+
+    const now = Date.now();
+    const overdue = applications.find((app) => {
+      const scheduled = app.call_scheduled_for ? new Date(app.call_scheduled_for).getTime() : 0;
+      const hasOutcome = !!app.call_outcome_at || !!app.call_outcome;
+      const hasCallScheduled = !!scheduled && !Number.isNaN(scheduled);
+      const callWasAccepted = app.call_status === 'confirmed' || app.call_status === 'pending_nanny';
+      return hasCallScheduled && callWasAccepted && scheduled < now && !hasOutcome;
+    });
+
+    if (overdue) {
+      setOverdueCallApp(overdue);
+      setCallOutcome('happened');
+      setCallOutcomeNotes('');
+      setOverdueCallPromptOpen(true);
+    }
+  }, [applications, overdueCallPromptOpen]);
+
+  const isOverdueCallPendingFollowup = (app: any) => {
+    const scheduled = app.call_scheduled_for ? new Date(app.call_scheduled_for).getTime() : 0;
+    const hasOutcome = !!app.call_outcome_at || !!app.call_outcome;
+    const hasCallScheduled = !!scheduled && !Number.isNaN(scheduled);
+    const callWasAccepted = app.call_status === 'confirmed' || app.call_status === 'pending_nanny';
+    return hasCallScheduled && callWasAccepted && scheduled < Date.now() && !hasOutcome;
+  };
+
+  const openOverdueCallPrompt = (app: any) => {
+    setOverdueCallApp(app);
+    setCallOutcome('happened');
+    setCallOutcomeNotes('');
+    setOverdueCallPromptOpen(true);
+  };
+
   const handleAddToPool = async (nannyId: string) => {
     if (!agencyId || !nannyId || talentPoolIds.has(nannyId)) return;
     await addNannyToAgencyTalentPool(agencyId, nannyId);
@@ -139,9 +193,97 @@ export default function AgencyApplications() {
     }
   };
 
+  const closeOverduePrompt = () => {
+    setOverdueCallPromptOpen(false);
+    setOverdueCallApp(null);
+    setCallOutcome('happened');
+    setCallOutcomeNotes('');
+  };
+
+  const handleSaveOverdueCallOutcome = async () => {
+    if (!overdueCallApp?.id || isSavingCallOutcome) return;
+    setIsSavingCallOutcome(true);
+    try {
+      await updateApplicationCallOutcome({
+        applicationId: overdueCallApp.id,
+        outcome: callOutcome,
+        notes: callOutcomeNotes,
+      });
+
+      if (callOutcome === 'happened' && overdueCallApp.nanny_id) {
+        await addNannyNotification(
+          overdueCallApp.nanny_id,
+          'Call logged by agency',
+          `The agency logged your scheduled call for ${overdueCallApp.job_title || 'the role'} as completed.`,
+          '/nanny/applications'
+        );
+      }
+
+      await loadData();
+      closeOverduePrompt();
+    } catch (error) {
+      console.error('Error saving call outcome:', error);
+    } finally {
+      setIsSavingCallOutcome(false);
+    }
+  };
+
   const handleStatusChange = async (appId: string, newStatus: string) => {
     try {
-      await updateApplicationStatus(appId, newStatus);
+      const app = applications.find((item) => item.id === appId);
+      await updateApplicationStatus(appId, newStatus as any, { actorRole: 'agency' });
+
+      if (app?.nanny_id) {
+        const nannyNotifications: Record<string, { title: string; message: string }> = {
+          reviewing: {
+            title: 'Application under review',
+            message: `Your application for ${app.job_title || 'this job'} is now under review.`
+          },
+          accepted: {
+            title: 'Placement offer ready',
+            message: `You were selected for ${app.job_title || 'this role'}. Review your job overview for the next steps.`
+          },
+          active: {
+            title: 'Placement started',
+            message: `Your placement for ${app.job_title || 'this role'} is now active.`
+          },
+          rejected: {
+            title: 'Application closed',
+            message: `The agency moved forward with another candidate for ${app.job_title || 'this role'}.`
+          },
+          completed: {
+            title: 'Placement completed',
+            message: `The placement for ${app.job_title || 'this role'} has been marked completed.`
+          }
+        };
+        const nannyNotification = nannyNotifications[newStatus];
+        if (nannyNotification) {
+          await addNannyNotification(app.nanny_id, nannyNotification.title, nannyNotification.message, '/nanny/applications');
+        }
+      }
+
+      const familyId = app?.family_id || app?.jobs?.family_id;
+      if (familyId) {
+        const familyNotifications: Record<string, { title: string; message: string }> = {
+          active: {
+            title: 'Placement started',
+            message: `${app?.nanny_name || 'Your nanny'} has started ${app?.job_title || 'the placement'}.`
+          },
+          pending_family_approval: {
+            title: 'Completion ready for review',
+            message: `${app?.nanny_name || 'Your nanny'} marked ${app?.job_title || 'the placement'} as complete and is awaiting your approval.`
+          },
+          completed: {
+            title: 'Placement completed',
+            message: `${app?.job_title || 'The placement'} has been completed.`
+          }
+        };
+        const familyNotification = familyNotifications[newStatus];
+        if (familyNotification) {
+          await addFamilyNotification(familyId, familyNotification.title, familyNotification.message, '/family/applications');
+        }
+      }
+
       if (newStatus === 'completed') {
         await recordCareHistoryFromApplication(appId);
       }
@@ -153,8 +295,19 @@ export default function AgencyApplications() {
 
   const openReviewModal = (app: any) => {
     setSelectedApp(app);
-    setReviewRating(5);
-    setReviewComment('');
+    setReviewReliability(5);
+    setReviewCommunication(5);
+    setReviewPunctuality(true);
+    setReviewRehire(true);
+    setReviewStrengths('');
+    setReviewNotes('');
+    setReviewRelationshipContext(
+      app.status === 'interviewing' || app.status === 'interview_invited'
+        ? 'interviewed'
+        : app.status === 'completed'
+          ? 'placement_completed'
+          : 'placed'
+    );
     setReviewSubmitSuccess(false);
     setReviewModalOpen(true);
   };
@@ -175,7 +328,7 @@ export default function AgencyApplications() {
   };
 
   const handleSubmitReview = async () => {
-    if (!selectedApp || !agencyId || !selectedApp.nanny_id || reviewRating < 1 || reviewRating > 5 || !reviewComment.trim()) {
+    if (!selectedApp || !agencyId || !selectedApp.nanny_id || !reviewStrengths.trim()) {
       return;
     }
 
@@ -184,9 +337,17 @@ export default function AgencyApplications() {
       await addNannyReview({
         nanny_id: selectedApp.nanny_id,
         reviewer_id: agencyId,
+        reviewer_type: 'agency',
         reviewer_role: 'agency',
-        rating: reviewRating,
-        comment: reviewComment
+        relationship_reference_type: 'application',
+        relationship_reference_id: selectedApp.id,
+        relationship_context: reviewRelationshipContext,
+        reliability_rating: reviewReliability,
+        communication_rating: reviewCommunication,
+        punctuality: reviewPunctuality,
+        rehire: reviewRehire,
+        strengths: reviewStrengths,
+        notes: reviewNotes
       });
       setReviewSubmitSuccess(true);
       setTimeout(() => {
@@ -200,10 +361,17 @@ export default function AgencyApplications() {
     }
   };
 
-  const filteredApps = applications.filter(app =>
-    app.nanny_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    app.job_title?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const overdueFollowupsCount = applications.filter((app) => isOverdueCallPendingFollowup(app)).length;
+
+  const filteredApps = applications.filter((app) => {
+    const searchMatches =
+      app.nanny_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.job_title?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!searchMatches) return false;
+    if (queueFilter === 'followups') return isOverdueCallPendingFollowup(app);
+    return true;
+  });
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -244,79 +412,95 @@ export default function AgencyApplications() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <button className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-medium hover:bg-stone-50 transition-colors">
-          <Filter className="h-4 w-4" />
-          Job Filter
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setQueueFilter('all')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${queueFilter === 'all' ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-200 text-stone-700 hover:bg-stone-50'}`}
+          >
+            <Filter className="h-4 w-4" />
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFilter('followups')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${queueFilter === 'followups' ? 'bg-amber-600 text-white border-amber-600' : 'border-stone-200 text-stone-700 hover:bg-stone-50'}`}
+          >
+            Call Follow-ups
+            <span className={`inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-[11px] font-bold ${queueFilter === 'followups' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {overdueFollowupsCount}
+            </span>
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200 text-xs font-medium text-stone-500 uppercase tracking-wider">
-                <th className="p-4 pl-6">Applicant</th>
-                <th className="p-4">Job</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Applied Date</th>
-                <th className="p-4 pr-6 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {filteredApps.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-stone-500">
-                    No applications found.
-                  </td>
-                </tr>
-              ) : (
-                filteredApps.map((app, index) => (
-                  <motion.tr
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                    key={app.id}
-                    className="hover:bg-stone-50/50 transition-colors group"
-                  >
-                    <td className="p-4 pl-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-stone-200 flex items-center justify-center text-stone-500 font-bold border border-stone-300">
-                          {app.nanny_name?.charAt(0) || '?'}
-                        </div>
-                        <div>
-                          <div className="font-bold text-stone-900 flex items-center gap-1">
-                            {app.nanny_name}
-                            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                          </div>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <Star className="h-3 w-3 text-yellow-500 fill-current" />
-                            <span className="text-xs font-bold text-stone-700">{app.nanny_profiles?.rating ? app.nanny_profiles.rating.toFixed(1) : 'N/A'}</span>
-                          </div>
-                          {app.compatibility && (
-                            <div className="mt-1">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
-                                app.compatibility.tier === 'excellent'
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : app.compatibility.tier === 'good'
-                                    ? 'bg-blue-100 text-blue-700'
-                                    : app.compatibility.tier === 'fair'
-                                      ? 'bg-amber-100 text-amber-700'
-                                      : 'bg-stone-100 text-stone-600'
-                              }`}>
-                                Match {app.compatibility.score}%
-                              </span>
-                            </div>
-                          )}
-                        </div>
+      <div className="rounded-3xl border border-stone-200 shadow-sm overflow-hidden bg-gradient-to-br from-white via-stone-50/70 to-emerald-50/30">
+        <div className="px-6 py-4 border-b border-stone-200/70 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-stone-900">Candidate Pipeline</h2>
+            <p className="text-xs text-stone-500 mt-0.5">Prioritized view with status, call signal, and next actions.</p>
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-white/90 border border-stone-200 text-stone-700">
+            {filteredApps.length} record{filteredApps.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {filteredApps.length === 0 ? (
+          <div className="p-10 text-center text-stone-500">No applications found.</div>
+        ) : (
+          <div className="p-4 md:p-5 space-y-3">
+            {filteredApps.map((app, index) => (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: index * 0.03 }}
+                key={app.id}
+                className="rounded-2xl border border-stone-200 bg-white/95 backdrop-blur-sm shadow-sm p-4 md:p-5"
+              >
+                <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1.2fr_1.3fr_auto] gap-4 items-start">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-stone-200 to-stone-300 flex items-center justify-center text-stone-600 font-bold border border-stone-300 shrink-0">
+                      {app.nanny_name?.charAt(0) || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-stone-900 flex items-center gap-1.5 text-[1.1rem] leading-tight">
+                        <span className="truncate">{app.nanny_name}</span>
+                        <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-stone-400" />
-                        <span className="text-sm font-medium text-stone-700">{app.job_title}</span>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Star className="h-3.5 w-3.5 text-yellow-500 fill-current" />
+                        <span className="text-xs font-semibold text-stone-700">{app.nanny_profiles?.rating ? app.nanny_profiles.rating.toFixed(1) : 'N/A'}</span>
                       </div>
-                    </td>
-                    <td className="p-4">
+                      {app.compatibility && (
+                        <div className="mt-1.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                            app.compatibility.tier === 'excellent'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : app.compatibility.tier === 'good'
+                                ? 'bg-blue-100 text-blue-700'
+                                : app.compatibility.tier === 'fair'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-stone-100 text-stone-600'
+                          }`}>
+                            Match {app.compatibility.score}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-wider text-stone-400 font-semibold">Role</div>
+                    <div className="mt-1 flex items-start gap-2">
+                      <FileText className="h-4 w-4 text-stone-400 mt-0.5 shrink-0" />
+                      <p className="text-stone-800 font-semibold leading-snug break-words">{app.job_title}</p>
+                    </div>
+                    <div className="text-xs text-stone-500 mt-2">Applied {toDate(app.created_at)?.toLocaleDateString() || '—'}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-stone-400 font-semibold">Pipeline</div>
+                    <div className="mt-1.5">
                       <select
                         className={`text-xs font-bold rounded-lg px-2.5 py-1.5 border border-transparent hover:border-stone-200 outline-none cursor-pointer appearance-none ${STATUS_COLORS[app.status as keyof typeof STATUS_COLORS]}`}
                         value={app.status}
@@ -326,242 +510,486 @@ export default function AgencyApplications() {
                           <option key={key} value={key} className="bg-white text-stone-900">{label}</option>
                         ))}
                       </select>
-                      {app.call_status && (
-                        <p className={`mt-2 text-[11px] font-semibold ${app.call_status === 'confirmed' ? 'text-emerald-700' : app.call_status === 'declined' ? 'text-red-600' : 'text-orange-700'}`}>
-                          {app.call_status === 'pending_nanny' && `Call proposed for ${formatCallDateTime(app.call_scheduled_for)}`}
-                          {app.call_status === 'confirmed' && `Call confirmed for ${formatCallDateTime(app.call_scheduled_for)}`}
-                          {app.call_status === 'declined' && 'Previous call proposal was declined'}
-                        </p>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <span className="text-sm text-stone-600">
-                        {toDate(app.created_at)?.toLocaleDateString() || '—'}
-                      </span>
-                    </td>
-                    <td className="p-4 pr-6 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => openQuickView(app)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                    </div>
+
+                    {app.call_status && (
+                      <p className={`mt-2 text-xs font-semibold ${app.call_status === 'confirmed' ? 'text-emerald-700' : app.call_status === 'declined' ? 'text-red-600' : 'text-orange-700'}`}>
+                        {app.call_status === 'pending_nanny' && `Call proposed for ${formatCallDateTime(app.call_scheduled_for)}`}
+                        {app.call_status === 'confirmed' && `Call confirmed for ${formatCallDateTime(app.call_scheduled_for)}`}
+                        {app.call_status === 'declined' && 'Previous call proposal was declined'}
+                      </p>
+                    )}
+
+                    {app.call_outcome && (
+                      <p className="mt-1 text-xs font-semibold text-stone-600">
+                        Call outcome: {app.call_outcome === 'happened' ? 'Happened' : app.call_outcome === 'no_show' ? 'No-show' : 'Cancelled'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row xl:flex-col items-stretch gap-2 xl:items-end">
+                    {isOverdueCallPendingFollowup(app) && (
+                      <button
+                        onClick={() => openOverdueCallPrompt(app)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+                      >
+                        Log Follow-up
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => openQuickView(app)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                    >
+                      <Eye className="h-3 w-3" />
+                      Quick View
+                    </button>
+
+                    {app.status === 'completed' && (
+                      <button
+                        onClick={() => openReviewModal(app)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+                      >
+                        <Star className="h-3 w-3" />
+                        Review
+                      </button>
+                    )}
+
+                    <div ref={dropdownRef} className="relative self-end">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === app.id ? null : app.id); }}
+                        className="p-1.5 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                      {openDropdownId === app.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-full mt-1 w-48 bg-white border border-stone-200 rounded-xl shadow-lg z-50 overflow-hidden"
                         >
-                          <Eye className="h-3 w-3" />
-                          Quick View
-                        </button>
-                        {(app.status === 'accepted' || app.status === 'interview_invited') && (
                           <button
-                            onClick={() => openReviewModal(app)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+                            onClick={() => openScheduleModal(app)}
+                            className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2 transition-colors"
                           >
-                            <Star className="h-3 w-3" />
-                            Review
+                            <Phone className="h-4 w-4 text-stone-400" />
+                            {app.call_status === 'confirmed' || app.call_status === 'pending_nanny' ? 'Reschedule Call' : 'Schedule Call'}
                           </button>
-                        )}
-                        <div ref={dropdownRef} className="relative">
                           <button
-                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === app.id ? null : app.id); }}
-                            className="p-1.5 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
+                            onClick={() => handleAddToPool(app.nanny_id)}
+                            disabled={talentPoolIds.has(app.nanny_id)}
+                            className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <MoreHorizontal className="h-4 w-4" />
+                            {talentPoolIds.has(app.nanny_id)
+                              ? <Check className="h-4 w-4 text-emerald-500" />
+                              : <BookmarkPlus className="h-4 w-4 text-stone-400" />}
+                            {talentPoolIds.has(app.nanny_id) ? 'In Talent Pool' : 'Add to Talent Pool'}
                           </button>
-                          {openDropdownId === app.id && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-full mt-1 w-48 bg-white border border-stone-200 rounded-xl shadow-lg z-20 overflow-hidden"
-                            >
-                              <button
-                                onClick={() => openScheduleModal(app)}
-                                className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2 transition-colors"
-                              >
-                                <Phone className="h-4 w-4 text-stone-400" />
-                                {app.call_status === 'confirmed' || app.call_status === 'pending_nanny' ? 'Reschedule Call' : 'Schedule Call'}
-                              </button>
-                              <button
-                                onClick={() => handleAddToPool(app.nanny_id)}
-                                disabled={talentPoolIds.has(app.nanny_id)}
-                                className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {talentPoolIds.has(app.nanny_id)
-                                  ? <Check className="h-4 w-4 text-emerald-500" />
-                                  : <BookmarkPlus className="h-4 w-4 text-stone-400" />}
-                                {talentPoolIds.has(app.nanny_id) ? 'In Talent Pool' : 'Add to Talent Pool'}
-                              </button>
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
 
       {quickViewOpen && selectedApp && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl p-6 shadow-xl relative">
-            <button onClick={closeQuickView} className="absolute top-4 right-4 p-2 text-stone-500 hover:text-stone-800 rounded-full">
-              <X className="h-4 w-4" />
-            </button>
-            <h2 className="text-2xl font-bold text-stone-900 mb-2">Applicant Quick View</h2>
-            <p className="text-stone-500 mb-6">{selectedApp.nanny_name}</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl shadow-2xl overflow-hidden"
+          >
+            <div className="relative bg-gradient-to-br from-stone-700 via-stone-600 to-stone-800 px-6 pt-8 pb-10 overflow-hidden">
+              <button onClick={closeQuickView} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/35 text-white rounded-full transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-white text-2xl font-bold shadow-lg shrink-0">
+                  {(selectedApp.nanny_name || 'A').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-stone-300 text-xs font-semibold uppercase tracking-widest mb-0.5">Applicant Quick View</p>
+                  <h2 className="text-2xl font-bold text-white leading-tight">{selectedApp.nanny_name}</h2>
+                </div>
+              </div>
+              <div className="absolute -bottom-8 -right-8 h-28 w-28 rounded-full bg-white/10 pointer-events-none" />
+              <div className="absolute -top-6 -left-6 h-20 w-20 rounded-full bg-white/10 pointer-events-none" />
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div className="rounded-xl border border-stone-200 p-4">
-                <p className="text-stone-400 text-xs uppercase tracking-wider">Job</p>
-                <p className="font-semibold text-stone-900 mt-1">{selectedApp.job_title}</p>
+            <div className="px-6 pt-6 pb-4 space-y-4 max-h-[65vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                  <p className="text-stone-400 text-xs font-bold uppercase tracking-widest">Job</p>
+                  <p className="font-semibold text-stone-900 mt-1.5">{selectedApp.job_title}</p>
+                </div>
+                <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                  <p className="text-stone-400 text-xs font-bold uppercase tracking-widest">Status</p>
+                  <p className="font-semibold text-stone-900 mt-1.5">{STATUS_LABELS[selectedApp.status as keyof typeof STATUS_LABELS] || selectedApp.status}</p>
+                </div>
+                <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                  <p className="text-stone-400 text-xs font-bold uppercase tracking-widest">Experience</p>
+                  <p className="font-semibold text-stone-900 mt-1.5">{selectedApp.nanny_profiles?.years_experience ?? '—'} yrs</p>
+                </div>
+                <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                  <p className="text-stone-400 text-xs font-bold uppercase tracking-widest">Location</p>
+                  <p className="font-semibold text-stone-900 mt-1.5">{selectedApp.nanny_profiles?.location_borough || '—'}</p>
+                </div>
               </div>
-              <div className="rounded-xl border border-stone-200 p-4">
-                <p className="text-stone-400 text-xs uppercase tracking-wider">Current Status</p>
-                <p className="font-semibold text-stone-900 mt-1">{STATUS_LABELS[selectedApp.status as keyof typeof STATUS_LABELS] || selectedApp.status}</p>
+
+              <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                <p className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-2">Cover Letter</p>
+                <p className="text-stone-700 text-sm whitespace-pre-wrap leading-relaxed">{selectedApp.cover_letter || 'No cover letter provided.'}</p>
               </div>
-              <div className="rounded-xl border border-stone-200 p-4">
-                <p className="text-stone-400 text-xs uppercase tracking-wider">Experience</p>
-                <p className="font-semibold text-stone-900 mt-1">{selectedApp.nanny_profiles?.years_experience ?? '—'} years</p>
+
+              <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                <p className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-2">Bio</p>
+                <p className="text-stone-700 text-sm whitespace-pre-wrap leading-relaxed">{selectedApp.nanny_profiles?.bio || 'No bio available.'}</p>
               </div>
-              <div className="rounded-xl border border-stone-200 p-4">
-                <p className="text-stone-400 text-xs uppercase tracking-wider">Location</p>
-                <p className="font-semibold text-stone-900 mt-1">{selectedApp.nanny_profiles?.location_borough || '—'}</p>
+
+              <div className="bg-stone-50 rounded-2xl border border-stone-100 p-4">
+                <p className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-2">Call Status</p>
+                <p className="text-stone-900 font-semibold text-sm">
+                  {selectedApp.call_status === 'confirmed' && `Confirmed for ${formatCallDateTime(selectedApp.call_scheduled_for)}`}
+                  {selectedApp.call_status === 'pending_nanny' && `Awaiting nanny confirmation for ${formatCallDateTime(selectedApp.call_scheduled_for)}`}
+                  {selectedApp.call_status === 'declined' && 'Last proposed call was declined'}
+                  {!selectedApp.call_status && 'No call scheduled yet.'}
+                </p>
+                {selectedApp.call_note && (
+                  <p className="text-stone-600 mt-2 text-sm whitespace-pre-wrap">{selectedApp.call_note}</p>
+                )}
               </div>
             </div>
 
-            <div className="mt-4 rounded-xl border border-stone-200 p-4">
-              <p className="text-stone-400 text-xs uppercase tracking-wider">Cover Letter</p>
-              <p className="text-stone-700 mt-2 whitespace-pre-wrap">{selectedApp.cover_letter || 'No cover letter provided.'}</p>
+            <div className="px-6 py-4 border-t border-stone-100 flex justify-end">
+              <button onClick={closeQuickView} className="px-5 py-2.5 rounded-2xl border-2 border-stone-200 text-stone-600 font-semibold hover:bg-stone-50 transition-colors text-sm">
+                Close
+              </button>
             </div>
-
-            <div className="mt-4 rounded-xl border border-stone-200 p-4">
-              <p className="text-stone-400 text-xs uppercase tracking-wider">Bio</p>
-              <p className="text-stone-700 mt-2 whitespace-pre-wrap">{selectedApp.nanny_profiles?.bio || 'No bio available.'}</p>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-stone-200 p-4 bg-stone-50/70">
-              <p className="text-stone-400 text-xs uppercase tracking-wider">Call Status</p>
-              <p className="text-stone-900 font-semibold mt-2">
-                {selectedApp.call_status === 'confirmed' && `Confirmed for ${formatCallDateTime(selectedApp.call_scheduled_for)}`}
-                {selectedApp.call_status === 'pending_nanny' && `Awaiting nanny confirmation for ${formatCallDateTime(selectedApp.call_scheduled_for)}`}
-                {selectedApp.call_status === 'declined' && 'Last proposed call was declined'}
-                {!selectedApp.call_status && 'No call scheduled yet.'}
-              </p>
-              {selectedApp.call_note && (
-                <p className="text-stone-600 mt-2 whitespace-pre-wrap">{selectedApp.call_note}</p>
-              )}
-            </div>
-          </div>
+          </motion.div>
         </div>
       )}
 
       {scheduleModalOpen && selectedApp && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-xl relative">
-            <button
-              onClick={closeScheduleModal}
-              className="absolute top-4 right-4 p-2 text-stone-500 hover:text-stone-800 rounded-full"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <h2 className="text-2xl font-bold text-stone-900 mb-2">Schedule Call</h2>
-            <p className="text-stone-500 mb-6">Suggest a call time for {selectedApp.nanny_name} to confirm.</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg shadow-2xl overflow-hidden"
+          >
+            <div className="relative bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-500 px-6 pt-8 pb-10 overflow-hidden">
+              <button
+                onClick={closeScheduleModal}
+                className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/35 text-white rounded-full transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-white text-2xl font-bold shadow-lg shrink-0">
+                  {(selectedApp.nanny_name || 'N').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-blue-100 text-xs font-semibold uppercase tracking-widest mb-0.5">Schedule Call</p>
+                  <h2 className="text-2xl font-bold text-white leading-tight">{selectedApp.nanny_name}</h2>
+                </div>
+              </div>
+              <p className="text-blue-100/80 text-sm mt-3 relative z-10">Suggest a time — nanny will confirm.</p>
+              <div className="absolute -bottom-8 -right-8 h-28 w-28 rounded-full bg-white/10 pointer-events-none" />
+              <div className="absolute -top-6 -left-6 h-20 w-20 rounded-full bg-white/10 pointer-events-none" />
+            </div>
 
-            <div className="space-y-4">
+            <div className="px-6 pt-6 pb-4 space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-stone-700 mb-2">Suggested date and time</label>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Date & Time</label>
                 <input
                   type="datetime-local"
                   value={callDateTime}
                   onChange={(e) => setCallDateTime(e.target.value)}
-                  className="w-full border border-stone-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-semibold text-stone-700 mb-2">Call note</label>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Call Note</label>
                 <textarea
                   value={callNote}
                   onChange={(e) => setCallNote(e.target.value)}
                   rows={4}
-                  className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="Example: 15-minute intro call to discuss availability and role fit."
+                  className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none transition"
+                  placeholder="e.g. 15-minute intro call to discuss availability and role fit."
                 />
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="px-6 py-4 border-t border-stone-100 flex items-center gap-3">
               <button
                 onClick={closeScheduleModal}
                 type="button"
-                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-50"
+                className="px-5 py-2.5 rounded-2xl border-2 border-stone-200 text-stone-600 font-semibold hover:bg-stone-50 transition-colors text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleScheduleCall}
                 disabled={isCallSubmitting || !callDateTime}
-                className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-500 text-white font-bold shadow-md shadow-blue-200/60 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm"
               >
-                {isCallSubmitting ? 'Sending...' : 'Send Proposal'}
+                {isCallSubmitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Sending…
+                  </span>
+                ) : 'Send Proposal'}
               </button>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 
       {reviewModalOpen && selectedApp && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl relative">
-            <button
-              onClick={closeReviewModal}
-              className="absolute top-4 right-4 p-2 text-stone-500 hover:text-stone-800 rounded-full"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <h2 className="text-2xl font-bold text-stone-900 mb-3">Review Nanny</h2>
-            <p className="text-stone-500 mb-5">{selectedApp.nanny_name || 'Candidate'}</p>
-            <div className="mb-4">
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <button
-                    key={value}
-                    onClick={() => setReviewRating(value)}
-                    className={`transition-colors ${value <= reviewRating ? 'text-amber-400' : 'text-stone-300'} hover:text-amber-300`}
-                    type="button"
-                  >
-                    <Star className="h-6 w-6 fill-current" />
-                  </button>
-                ))}
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg shadow-2xl overflow-hidden"
+          >
+            {/* Hero header */}
+            <div className="relative bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 px-6 pt-8 pb-10 overflow-hidden">
+              <button
+                onClick={closeReviewModal}
+                className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/35 text-white rounded-full transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="h-14 w-14 rounded-2xl bg-white/25 flex items-center justify-center text-white text-2xl font-bold shadow-lg shrink-0">
+                  {(selectedApp.nanny_name || 'C').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-emerald-100 text-xs font-semibold uppercase tracking-widest mb-0.5">Agency Review</p>
+                  <h2 className="text-2xl font-bold text-white leading-tight">{selectedApp.nanny_name || 'Candidate'}</h2>
+                </div>
               </div>
+              <div className="mt-4 flex items-center gap-2 relative z-10">
+                <span className="text-white/70 text-xs">Overall</span>
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map(i => (
+                    <Star key={i} className={`h-3.5 w-3.5 fill-current ${i <= Math.round((reviewReliability + reviewCommunication) / 2) ? 'text-amber-300' : 'text-white/30'}`} />
+                  ))}
+                </div>
+                <span className="text-white font-bold text-sm">{((reviewReliability + reviewCommunication) / 2).toFixed(1)}</span>
+              </div>
+              {/* Decorative blobs */}
+              <div className="absolute -bottom-8 -right-8 h-28 w-28 rounded-full bg-white/10 pointer-events-none" />
+              <div className="absolute -top-6 -left-6 h-20 w-20 rounded-full bg-white/10 pointer-events-none" />
             </div>
-            <textarea
-              value={reviewComment}
-              onChange={(e) => setReviewComment(e.target.value)}
-              rows={4}
-              className="w-full border border-stone-200 rounded-xl p-3 mb-4 focus:ring-emerald-500 outline-none"
-              placeholder="Share the nanny's performance (reliability, communication, skill, etc.)"
-            />
-            <div className="flex items-center justify-between gap-3">
+
+            {/* Scrollable body */}
+            <div className="px-6 pt-6 pb-4 space-y-5 max-h-[60vh] overflow-y-auto">
+              {/* Ratings side by side */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-stone-50 rounded-2xl p-4 border border-stone-100">
+                  <RatingRow label="Reliability" value={reviewReliability} onChange={setReviewReliability} />
+                </div>
+                <div className="bg-stone-50 rounded-2xl p-4 border border-stone-100">
+                  <RatingRow label="Communication" value={reviewCommunication} onChange={setReviewCommunication} />
+                </div>
+              </div>
+
+              {/* Relationship context */}
+              <div>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Relationship Context</label>
+                <select
+                  value={reviewRelationshipContext}
+                  onChange={(e) => setReviewRelationshipContext(e.target.value as any)}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 transition"
+                >
+                  <option value="applied">Applied</option>
+                  <option value="interviewed">Interviewed</option>
+                  <option value="placed">Placed</option>
+                  <option value="trial_completed">Trial Completed</option>
+                  <option value="placement_completed">Placement Completed</option>
+                  <option value="managed">Managed in Talent Pool</option>
+                </select>
+              </div>
+
+              {/* Trait toggles */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReviewPunctuality(!reviewPunctuality)}
+                  className={`rounded-2xl p-3.5 text-sm font-semibold border-2 flex items-center justify-between gap-2 transition-all ${reviewPunctuality ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-stone-200 bg-stone-50 text-stone-500 hover:bg-stone-100'}`}
+                >
+                  <span>Punctual</span>
+                  <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${reviewPunctuality ? 'border-emerald-500 bg-emerald-500' : 'border-stone-300'}`}>
+                    {reviewPunctuality && <span className="text-white text-xs leading-none">✓</span>}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewRehire(!reviewRehire)}
+                  className={`rounded-2xl p-3.5 text-sm font-semibold border-2 flex items-center justify-between gap-2 transition-all ${reviewRehire ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-stone-200 bg-stone-50 text-stone-500 hover:bg-stone-100'}`}
+                >
+                  <span>Would Rehire</span>
+                  <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${reviewRehire ? 'border-emerald-500 bg-emerald-500' : 'border-stone-300'}`}>
+                    {reviewRehire && <span className="text-white text-xs leading-none">✓</span>}
+                  </div>
+                </button>
+              </div>
+
+              {/* Highlights */}
+              <div>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Highlights</label>
+                <div className="relative">
+                  <textarea
+                    value={reviewStrengths}
+                    onChange={(e) => setReviewStrengths(e.target.value)}
+                    rows={3}
+                    maxLength={120}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none transition"
+                    placeholder="What stood out most about this nanny?"
+                  />
+                  <span className="absolute bottom-3 right-3 text-xs text-stone-400">{reviewStrengths.length}/120</span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">
+                  Internal Notes <span className="font-normal text-stone-300 normal-case">(optional)</span>
+                </label>
+                <div className="relative">
+                  <textarea
+                    value={reviewNotes}
+                    onChange={(e) => setReviewNotes(e.target.value)}
+                    rows={3}
+                    maxLength={240}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none transition"
+                    placeholder="Notes for future agencies and ShiftScore context."
+                  />
+                  <span className="absolute bottom-3 right-3 text-xs text-stone-400">{reviewNotes.length}/240</span>
+                </div>
+              </div>
+
+              {reviewSubmitSuccess && (
+                <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3">
+                  <span className="text-emerald-500 font-bold">✓</span>
+                  <p className="text-emerald-700 text-sm font-medium">Review submitted successfully.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Sticky footer */}
+            <div className="px-6 py-4 border-t border-stone-100 flex items-center gap-3">
               <button
                 onClick={closeReviewModal}
                 type="button"
-                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-50"
+                className="px-5 py-2.5 rounded-2xl border-2 border-stone-200 text-stone-600 font-semibold hover:bg-stone-50 transition-colors text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitReview}
-                disabled={isReviewSubmitting || !reviewComment.trim()}
-                className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                disabled={isReviewSubmitting || !reviewStrengths.trim()}
+                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold shadow-md shadow-emerald-200/60 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm"
               >
-                {isReviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                {isReviewSubmitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Submitting…
+                  </span>
+                ) : 'Submit Review'}
               </button>
             </div>
-            {reviewSubmitSuccess && (
-              <p className="text-green-600 text-sm mt-3">Review submitted successfully.</p>
-            )}
+          </motion.div>
+        </div>
+      )}
+
+      {overdueCallPromptOpen && overdueCallApp && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-xl relative">
+            <h2 className="text-xl font-bold text-stone-900 mb-1">Scheduled Call Follow-up</h2>
+            <p className="text-sm text-stone-600 mb-5">
+              The scheduled call for <span className="font-semibold text-stone-900">{overdueCallApp.nanny_name || 'this nanny'}</span> passed at {formatCallDateTime(overdueCallApp.call_scheduled_for)}.
+              Did it happen?
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Outcome</label>
+                <select
+                  value={callOutcome}
+                  onChange={(e) => setCallOutcome(e.target.value as 'happened' | 'no_show' | 'cancelled')}
+                  className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="happened">Call happened</option>
+                  <option value="no_show">Nanny no-show</option>
+                  <option value="cancelled">Cancelled / rescheduled</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Notes about nanny (optional)</label>
+                <textarea
+                  value={callOutcomeNotes}
+                  onChange={(e) => setCallOutcomeNotes(e.target.value)}
+                  rows={4}
+                  maxLength={400}
+                  className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Example: Great communication, arrived prepared, strong fit for the family."
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={closeOverduePrompt}
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-50"
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveOverdueCallOutcome}
+                disabled={isSavingCallOutcome}
+                className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {isSavingCallOutcome ? 'Saving...' : 'Save Follow-up'}
+              </button>
+            </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function RatingRow({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const active = hovered ?? value;
+  return (
+    <div>
+      <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{label}</label>
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((option) => (
+          <button
+            key={option}
+            onClick={() => onChange(option)}
+            onMouseEnter={() => setHovered(option)}
+            onMouseLeave={() => setHovered(null)}
+            className={`transition-all duration-100 ${option <= active ? 'text-amber-400 scale-110' : 'text-stone-300 hover:text-amber-300'}`}
+            type="button"
+          >
+            <Star className="h-6 w-6 fill-current" />
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-stone-400 mt-1.5 font-semibold">{value}/5</p>
     </div>
   );
 }

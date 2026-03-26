@@ -24,6 +24,7 @@ import ForAgencies from './pages/ForAgencies';
 import NannyDashboard from './pages/nanny/Dashboard';
 import NannyJobs from './pages/nanny/Jobs';
 import NannyApplications from './pages/nanny/Applications';
+import NannyDevelopment from './pages/nanny/Development';
 import NannyProfile from './pages/nanny/Profile';
 import NannyAvailability from './pages/nanny/Availability';
 import NannyOnboarding from './pages/nanny/Onboarding';
@@ -35,6 +36,7 @@ import PostJob from './pages/agency/PostJob';
 import GlobalSearch from './pages/agency/Search';
 import TalentPool from './pages/agency/TalentPool';
 import Billing from './pages/agency/Billing';
+import Subscription from './pages/agency/Subscription';
 
 import AgencyMessages from './pages/agency/Messages';
 import NannyMessages from './pages/nanny/Messages';
@@ -42,7 +44,9 @@ import AgencyProfilePage from './pages/agency/Profile';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminAgencies from './pages/admin/Agencies';
+import AdminBgAudit from './pages/admin/BgAudit';
 import AdminUsers from './pages/admin/Users';
+import AdminVerification from './pages/admin/Verification';
 
 import FamilyDashboard from './pages/family/Dashboard';
 import FamilyOnboarding from './pages/family/Onboarding';
@@ -50,8 +54,14 @@ import JobDiscovery from './pages/family/JobDiscovery';
 import JobDetails from './pages/family/JobDetails';
 import SavedJobs from './pages/family/SavedJobs';
 import FamilyMessages from './pages/family/Messages';
+import FamilyPlacements from './pages/family/Placements';
 import FamilyProfile from './pages/family/Profile';
+import FamilyRequestForm from './pages/family/RequestForm';
+import FamilyRequestResults from './pages/family/RequestResults';
 import Notifications from './pages/Notifications';
+import AgencyFamilyRequests from './pages/agency/FamilyRequests';
+import AgencyFamilyRequestDetail from './pages/agency/FamilyRequestDetail';
+import AgencyRequestSettings from './pages/agency/RequestSettings';
 
 export default function App() {
   return (
@@ -83,9 +93,12 @@ export default function App() {
               <Route path="jobs/:id" element={<JobDetails />} />
               <Route path="agencies" element={<AgencyDirectory />} />
               <Route path="agencies/:id" element={<AgencyProfile />} />
+              <Route path="request-care" element={<FamilyRequestForm />} />
+              <Route path="requests/:id" element={<FamilyRequestResults />} />
               <Route path="onboarding" element={<FamilyOnboarding />} />
 
               <Route path="saved" element={<SavedJobs />} />
+              <Route path="placements" element={<FamilyPlacements />} />
               <Route path="messages" element={<FamilyMessages />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="profile" element={<FamilyProfile />} />
@@ -99,6 +112,7 @@ export default function App() {
               <Route path="dashboard" element={<NannyDashboard />} />
               <Route path="jobs" element={<NannyJobs />} />
               <Route path="applications" element={<NannyApplications />} />
+              <Route path="development" element={<NannyDevelopment />} />
               <Route path="messages" element={<NannyMessages />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="availability" element={<NannyAvailability />} />
@@ -114,11 +128,15 @@ export default function App() {
               <Route path="jobs/new" element={<PostJob />} />
               <Route path="applications" element={<AgencyApplications />} />
               <Route path="messages" element={<AgencyMessages />} />
+              <Route path="family-requests" element={<AgencyFamilyRequests />} />
+              <Route path="family-requests/:assignmentId" element={<AgencyFamilyRequestDetail />} />
+              <Route path="request-settings" element={<AgencyRequestSettings />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="search" element={<GlobalSearch />} />
               <Route path="talent" element={<TalentPool />} />
               <Route path="billing" element={<Billing />} />
-                          <Route path="profile" element={<AgencyProfilePage />} />
+              <Route path="subscription" element={<Subscription />} />
+              <Route path="profile" element={<AgencyProfilePage />} />
             </Route>
           </Route>
 
@@ -127,7 +145,9 @@ export default function App() {
             <Route path="/admin" element={<DashboardLayout role="admin" />}>
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="agencies" element={<AdminAgencies />} />
+              <Route path="bg-audit" element={<AdminBgAudit />} />
               <Route path="users" element={<AdminUsers />} />
+              <Route path="verification" element={<AdminVerification />} />
               <Route path="notifications" element={<Notifications />} />
             </Route>
           </Route>

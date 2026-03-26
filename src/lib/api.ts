@@ -12,16 +12,43 @@ import {
   orderBy, 
   serverTimestamp,
   Timestamp,
-  onSnapshot
+  onSnapshot,
+  runTransaction,
+  limit as firestoreLimit
 } from 'firebase/firestore';
+import type { AgencySubscription, AgencyAddon, AddonCode, PlanCode } from './plans';
+import { scoreAgencyForFamilyRequest, MATCH_THRESHOLD, type MatchTier } from './familyMatching';
+import {
+  EMPTY_NANNY_REVIEW_AGGREGATE,
+  normalizeStructuredNannyReview,
+  sanitizeReviewText,
+  validateStructuredNannyReview,
+  type NannyReviewAggregate,
+  type NannyReviewRelationshipContext,
+  type NannyReviewerType,
+  type StructuredNannyReview,
+} from './nannyReviews';
+import {
+  aggregateShiftScoreReviews,
+  combineShiftScoreSignals,
+  computeProfileSignalScore,
+  resolveShiftScoreConfig,
+  type ShiftScoreConfigOverrides,
+} from './shiftScore';
 import { db, auth } from './firebase';
 
 // --- Types ---
+export type AppUserRole = 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin';
+
+export type AppUserStatus = 'active' | 'inactive';
+
 export interface User {
   id: string;
   email: string;
-  role: 'nanny' | 'family' | 'agency';
+  role: AppUserRole;
+  status?: AppUserStatus;
   created_at: any;
+  updated_at?: any;
 }
 
 export interface Job {
@@ -42,12 +69,33 @@ export interface Job {
   agency_profiles?: any;
 }
 
+export type ApplicationStatus =
+  | 'applied'
+  | 'reviewing'
+  | 'interviewing'
+  | 'interview_invited'
+  | 'accepted'
+  | 'hired'
+  | 'active'
+  | 'pending_family_approval'
+  | 'completed'
+  | 'rejected'
+  | 'withdrawn';
+
+export interface ApplicationStatusHistoryEntry {
+  status: ApplicationStatus;
+  at?: any;
+  actor_role?: 'agency' | 'family' | 'nanny' | 'admin' | 'system';
+  note?: string;
+}
+
 export interface Application {
   id: string;
   job_id: string;
   nanny_id: string;
   agency_id: string;
-  status: 'applied' | 'reviewing' | 'interviewing' | 'hired' | 'rejected';
+  family_id?: string | null;
+  status: ApplicationStatus;
   cover_letter: string;
   call_status?: 'pending_nanny' | 'confirmed' | 'declined' | null;
   call_scheduled_for?: string | null;
@@ -57,6 +105,25 @@ export interface Application {
   call_proposed_at?: any;
   call_confirmed_at?: any;
   call_declined_at?: any;
+  call_outcome?: 'happened' | 'no_show' | 'cancelled' | null;
+  call_outcome_notes?: string | null;
+  call_outcome_at?: any;
+  status_history?: ApplicationStatusHistoryEntry[];
+  reviewed_at?: any;
+  interview_invited_at?: any;
+  accepted_at?: any;
+  active_at?: any;
+  care_started_at?: any;
+  care_expected_end_at?: any;
+  care_actual_end_at?: any;
+  care_extended_to?: any;
+  care_override_status?: 'cancelled' | 'ended_early' | null;
+  care_override_reason?: string | null;
+  care_milestones_notified?: Record<string, boolean>;
+  pending_family_approval_at?: any;
+  completed_at?: any;
+  rejected_at?: any;
+  withdrawn_at?: any;
   created_at: any;
   updated_at: any;
   jobs?: Job | null;
@@ -83,18 +150,133 @@ export interface NannyProfile {
   updated_at?: any;
 }
 
+export interface NannyDocument {
+  id?: string;
+  nanny_id: string;
+  uploader_user_id: string;
+  type: 'cv' | 'certification' | 'id' | 'reference' | 'other';
+  file_name: string;
+  file_url: string;
+  status: 'uploaded' | 'under_review' | 'approved' | 'rejected';
+  rejection_reason?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: any;
+  reference_shared_with_agencies?: boolean;
+  shared_with_agency_ids?: string[];
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface NannyReferenceShareTarget {
+  agency_id: string;
+  agency_name: string;
+}
+
+export interface NannyCreditWallet {
+  nanny_id: string;
+  balance_credits: number;
+  lifetime_used_credits: number;
+  last_credit_refresh_at?: any;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface NannyDevelopmentSession {
+  id?: string;
+  nanny_id: string;
+  prompt: string;
+  response: string;
+  credits_used: number;
+  created_at?: any;
+}
+
+export interface NannyPremiumAnalytics {
+  is_premium: boolean;
+  premium_until?: string | null;
+  total_applications: number;
+  active_pipeline_count: number;
+  completed_placements: number;
+  acceptance_rate_pct: number;
+  completion_rate_pct: number;
+  avg_family_rating: number;
+  avg_agency_rating: number;
+  application_velocity_30d: number;
+  completion_velocity_30d: number;
+  strengths: string[];
+  opportunities: string[];
+}
+
+export interface NannyBgCheck {
+  id?: string;
+  nanny_id: string;
+  source_agency_id: string;
+  source_user_id: string;
+  status: 'checked' | 'not_checked' | 'expired';
+  checked_at?: any;
+  expires_at?: any;
+  confidence: number;
+  doc_url_private?: string | null;
+  source_hidden: boolean;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface NannyBgPublicStatus {
+  nanny_id: string;
+  status: 'checked' | 'not_checked' | 'expired';
+  last_checked_at?: any;
+  expires_at?: any;
+  confidence: number;
+  source_hidden: boolean;
+  override_active?: boolean;
+  override_reason?: string | null;
+  override_by_admin_id?: string | null;
+  override_at?: any;
+  updated_at?: any;
+}
+
+export interface NannyBgCheckAuditLog {
+  id?: string;
+  nanny_id: string;
+  source_agency_id?: string | null;
+  actor_user_id: string;
+  action: 'created' | 'updated' | 'override_set' | 'override_cleared';
+  previous_status?: string | null;
+  new_status: string;
+  previous_expires_at?: any;
+  new_expires_at?: any;
+  previous_confidence?: number | null;
+  new_confidence: number;
+  source_hidden: boolean;
+  override_reason?: string | null;
+  risk_flags?: string[];
+  created_at?: any;
+  nanny_name?: string;
+  nanny_email?: string;
+  agency_name?: string;
+  actor_email?: string;
+}
+
+export interface AdminBgPublicStatusRow extends NannyBgPublicStatus {
+  nanny_name?: string;
+  nanny_email?: string;
+}
+
 export interface ShiftScoreResult {
   score: number;
   details: {
     completedFields: number;
     totalFields: number;
+    documentBonus: number;
+    verifiedDocumentCount: number;
     activityBonus: number;
-    familyRatingBonus: number;
-    agencyRatingBonus: number;
-    familyRatingAvg: number;
-    agencyRatingAvg: number;
-    familyRatingCount: number;
-    agencyRatingCount: number;
+    profileScore: number;
+    reviewScore: number;
+    reviewCount: number;
+    averageReliability: number;
+    averageCommunication: number;
+    punctualityRate: number;
+    rehireRate: number;
   };
 }
 
@@ -107,11 +289,12 @@ export interface JobCompatibilityResult {
 export const computeShiftScore = (
   profile: Partial<NannyProfile> | null,
   applicationCount = 0,
-  familyRatingAvg = 0,
-  familyRatingCount = 0,
-  agencyRatingAvg = 0,
-  agencyRatingCount = 0
+  verifiedDocumentCount = 0,
+  reviewAggregate: NannyReviewAggregate = EMPTY_NANNY_REVIEW_AGGREGATE,
+  shiftScoreConfig?: ShiftScoreConfigOverrides
 ): ShiftScoreResult => {
+  const config = resolveShiftScoreConfig(shiftScoreConfig);
+
   const fields = [
     !!profile?.first_name,
     !!profile?.last_name,
@@ -127,29 +310,47 @@ export const computeShiftScore = (
 
   const completedFields = fields.filter(Boolean).length;
   const totalFields = fields.length;
-  const baseScore = Math.round((completedFields / totalFields) * 70);
+  const documentBonus = Math.min(
+    config.profileWeights.documentBonusCap,
+    verifiedDocumentCount * config.profileWeights.documentBonusPerVerifiedDoc
+  );
+  const activityBonus = Math.min(
+    config.profileWeights.activityBonusCap,
+    applicationCount * config.profileWeights.activityBonusPerApplication
+  );
 
-  const expBonus = (profile?.years_experience ?? 0) >= 3 ? 5 : 0;
-  const certBonus = (profile?.certifications?.length ?? 0) > 0 ? 5 : 0;
-  const activityBonus = Math.min(10, applicationCount * 2);
-
-  const familyRatingBonus = familyRatingCount > 0 ? Math.round((familyRatingAvg / 5) * 10) : 0;
-  const agencyRatingBonus = agencyRatingCount > 0 ? Math.round((agencyRatingAvg / 5) * 10) : 0;
-
-  const score = Math.min(100, baseScore + expBonus + certBonus + activityBonus + familyRatingBonus + agencyRatingBonus);
+  const profileScore = computeProfileSignalScore(
+    completedFields,
+    totalFields,
+    profile?.years_experience ?? 0,
+    profile?.certifications?.length ?? 0,
+    verifiedDocumentCount,
+    applicationCount,
+    config.profileWeights
+  );
+  const reviewScore = reviewAggregate.reviewCount > 0 ? reviewAggregate.shiftScore : 0;
+  const score = combineShiftScoreSignals(
+    profileScore,
+    reviewScore,
+    reviewAggregate.reviewCount > 0,
+    config.blendWeights
+  );
 
   return {
     score,
     details: {
       completedFields,
       totalFields,
+      documentBonus,
+      verifiedDocumentCount,
       activityBonus,
-      familyRatingBonus,
-      agencyRatingBonus,
-      familyRatingAvg,
-      agencyRatingAvg,
-      familyRatingCount,
-      agencyRatingCount
+      profileScore,
+      reviewScore,
+      reviewCount: reviewAggregate.reviewCount,
+      averageReliability: reviewAggregate.averageReliability,
+      averageCommunication: reviewAggregate.averageCommunication,
+      punctualityRate: reviewAggregate.punctualityRate,
+      rehireRate: reviewAggregate.rehireRate,
     }
   };
 };
@@ -243,6 +444,8 @@ export interface AgencyProfile {
   score?: number;
   isVerified?: boolean;
   sponsored?: boolean;
+  /** Denormalized from agency_subscriptions for fast directory display */
+  plan_tier?: 'starter' | 'professional' | 'enterprise';
   location?: string;
   bio?: string;
   created_at: any;
@@ -257,6 +460,51 @@ export interface AgencyPost {
   content: string;
   created_at?: any;
   updated_at?: any;
+}
+
+export interface AdminVerificationOverview {
+  total_documents: number;
+  pending_documents: number;
+  approved_documents: number;
+  rejected_documents: number;
+  approval_rate_pct: number;
+  avg_review_time_hours: number;
+  pending_over_72h: number;
+}
+
+export type VerificationRange = '7d' | '30d' | 'all';
+
+export interface AdminVerificationQueueItem extends NannyDocument {
+  age_hours: number;
+  sla_breached: boolean;
+  nanny_name?: string;
+  nanny_email?: string;
+}
+
+export interface AdminVerificationTypeBreakdownItem {
+  type: NannyDocument['type'];
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  approval_rate_pct: number;
+}
+
+export interface AdminVerificationAnalytics {
+  range: VerificationRange;
+  current: AdminVerificationOverview;
+  previous: AdminVerificationOverview | null;
+  deltas: {
+    total_documents: number;
+    pending_documents: number;
+    approved_documents: number;
+    rejected_documents: number;
+    approval_rate_pct: number;
+    avg_review_time_hours: number;
+    pending_over_72h: number;
+  };
+  type_breakdown: AdminVerificationTypeBreakdownItem[];
+  queue: AdminVerificationQueueItem[];
 }
 
 export interface FamilyProfile {
@@ -301,11 +549,17 @@ export interface CareHistory {
   location_neighborhood?: string;
   agency_name?: string;
   nanny_name?: string;
+  placement_status?: 'active' | 'completed';
   start_date?: string;
   end_date?: string;
+  week_one_review_available_at?: string;
   summary?: string;
   reviewed_agency_by_family?: boolean;
   reviewed_nanny_by_family?: boolean;
+  reviewed_agency_week_one_by_family?: boolean;
+  reviewed_nanny_week_one_by_family?: boolean;
+  reviewed_agency_completion_by_family?: boolean;
+  reviewed_nanny_completion_by_family?: boolean;
   rating?: number;
   review?: string;
   created_at?: any;
@@ -531,10 +785,15 @@ export const getApplicationsForAgency = async (agencyId: string): Promise<Applic
       const appData = d.data();
       const jobDoc = await getDoc(doc(db, 'jobs', appData.job_id));
       const nannyDoc = await getDoc(doc(db, 'nanny_profiles', appData.nanny_id));
+      const agencyDoc = jobDoc.exists() ? await getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : null;
       return {
         id: d.id,
         ...appData,
-        jobs: jobDoc.exists() ? { id: jobDoc.id, ...jobDoc.data() } as Job : null,
+        jobs: jobDoc.exists() ? {
+          id: jobDoc.id,
+          ...jobDoc.data(),
+          agency_profiles: agencyDoc?.exists() ? agencyDoc.data() : { company_name: 'Agency' }
+        } as Job : null,
         nanny_profiles: nannyDoc.exists() ? nannyDoc.data() : null
       } as Application;
     }));
@@ -553,10 +812,15 @@ export const getApplicationsForNanny = async (nannyId: string): Promise<Applicat
     const apps = await Promise.all(snapshot.docs.map(async (d) => {
       const appData = d.data();
       const jobDoc = await getDoc(doc(db, 'jobs', appData.job_id));
+      const agencyDoc = jobDoc.exists() ? await getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : null;
       return {
         id: d.id,
         ...appData,
-        jobs: jobDoc.exists() ? { id: jobDoc.id, ...jobDoc.data() } as Job : null
+        jobs: jobDoc.exists() ? {
+          id: jobDoc.id,
+          ...jobDoc.data(),
+          agency_profiles: agencyDoc?.exists() ? agencyDoc.data() : { company_name: 'Agency' }
+        } as Job : null
       } as Application;
     }));
     return apps;
@@ -572,13 +836,16 @@ export const createApplication = async (jobId: string, nannyId: string, coverLet
     // Need agency_id for filtering in getApplicationsForAgency
     const jobDoc = await getDoc(doc(db, 'jobs', jobId));
     const agencyId = jobDoc.exists() ? jobDoc.data().agency_id : null;
+    const familyId = jobDoc.exists() ? (jobDoc.data().family_id || null) : null;
 
     const docRef = await addDoc(collection(db, path), {
       job_id: jobId,
       nanny_id: nannyId,
       agency_id: agencyId,
+      family_id: familyId,
       cover_letter: coverLetter || '',
       status: 'applied',
+      status_history: [{ status: 'applied', actor_role: 'nanny', at: Timestamp.now() }],
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
     });
@@ -589,15 +856,135 @@ export const createApplication = async (jobId: string, nannyId: string, coverLet
   }
 };
 
-export const updateApplicationStatus = async (id: string, status: string) => {
+export const updateApplicationStatus = async (
+  id: string,
+  status: ApplicationStatus,
+  options?: {
+    actorRole?: ApplicationStatusHistoryEntry['actor_role'];
+    note?: string;
+  }
+) => {
   const path = `applications/${id}`;
   try {
     const docRef = doc(db, 'applications', id);
-    await updateDoc(docRef, { status, updated_at: serverTimestamp() });
+    const existingDoc = await getDoc(docRef);
+    const existingData = existingDoc.exists() ? existingDoc.data() : {};
+    const existingHistory = Array.isArray(existingData.status_history)
+      ? existingData.status_history
+      : [];
+    const historyEntry: ApplicationStatusHistoryEntry = {
+      status,
+      actor_role: options?.actorRole || 'system',
+      note: options?.note,
+      at: Timestamp.now()
+    };
+    const milestoneFieldByStatus: Partial<Record<ApplicationStatus, string>> = {
+      reviewing: 'reviewed_at',
+      interviewing: 'interview_invited_at',
+      interview_invited: 'interview_invited_at',
+      hired: 'accepted_at',
+      accepted: 'accepted_at',
+      active: 'active_at',
+      pending_family_approval: 'pending_family_approval_at',
+      completed: 'completed_at',
+      rejected: 'rejected_at',
+      withdrawn: 'withdrawn_at'
+    };
+    const milestoneField = milestoneFieldByStatus[status];
+
+    await updateDoc(docRef, {
+      status,
+      ...(milestoneField ? { [milestoneField]: serverTimestamp() } : {}),
+      status_history: [...existingHistory, historyEntry],
+      updated_at: serverTimestamp()
+    });
+
+    if (existingData.job_id && (status === 'active' || status === 'completed')) {
+      try {
+        await updateJob(existingData.job_id, {
+          status: 'closed',
+          closed_reason: 'filled',
+        });
+      } catch {
+        // Job closure is helpful but non-blocking.
+      }
+    }
+
+    if (status === 'active' || status === 'completed') {
+      await recordCareHistoryFromApplication(id, status === 'completed' ? 'completed' : 'active');
+    }
+
     const updatedDoc = await getDoc(docRef);
     return { id: updatedDoc.id, ...updatedDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const updateApplicationCareSession = async (
+  id: string,
+  updates: Record<string, any>
+) => {
+  const path = `applications/${id}`;
+  try {
+    const docRef = doc(db, 'applications', id);
+    await updateDoc(docRef, {
+      ...updates,
+      updated_at: serverTimestamp(),
+    });
+    const updatedDoc = await getDoc(docRef);
+    return updatedDoc.exists() ? ({ id: updatedDoc.id, ...updatedDoc.data() } as Application) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
+export const notifyApplicationCareMilestone = async ({
+  applicationId,
+  milestone,
+  familyTitle,
+  familyMessage,
+  nannyTitle,
+  nannyMessage,
+}: {
+  applicationId: string;
+  milestone: 'started' | 'halfway' | 'ending_soon' | 'review_requested';
+  familyTitle?: string;
+  familyMessage?: string;
+  nannyTitle?: string;
+  nannyMessage?: string;
+}) => {
+  const path = `applications/${applicationId}`;
+  try {
+    const appRef = doc(db, 'applications', applicationId);
+    const appSnap = await getDoc(appRef);
+    if (!appSnap.exists()) return false;
+
+    const app = appSnap.data() as Application;
+    const alreadyNotified = !!app.care_milestones_notified?.[milestone];
+    if (alreadyNotified) return false;
+
+    const jobDoc = app.job_id ? await getDoc(doc(db, 'jobs', app.job_id)) : null;
+    const jobTitle = jobDoc?.exists() ? String((jobDoc.data() as any).title || 'the placement') : 'the placement';
+    const familyId = app.family_id || (jobDoc?.exists() ? (jobDoc.data() as any).family_id : null);
+
+    if (familyId && familyTitle && familyMessage) {
+      await addFamilyNotification(familyId, familyTitle, familyMessage.replace('{jobTitle}', jobTitle), '/family/applications');
+    }
+    if (app.nanny_id && nannyTitle && nannyMessage) {
+      await addNannyNotification(app.nanny_id, nannyTitle, nannyMessage.replace('{jobTitle}', jobTitle), '/nanny/applications');
+    }
+
+    await updateDoc(appRef, {
+      [`care_milestones_notified.${milestone}`]: true,
+      updated_at: serverTimestamp(),
+    });
+
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    return false;
   }
 };
 
@@ -693,6 +1080,33 @@ export const respondToApplicationCall = async ({
   }
 };
 
+export const updateApplicationCallOutcome = async ({
+  applicationId,
+  outcome,
+  notes,
+}: {
+  applicationId: string;
+  outcome: 'happened' | 'no_show' | 'cancelled';
+  notes?: string;
+}) => {
+  const path = `applications/${applicationId}`;
+  try {
+    const docRef = doc(db, 'applications', applicationId);
+    await updateDoc(docRef, {
+      call_outcome: outcome,
+      call_outcome_notes: notes?.trim() || null,
+      call_outcome_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+
+    const updatedDoc = await getDoc(docRef);
+    return updatedDoc.exists() ? ({ id: updatedDoc.id, ...updatedDoc.data() } as Application) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
 // --- NANNIES ---
 export const getNannies = async (): Promise<NannyProfile[]> => {
   const path = 'nanny_profiles';
@@ -729,20 +1143,1188 @@ export const updateNannyProfile = async (id: string, updates: any) => {
   }
 };
 
+export const getNannyDocuments = async (nannyId: string): Promise<NannyDocument[]> => {
+  const path = 'nanny_documents';
+  try {
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getNannyReferenceShareTargets = async (nannyId: string): Promise<NannyReferenceShareTarget[]> => {
+  const path = 'agency_talent_pool';
+  try {
+    if (!nannyId) return [];
+
+    const targetIds = new Set<string>();
+
+    const [talentPoolSnap, appSnap] = await Promise.all([
+      getDocs(query(collection(db, 'agency_talent_pool'), where('nanny_id', '==', nannyId))),
+      getDocs(query(collection(db, 'applications'), where('nanny_id', '==', nannyId))),
+    ]);
+
+    talentPoolSnap.docs.forEach((entry) => {
+      const agencyId = String(entry.data().agency_id || '');
+      if (agencyId) targetIds.add(agencyId);
+    });
+
+    appSnap.docs.forEach((entry) => {
+      const agencyId = String(entry.data().agency_id || '');
+      if (agencyId) targetIds.add(agencyId);
+    });
+
+    const agencies = await Promise.all(
+      Array.from(targetIds).map(async (agencyId) => {
+        const snap = await getDoc(doc(db, 'agency_profiles', agencyId));
+        return {
+          agency_id: agencyId,
+          agency_name: snap.exists() ? String(snap.data().company_name || 'Agency') : 'Agency',
+        } as NannyReferenceShareTarget;
+      })
+    );
+
+    return agencies.sort((a, b) => a.agency_name.localeCompare(b.agency_name));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const updateNannyReferenceSharing = async ({
+  documentId,
+  sharedAgencyIds,
+}: {
+  documentId: string;
+  sharedAgencyIds: string[];
+}): Promise<NannyDocument | null> => {
+  const path = `nanny_documents/${documentId}`;
+  try {
+    if (!documentId) return null;
+
+    const normalizedIds = Array.from(new Set((sharedAgencyIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+    const docRef = doc(db, 'nanny_documents', documentId);
+
+    await updateDoc(docRef, {
+      reference_shared_with_agencies: normalizedIds.length > 0,
+      shared_with_agency_ids: normalizedIds,
+      updated_at: serverTimestamp(),
+    });
+
+    const updated = await getDoc(docRef);
+    return updated.exists() ? ({ id: updated.id, ...updated.data() } as NannyDocument) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
+export const getAgencySharedNannyReferences = async ({
+  agencyId,
+  nannyId,
+}: {
+  agencyId: string;
+  nannyId: string;
+}): Promise<NannyDocument[]> => {
+  const path = 'nanny_documents';
+  try {
+    if (!agencyId || !nannyId) return [];
+
+    const toMillisLocal = (value: any): number => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const q = query(
+      collection(db, path),
+      where('nanny_id', '==', nannyId),
+      where('type', '==', 'reference'),
+      where('status', '==', 'approved'),
+      where('reference_shared_with_agencies', '==', true),
+      where('shared_with_agency_ids', 'array-contains', agencyId)
+    );
+    const snapshot = await getDocs(q);
+    const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+
+    docs.sort((a, b) => toMillisLocal(b.updated_at || b.created_at) - toMillisLocal(a.updated_at || a.created_at));
+    return docs;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getNannyCreditWallet = async (nannyId: string): Promise<NannyCreditWallet> => {
+  const path = `nanny_credit_wallets/${nannyId}`;
+  try {
+    const walletRef = doc(db, 'nanny_credit_wallets', nannyId);
+    const walletSnap = await getDoc(walletRef);
+    if (walletSnap.exists()) {
+      return walletSnap.data() as NannyCreditWallet;
+    }
+
+    const seededWallet: NannyCreditWallet = {
+      nanny_id: nannyId,
+      balance_credits: 5,
+      lifetime_used_credits: 0,
+      last_credit_refresh_at: Timestamp.now(),
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now()
+    };
+    await setDoc(walletRef, seededWallet, { merge: true });
+    return seededWallet;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return {
+      nanny_id: nannyId,
+      balance_credits: 0,
+      lifetime_used_credits: 0
+    };
+  }
+};
+
+export const addNannyCredits = async ({
+  nannyId,
+  credits,
+  reason
+}: {
+  nannyId: string;
+  credits: number;
+  reason?: string;
+}): Promise<NannyCreditWallet | null> => {
+  const path = `nanny_credit_wallets/${nannyId}`;
+  try {
+    const walletRef = doc(db, 'nanny_credit_wallets', nannyId);
+    const updatedWallet = await runTransaction(db, async (tx) => {
+      const existing = await tx.get(walletRef);
+      const currentBalance = existing.exists()
+        ? Math.max(0, Number(existing.data().balance_credits || 0))
+        : 0;
+      const currentUsed = existing.exists()
+        ? Math.max(0, Number(existing.data().lifetime_used_credits || 0))
+        : 0;
+
+      const nextWallet: NannyCreditWallet = {
+        nanny_id: nannyId,
+        balance_credits: currentBalance + Math.max(0, Math.floor(credits)),
+        lifetime_used_credits: currentUsed,
+        last_credit_refresh_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+        created_at: existing.exists() ? existing.data().created_at : Timestamp.now()
+      };
+      tx.set(walletRef, nextWallet, { merge: true });
+
+      if (reason?.trim()) {
+        tx.set(doc(collection(db, 'nanny_credit_ledger')), {
+          nanny_id: nannyId,
+          delta_credits: Math.max(0, Math.floor(credits)),
+          reason: reason.trim(),
+          created_at: Timestamp.now()
+        });
+      }
+
+      return nextWallet;
+    });
+
+    return updatedWallet;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
+export const startNannyPremiumCheckout = async ({
+  nannyId,
+  userId,
+  months,
+  returnUrl,
+  cancelUrl,
+}: {
+  nannyId: string;
+  userId: string;
+  months: number;
+  returnUrl: string;
+  cancelUrl: string;
+}) => {
+  const response = await fetch('/api/paypal/nanny/premium/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nannyId, userId, months, returnUrl, cancelUrl })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to start premium checkout.');
+  }
+  return payload;
+};
+
+export const startNannyCreditsCheckout = async ({
+  nannyId,
+  userId,
+  credits,
+  returnUrl,
+  cancelUrl,
+}: {
+  nannyId: string;
+  userId: string;
+  credits: number;
+  returnUrl: string;
+  cancelUrl: string;
+}) => {
+  const response = await fetch('/api/paypal/nanny/credits/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nannyId, userId, credits, returnUrl, cancelUrl })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to start credits checkout.');
+  }
+  return payload;
+};
+
+export const captureNannyPaypalOrder = async ({
+  orderId,
+  nannyId,
+  userId,
+}: {
+  orderId: string;
+  nannyId: string;
+  userId: string;
+}) => {
+  const response = await fetch('/api/paypal/nanny/order/capture', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, nannyId, userId })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to capture PayPal order.');
+  }
+  return payload;
+};
+
+const toMillisSafe = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const buildDevelopmentAgentResponse = ({
+  prompt,
+  analytics,
+  profile
+}: {
+  prompt: string;
+  analytics: NannyPremiumAnalytics;
+  profile: NannyProfile | null;
+}) => {
+  const lines: string[] = [];
+  lines.push('Here is your personalized development plan:');
+  lines.push(`- Focus metric: acceptance ${analytics.acceptance_rate_pct}% and completion ${analytics.completion_rate_pct}%.`);
+  lines.push(`- Current momentum: ${analytics.application_velocity_30d} applications in the last 30 days.`);
+
+  if (analytics.strengths.length > 0) {
+    lines.push(`- Strength to lean on: ${analytics.strengths[0]}.`);
+  }
+
+  if (analytics.opportunities.length > 0) {
+    lines.push(`- Biggest opportunity: ${analytics.opportunities[0]}.`);
+  }
+
+  if ((profile?.certifications?.length || 0) === 0) {
+    lines.push('- Add one certification to improve trust and premium match quality.');
+  }
+
+  if (!profile?.bio || profile.bio.trim().length < 80) {
+    lines.push('- Expand your profile bio with outcomes, age groups served, and your care style.');
+  }
+
+  lines.push(`- Prompt interpreted: "${prompt.trim().slice(0, 180)}".`);
+  lines.push('- Next 7-day target: submit 3 tailored applications and follow up on any open interview invite.');
+
+  return lines.join('\n');
+};
+
+export const getNannyPremiumAnalytics = async (nannyId: string): Promise<NannyPremiumAnalytics> => {
+  const [profile, apps, reviews] = await Promise.all([
+    getNannyById(nannyId),
+    getApplicationsForNanny(nannyId),
+    getNannyReviews(nannyId)
+  ]);
+
+  const now = Date.now();
+  const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+  const acceptedCount = apps.filter((app) => ['accepted', 'hired', 'active', 'pending_family_approval', 'completed'].includes(app.status)).length;
+  const completedCount = apps.filter((app) => app.status === 'completed').length;
+  const activePipelineCount = apps.filter((app) => ['applied', 'reviewing', 'interviewing', 'interview_invited', 'accepted', 'hired', 'active', 'pending_family_approval'].includes(app.status)).length;
+  const applications30d = apps.filter((app) => toMillisSafe(app.created_at) >= thirtyDaysAgo).length;
+  const completed30d = apps.filter((app) => app.status === 'completed' && toMillisSafe(app.completed_at || app.updated_at) >= thirtyDaysAgo).length;
+
+  const familyReviews = reviews.filter((r) => (r.reviewer_type || r.reviewer_role) === 'family');
+  const agencyReviews = reviews.filter((r) => (r.reviewer_type || r.reviewer_role) === 'agency');
+  const familyAvg = familyReviews.length > 0
+    ? familyReviews.reduce((sum, r) => sum + (Number(r.reliability_rating || 0) + Number(r.communication_rating || 0)) / 2, 0) / familyReviews.length
+    : 0;
+  const agencyAvg = agencyReviews.length > 0
+    ? agencyReviews.reduce((sum, r) => sum + (Number(r.reliability_rating || 0) + Number(r.communication_rating || 0)) / 2, 0) / agencyReviews.length
+    : 0;
+
+  const premiumUntil = profile?.premium_until || null;
+  const premiumUntilMs = premiumUntil ? new Date(premiumUntil).getTime() : 0;
+  const isPremium = !!premiumUntilMs && premiumUntilMs > now;
+
+  const strengths: string[] = [];
+  const opportunities: string[] = [];
+
+  if (familyAvg >= 4.6 || agencyAvg >= 4.6) {
+    strengths.push('High review quality from families/agencies');
+  }
+  if ((profile?.years_experience || 0) >= 5) {
+    strengths.push('Strong years-of-experience signal');
+  }
+  if ((profile?.certifications?.length || 0) > 0) {
+    strengths.push('Certified profile increases trust in matching');
+  }
+
+  const acceptanceRate = apps.length > 0 ? Math.round((acceptedCount / apps.length) * 100) : 0;
+  const completionRate = acceptedCount > 0 ? Math.round((completedCount / acceptedCount) * 100) : 0;
+
+  if (acceptanceRate < 35) {
+    opportunities.push('Improve targeting to increase acceptance rate');
+  }
+  if ((profile?.bio || '').trim().length < 80) {
+    opportunities.push('Expand bio with concrete childcare outcomes');
+  }
+  if ((profile?.certifications?.length || 0) === 0) {
+    opportunities.push('Add at least one certification for premium opportunities');
+  }
+  if (applications30d < 3) {
+    opportunities.push('Increase monthly application cadence');
+  }
+
+  return {
+    is_premium: isPremium,
+    premium_until: premiumUntil,
+    total_applications: apps.length,
+    active_pipeline_count: activePipelineCount,
+    completed_placements: completedCount,
+    acceptance_rate_pct: acceptanceRate,
+    completion_rate_pct: completionRate,
+    avg_family_rating: Math.round(familyAvg * 10) / 10,
+    avg_agency_rating: Math.round(agencyAvg * 10) / 10,
+    application_velocity_30d: applications30d,
+    completion_velocity_30d: completed30d,
+    strengths,
+    opportunities
+  };
+};
+
+export const getNannyDevelopmentSessions = async (nannyId: string): Promise<NannyDevelopmentSession[]> => {
+  const path = 'nanny_development_sessions';
+  try {
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDevelopmentSession));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const createNannyDevelopmentSession = async ({
+  nannyId,
+  prompt
+}: {
+  nannyId: string;
+  prompt: string;
+}): Promise<NannyDevelopmentSession> => {
+  const path = 'nanny_development_sessions';
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    throw new Error('Please enter a prompt before running the development agent.');
+  }
+
+  const [analytics, profile] = await Promise.all([
+    getNannyPremiumAnalytics(nannyId),
+    getNannyById(nannyId)
+  ]);
+
+  if (!analytics.is_premium) {
+    throw new Error('Development Agent is a premium feature. Upgrade premium to continue.');
+  }
+
+  try {
+    const walletRef = doc(db, 'nanny_credit_wallets', nannyId);
+    const sessionRef = doc(collection(db, path));
+    const response = buildDevelopmentAgentResponse({
+      prompt: trimmedPrompt,
+      analytics,
+      profile
+    });
+
+    const created = await runTransaction(db, async (tx) => {
+      const walletSnap = await tx.get(walletRef);
+      const currentBalance = walletSnap.exists()
+        ? Math.max(0, Number(walletSnap.data().balance_credits || 0))
+        : 5;
+      const currentUsed = walletSnap.exists()
+        ? Math.max(0, Number(walletSnap.data().lifetime_used_credits || 0))
+        : 0;
+
+      if (currentBalance < 1) {
+        throw new Error('Not enough credits. Add credits to run another development session.');
+      }
+
+      tx.set(walletRef, {
+        nanny_id: nannyId,
+        balance_credits: currentBalance - 1,
+        lifetime_used_credits: currentUsed + 1,
+        updated_at: Timestamp.now(),
+        created_at: walletSnap.exists() ? walletSnap.data().created_at : Timestamp.now()
+      }, { merge: true });
+
+      const createdSession: NannyDevelopmentSession = {
+        id: sessionRef.id,
+        nanny_id: nannyId,
+        prompt: trimmedPrompt,
+        response,
+        credits_used: 1,
+        created_at: Timestamp.now()
+      };
+
+      tx.set(sessionRef, createdSession);
+      return createdSession;
+    });
+
+    return created;
+  } catch (error: any) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+};
+
+export const createNannyDocument = async (input: Omit<NannyDocument, 'id' | 'status' | 'reviewed_by' | 'reviewed_at' | 'created_at' | 'updated_at'>) => {
+  const path = 'nanny_documents';
+  try {
+    const fileName = input.file_name?.trim();
+    const fileUrl = input.file_url?.trim();
+    if (!fileName || !fileUrl) return null;
+
+    const docRef = await addDoc(collection(db, path), {
+      nanny_id: input.nanny_id,
+      uploader_user_id: input.uploader_user_id,
+      type: input.type,
+      file_name: fileName,
+      file_url: fileUrl,
+      status: 'uploaded',
+      reference_shared_with_agencies: false,
+      shared_with_agency_ids: [],
+      rejection_reason: null,
+      reviewed_by: null,
+      reviewed_at: null,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+
+    const saved = await getDoc(docRef);
+    return saved.exists() ? ({ id: saved.id, ...saved.data() } as NannyDocument) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return null;
+  }
+};
+
+export const getPendingNannyDocuments = async (): Promise<NannyDocument[]> => {
+  const path = 'nanny_documents';
+  try {
+    const q = query(collection(db, path), where('status', 'in', ['uploaded', 'under_review']), orderBy('created_at', 'asc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+const normalizeBgStatus = (status: 'checked' | 'not_checked' | 'expired', expiresAt?: string | null) => {
+  if (status !== 'checked') return status;
+  if (!expiresAt) return status;
+  const expiresMs = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiresMs)) return status;
+  return expiresMs < Date.now() ? 'expired' : status;
+};
+
+const computePublicBgStatus = (checks: NannyBgCheck[]): NannyBgPublicStatus | null => {
+  if (checks.length === 0) return null;
+
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const sorted = [...checks].sort((a, b) => {
+    const aTs = toMillis(a.checked_at || a.updated_at || a.created_at);
+    const bTs = toMillis(b.checked_at || b.updated_at || b.created_at);
+    return bTs - aTs;
+  });
+
+  const checked = sorted.find((item) => item.status === 'checked');
+  const expired = sorted.find((item) => item.status === 'expired');
+  const fallback = sorted[0];
+
+  const selected = checked || expired || fallback;
+  return {
+    nanny_id: selected.nanny_id,
+    status: selected.status,
+    last_checked_at: selected.checked_at || selected.updated_at || selected.created_at || null,
+    expires_at: selected.expires_at || null,
+    confidence: Number(selected.confidence || 0),
+    source_hidden: selected.source_hidden !== false,
+    updated_at: serverTimestamp()
+  };
+};
+
+export const upsertAgencyNannyBgCheck = async ({
+  nannyId,
+  sourceAgencyId,
+  sourceUserId,
+  status,
+  checkedAt,
+  expiresAt,
+  confidence,
+  docUrlPrivate,
+  sourceHidden = true
+}: {
+  nannyId: string;
+  sourceAgencyId: string;
+  sourceUserId: string;
+  status: 'checked' | 'not_checked' | 'expired';
+  checkedAt?: string;
+  expiresAt?: string;
+  confidence?: number;
+  docUrlPrivate?: string;
+  sourceHidden?: boolean;
+}): Promise<NannyBgCheck | null> => {
+  const path = 'nanny_bg_checks';
+  const auditPath = 'nanny_bg_check_audit_logs';
+  const publicPath = 'nanny_bg_status_public';
+  if (!nannyId || !sourceUserId) return null;
+
+  const normalizedStatus = normalizeBgStatus(status, expiresAt || undefined);
+  const saveWithAgency = async (agencyId: string): Promise<NannyBgCheck | null> => {
+    const checkId = `${agencyId}_${nannyId}`;
+    const checkRef = doc(db, path, checkId);
+    let existing: NannyBgCheck | null = null;
+    try {
+      const existingSnap = await getDoc(checkRef);
+      existing = existingSnap.exists() ? ({ id: existingSnap.id, ...existingSnap.data() } as NannyBgCheck) : null;
+    } catch {
+      // Do not block writes when read access to this exact doc is restricted.
+      existing = null;
+    }
+
+    await setDoc(checkRef, {
+      nanny_id: nannyId,
+      source_agency_id: agencyId,
+      source_user_id: sourceUserId,
+      status: normalizedStatus,
+      checked_at: checkedAt || null,
+      expires_at: expiresAt || null,
+      confidence: Math.max(0, Math.min(100, Number(confidence || 0))),
+      doc_url_private: docUrlPrivate?.trim() || null,
+      source_hidden: sourceHidden,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    await addDoc(collection(db, auditPath), {
+      nanny_id: nannyId,
+      source_agency_id: agencyId,
+      actor_user_id: sourceUserId,
+      action: existing ? 'updated' : 'created',
+      previous_status: existing?.status || null,
+      new_status: normalizedStatus,
+      previous_expires_at: existing?.expires_at || null,
+      new_expires_at: expiresAt || null,
+      previous_confidence: existing?.confidence ?? null,
+      new_confidence: Math.max(0, Math.min(100, Number(confidence || 0))),
+      source_hidden: sourceHidden,
+      created_at: serverTimestamp()
+    });
+
+    let savedCheck: NannyBgCheck | null = null;
+    try {
+      const saved = await getDoc(checkRef);
+      savedCheck = saved.exists() ? ({ id: saved.id, ...saved.data() } as NannyBgCheck) : null;
+    } catch {
+      // If post-write read is denied, still return a best-effort saved object.
+      savedCheck = {
+        id: checkId,
+        nanny_id: nannyId,
+        source_agency_id: agencyId,
+        source_user_id: sourceUserId,
+        status: normalizedStatus,
+        checked_at: checkedAt || null,
+        expires_at: expiresAt || null,
+        confidence: Math.max(0, Math.min(100, Number(confidence || 0))),
+        doc_url_private: docUrlPrivate?.trim() || null,
+        source_hidden: sourceHidden,
+      } as NannyBgCheck;
+    }
+
+    // Keep the main save path resilient: a public-status sync failure should not invalidate
+    // an already-saved agency check document.
+    try {
+      const checksQ = query(collection(db, path), where('nanny_id', '==', nannyId));
+      const checksSnap = await getDocs(checksQ);
+      const checks = checksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as NannyBgCheck));
+      const publicStatus = computePublicBgStatus(checks);
+
+      if (publicStatus) {
+        const publicStatusRef = doc(db, publicPath, nannyId);
+        const existingPublicSnap = await getDoc(publicStatusRef);
+        const existingPublic = existingPublicSnap.exists() ? (existingPublicSnap.data() as NannyBgPublicStatus) : null;
+        const hasActiveOverride = existingPublic?.override_active === true;
+
+        await setDoc(publicStatusRef, {
+          ...(hasActiveOverride ? {
+            nanny_id: nannyId,
+            override_active: true,
+            override_reason: existingPublic?.override_reason || null,
+            override_by_admin_id: existingPublic?.override_by_admin_id || null,
+            override_at: existingPublic?.override_at || null,
+            status: existingPublic?.status || publicStatus.status,
+            expires_at: existingPublic?.expires_at || publicStatus.expires_at,
+            confidence: Number(existingPublic?.confidence ?? publicStatus.confidence ?? 0),
+            source_hidden: existingPublic?.source_hidden !== false,
+            last_checked_at: existingPublic?.last_checked_at || publicStatus.last_checked_at || null,
+          } : publicStatus),
+          updated_at: serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (publicSyncError) {
+      handleFirestoreError(publicSyncError, OperationType.WRITE, publicPath);
+    }
+
+    return savedCheck;
+  };
+
+  let lastError: any = null;
+  try {
+    const resolvedAgencyIds = await resolveAgencyIdsForUser(sourceUserId);
+    const candidateAgencyIds = Array.from(new Set([
+      sourceAgencyId,
+      ...resolvedAgencyIds,
+    ].filter((value) => typeof value === 'string' && value.trim()))) as string[];
+
+    if (candidateAgencyIds.length === 0) return null;
+
+    for (const candidateAgencyId of candidateAgencyIds) {
+      try {
+        const savedCheck = await saveWithAgency(candidateAgencyId);
+        if (savedCheck) return savedCheck;
+      } catch (error: any) {
+        lastError = error;
+        if (error?.code !== 'permission-denied') {
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    lastError = error;
+  }
+
+  if (lastError) {
+    handleFirestoreError(lastError, OperationType.WRITE, path);
+  }
+  return null;
+};
+
+export const getNannyBgChecksForAgency = async (agencyId: string, nannyId?: string): Promise<NannyBgCheck[]> => {
+  const path = 'nanny_bg_checks';
+  try {
+    const q = query(collection(db, path), where('source_agency_id', '==', agencyId), orderBy('updated_at', 'desc'));
+    const snapshot = await getDocs(q);
+    const checks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyBgCheck));
+    if (!nannyId) return checks;
+    return checks.filter((item) => item.nanny_id === nannyId);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getNannyBgStatusMap = async (nannyIds: string[]): Promise<Record<string, NannyBgPublicStatus>> => {
+  const path = 'nanny_bg_status_public';
+  try {
+    const ids = Array.from(new Set((nannyIds || []).filter(Boolean)));
+    if (ids.length === 0) return {};
+
+    const result: Record<string, NannyBgPublicStatus> = {};
+    await Promise.all(ids.map(async (nannyId) => {
+      const snap = await getDoc(doc(db, path, nannyId));
+      if (!snap.exists()) return;
+      result[nannyId] = snap.data() as NannyBgPublicStatus;
+    }));
+
+    return result;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return {};
+  }
+};
+
+export const getAdminBgPublicStatuses = async (): Promise<AdminBgPublicStatusRow[]> => {
+  const path = 'nanny_bg_status_public';
+  try {
+    const snapshot = await getDocs(query(collection(db, path), orderBy('updated_at', 'desc')));
+    const rows = await Promise.all(snapshot.docs.map(async (entry) => {
+      const data = entry.data() as NannyBgPublicStatus;
+      const [nannyDoc, userDoc] = await Promise.all([
+        getDoc(doc(db, 'nanny_profiles', entry.id)),
+        getDoc(doc(db, 'users', entry.id))
+      ]);
+
+      const firstName = nannyDoc.exists() ? nannyDoc.data().first_name || '' : '';
+      const lastName = nannyDoc.exists() ? nannyDoc.data().last_name || '' : '';
+
+      return {
+        nanny_id: entry.id,
+        ...data,
+        nanny_name: `${firstName} ${lastName}`.trim() || undefined,
+        nanny_email: userDoc.exists() ? userDoc.data().email : undefined
+      } as AdminBgPublicStatusRow;
+    }));
+    return rows;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const setAdminBgPublicStatusOverride = async ({
+  nannyId,
+  adminUserId,
+  status,
+  confidence,
+  expiresAt,
+  reason
+}: {
+  nannyId: string;
+  adminUserId: string;
+  status: 'checked' | 'not_checked' | 'expired';
+  confidence: number;
+  expiresAt?: string;
+  reason: string;
+}): Promise<NannyBgPublicStatus | null> => {
+  const publicPath = `nanny_bg_status_public/${nannyId}`;
+  const auditPath = 'nanny_bg_check_audit_logs';
+  try {
+    if (!nannyId || !adminUserId || !reason.trim()) return null;
+
+    const publicRef = doc(db, 'nanny_bg_status_public', nannyId);
+    const existingSnap = await getDoc(publicRef);
+    const existing = existingSnap.exists() ? (existingSnap.data() as NannyBgPublicStatus) : null;
+
+    await setDoc(publicRef, {
+      nanny_id: nannyId,
+      status,
+      confidence: Math.max(0, Math.min(100, Number(confidence || 0))),
+      expires_at: expiresAt || null,
+      override_active: true,
+      override_reason: reason.trim(),
+      override_by_admin_id: adminUserId,
+      override_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    await addDoc(collection(db, auditPath), {
+      nanny_id: nannyId,
+      source_agency_id: null,
+      actor_user_id: adminUserId,
+      action: 'override_set',
+      previous_status: existing?.status || null,
+      new_status: status,
+      previous_expires_at: existing?.expires_at || null,
+      new_expires_at: expiresAt || null,
+      previous_confidence: existing?.confidence ?? null,
+      new_confidence: Math.max(0, Math.min(100, Number(confidence || 0))),
+      source_hidden: existing?.source_hidden !== false,
+      override_reason: reason.trim(),
+      created_at: serverTimestamp()
+    });
+
+    const updated = await getDoc(publicRef);
+    return updated.exists() ? (updated.data() as NannyBgPublicStatus) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, publicPath);
+    return null;
+  }
+};
+
+export const clearAdminBgPublicStatusOverride = async ({
+  nannyId,
+  adminUserId,
+  reason
+}: {
+  nannyId: string;
+  adminUserId: string;
+  reason: string;
+}): Promise<NannyBgPublicStatus | null> => {
+  const publicPath = `nanny_bg_status_public/${nannyId}`;
+  const auditPath = 'nanny_bg_check_audit_logs';
+  try {
+    if (!nannyId || !adminUserId || !reason.trim()) return null;
+
+    const checksSnap = await getDocs(query(collection(db, 'nanny_bg_checks'), where('nanny_id', '==', nannyId)));
+    const checks = checksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as NannyBgCheck));
+    const computed = computePublicBgStatus(checks);
+    if (!computed) return null;
+
+    const publicRef = doc(db, 'nanny_bg_status_public', nannyId);
+    const existingSnap = await getDoc(publicRef);
+    const existing = existingSnap.exists() ? (existingSnap.data() as NannyBgPublicStatus) : null;
+
+    await setDoc(publicRef, {
+      ...computed,
+      override_active: false,
+      override_reason: null,
+      override_by_admin_id: null,
+      override_at: null,
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    await addDoc(collection(db, auditPath), {
+      nanny_id: nannyId,
+      source_agency_id: null,
+      actor_user_id: adminUserId,
+      action: 'override_cleared',
+      previous_status: existing?.status || null,
+      new_status: computed.status,
+      previous_expires_at: existing?.expires_at || null,
+      new_expires_at: computed.expires_at || null,
+      previous_confidence: existing?.confidence ?? null,
+      new_confidence: Number(computed.confidence || 0),
+      source_hidden: computed.source_hidden !== false,
+      override_reason: reason.trim(),
+      created_at: serverTimestamp()
+    });
+
+    const updated = await getDoc(publicRef);
+    return updated.exists() ? (updated.data() as NannyBgPublicStatus) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, publicPath);
+    return null;
+  }
+};
+
+export const getBgCheckAuditLogs = async (): Promise<NannyBgCheckAuditLog[]> => {
+  const path = 'nanny_bg_check_audit_logs';
+  try {
+    const snapshot = await getDocs(query(collection(db, path), orderBy('created_at', 'desc')));
+    const rawLogs = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as NannyBgCheckAuditLog));
+    const logs = await Promise.all(rawLogs.map(async (data) => {
+      const [nannyDoc, userDoc, agencyDoc, actorDoc] = await Promise.all([
+        getDoc(doc(db, 'nanny_profiles', data.nanny_id)),
+        getDoc(doc(db, 'users', data.nanny_id)),
+        data.source_agency_id ? getDoc(doc(db, 'agency_profiles', data.source_agency_id)) : Promise.resolve(null as any),
+        getDoc(doc(db, 'users', data.actor_user_id))
+      ]);
+
+      const firstName = nannyDoc.exists() ? nannyDoc.data().first_name || '' : '';
+      const lastName = nannyDoc.exists() ? nannyDoc.data().last_name || '' : '';
+
+      return {
+        ...data,
+        nanny_name: `${firstName} ${lastName}`.trim() || undefined,
+        nanny_email: userDoc.exists() ? userDoc.data().email : undefined,
+        agency_name: agencyDoc?.exists?.() ? agencyDoc.data().company_name : (data.action.startsWith('override') ? 'Admin Override' : undefined),
+        actor_email: actorDoc.exists() ? actorDoc.data().email : undefined
+      } as NannyBgCheckAuditLog;
+    }));
+
+    const flipCounter = new Map<string, number>();
+    rawLogs.forEach((log) => {
+      if (!log.source_agency_id || !log.previous_status || log.previous_status === log.new_status) return;
+      const key = `${log.nanny_id}:${log.source_agency_id}`;
+      flipCounter.set(key, (flipCounter.get(key) || 0) + 1);
+    });
+
+    return logs.map((log) => {
+      const riskFlags: string[] = [];
+      if (log.new_status === 'checked' && Number(log.new_confidence || 0) < 60) {
+        riskFlags.push('Low-confidence checked submission');
+      }
+      if (log.source_agency_id) {
+        const key = `${log.nanny_id}:${log.source_agency_id}`;
+        if ((flipCounter.get(key) || 0) >= 2) {
+          riskFlags.push('Repeated status flips');
+        }
+      }
+      if (log.action === 'override_set') {
+        riskFlags.push('Admin override active');
+      }
+      return {
+        ...log,
+        risk_flags: riskFlags
+      } as NannyBgCheckAuditLog;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+const toMillis = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const summarizeVerificationDocs = (docs: NannyDocument[], nowMs: number): AdminVerificationOverview => {
+  const reviewed = docs.filter((item) => item.status === 'approved' || item.status === 'rejected');
+  const pending = docs.filter((item) => item.status === 'uploaded' || item.status === 'under_review');
+  const approved = docs.filter((item) => item.status === 'approved');
+  const rejected = docs.filter((item) => item.status === 'rejected');
+
+  const reviewedDurationsHours = reviewed
+    .map((item) => {
+      const createdAt = toMillis(item.created_at);
+      const reviewedAt = toMillis(item.reviewed_at);
+      if (!createdAt || !reviewedAt || reviewedAt < createdAt) return 0;
+      return (reviewedAt - createdAt) / (1000 * 60 * 60);
+    })
+    .filter((hours) => hours > 0);
+
+  const avgReviewTimeHours = reviewedDurationsHours.length > 0
+    ? Math.round((reviewedDurationsHours.reduce((sum, hours) => sum + hours, 0) / reviewedDurationsHours.length) * 10) / 10
+    : 0;
+
+  const pendingOver72h = pending.filter((item) => {
+    const createdAt = toMillis(item.created_at);
+    if (!createdAt) return false;
+    return nowMs - createdAt > 72 * 60 * 60 * 1000;
+  }).length;
+
+  const total = docs.length;
+  const approvalRatePct = total > 0 ? Math.round((approved.length / total) * 100) : 0;
+
+  return {
+    total_documents: total,
+    pending_documents: pending.length,
+    approved_documents: approved.length,
+    rejected_documents: rejected.length,
+    approval_rate_pct: approvalRatePct,
+    avg_review_time_hours: avgReviewTimeHours,
+    pending_over_72h: pendingOver72h
+  };
+};
+
+const emptyVerificationOverview = (): AdminVerificationOverview => ({
+  total_documents: 0,
+  pending_documents: 0,
+  approved_documents: 0,
+  rejected_documents: 0,
+  approval_rate_pct: 0,
+  avg_review_time_hours: 0,
+  pending_over_72h: 0
+});
+
+export const getAdminVerificationOverview = async (): Promise<AdminVerificationOverview> => {
+  const analytics = await getAdminVerificationAnalytics('all');
+  return analytics.current;
+};
+
+export const getAdminVerificationAnalytics = async (range: VerificationRange = 'all'): Promise<AdminVerificationAnalytics> => {
+  const path = 'nanny_documents';
+  try {
+    const snapshot = await getDocs(query(collection(db, path), orderBy('created_at', 'desc')));
+    const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+    const nowMs = Date.now();
+
+    const windowDays = range === '7d' ? 7 : range === '30d' ? 30 : null;
+    const currentStartMs = windowDays ? nowMs - windowDays * 24 * 60 * 60 * 1000 : null;
+    const previousStartMs = windowDays ? nowMs - windowDays * 2 * 24 * 60 * 60 * 1000 : null;
+
+    const currentDocs = currentStartMs
+      ? docs.filter((item) => {
+          const createdAt = toMillis(item.created_at);
+          return createdAt > 0 && createdAt >= currentStartMs;
+        })
+      : docs;
+
+    const previousDocs = currentStartMs && previousStartMs
+      ? docs.filter((item) => {
+          const createdAt = toMillis(item.created_at);
+          return createdAt > 0 && createdAt >= previousStartMs && createdAt < currentStartMs;
+        })
+      : null;
+
+    const current = summarizeVerificationDocs(currentDocs, nowMs);
+    const previous = previousDocs ? summarizeVerificationDocs(previousDocs, nowMs) : null;
+
+    const typeMap = new Map<string, AdminVerificationTypeBreakdownItem>();
+    currentDocs.forEach((item) => {
+      const key = item.type || 'other';
+      if (!typeMap.has(key)) {
+        typeMap.set(key, {
+          type: key as NannyDocument['type'],
+          total: 0,
+          pending: 0,
+          approved: 0,
+          rejected: 0,
+          approval_rate_pct: 0
+        });
+      }
+
+      const bucket = typeMap.get(key)!;
+      bucket.total += 1;
+      if (item.status === 'approved') bucket.approved += 1;
+      if (item.status === 'rejected') bucket.rejected += 1;
+      if (item.status === 'uploaded' || item.status === 'under_review') bucket.pending += 1;
+      bucket.approval_rate_pct = bucket.total > 0 ? Math.round((bucket.approved / bucket.total) * 100) : 0;
+    });
+
+    const typeBreakdown = Array.from(typeMap.values()).sort((a, b) => b.total - a.total);
+
+    const pendingDocs = currentDocs.filter((item) => item.status === 'uploaded' || item.status === 'under_review');
+    const identityMap = new Map<string, { nanny_name?: string; nanny_email?: string }>();
+    const uniqueNannyIds = Array.from(new Set(pendingDocs.map((item) => item.nanny_id).filter(Boolean)));
+
+    await Promise.all(uniqueNannyIds.map(async (nannyId) => {
+      try {
+        const [profileDoc, userDoc] = await Promise.all([
+          getDoc(doc(db, 'nanny_profiles', nannyId)),
+          getDoc(doc(db, 'users', nannyId))
+        ]);
+        const firstName = profileDoc.exists() ? (profileDoc.data().first_name || '') : '';
+        const lastName = profileDoc.exists() ? (profileDoc.data().last_name || '') : '';
+        const nannyName = `${firstName} ${lastName}`.trim() || undefined;
+        const nannyEmail = userDoc.exists() ? userDoc.data().email : undefined;
+        identityMap.set(nannyId, { nanny_name: nannyName, nanny_email: nannyEmail });
+      } catch {
+        identityMap.set(nannyId, {});
+      }
+    }));
+
+    const queue: AdminVerificationQueueItem[] = pendingDocs
+      .map((item) => {
+        const createdAtMs = toMillis(item.created_at);
+        const ageHoursRaw = createdAtMs > 0 ? (nowMs - createdAtMs) / (1000 * 60 * 60) : 0;
+        const ageHours = Math.max(0, Math.round(ageHoursRaw * 10) / 10);
+        const identity = identityMap.get(item.nanny_id) || {};
+        return {
+          ...item,
+          age_hours: ageHours,
+          sla_breached: ageHours > 72,
+          nanny_name: identity.nanny_name,
+          nanny_email: identity.nanny_email
+        };
+      })
+      .sort((a, b) => {
+        if (a.sla_breached !== b.sla_breached) {
+          return a.sla_breached ? -1 : 1;
+        }
+        return b.age_hours - a.age_hours;
+      });
+
+    const deltas = {
+      total_documents: previous ? current.total_documents - previous.total_documents : 0,
+      pending_documents: previous ? current.pending_documents - previous.pending_documents : 0,
+      approved_documents: previous ? current.approved_documents - previous.approved_documents : 0,
+      rejected_documents: previous ? current.rejected_documents - previous.rejected_documents : 0,
+      approval_rate_pct: previous ? current.approval_rate_pct - previous.approval_rate_pct : 0,
+      avg_review_time_hours: previous ? Math.round((current.avg_review_time_hours - previous.avg_review_time_hours) * 10) / 10 : 0,
+      pending_over_72h: previous ? current.pending_over_72h - previous.pending_over_72h : 0
+    };
+
+    return {
+      range,
+      current,
+      previous,
+      deltas,
+      type_breakdown: typeBreakdown,
+      queue
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return {
+      range,
+      current: emptyVerificationOverview(),
+      previous: range === 'all' ? null : emptyVerificationOverview(),
+      deltas: {
+        total_documents: 0,
+        pending_documents: 0,
+        approved_documents: 0,
+        rejected_documents: 0,
+        approval_rate_pct: 0,
+        avg_review_time_hours: 0,
+        pending_over_72h: 0
+      },
+      type_breakdown: [],
+      queue: []
+    };
+  }
+};
+
+export const updateNannyDocumentStatus = async ({
+  documentId,
+  status,
+  reviewerUserId,
+  rejectionReason
+}: {
+  documentId: string;
+  status: 'under_review' | 'approved' | 'rejected';
+  reviewerUserId: string;
+  rejectionReason?: string;
+}) => {
+  const path = `nanny_documents/${documentId}`;
+  try {
+    const docRef = doc(db, 'nanny_documents', documentId);
+    await updateDoc(docRef, {
+      status,
+      rejection_reason: status === 'rejected' ? (rejectionReason?.trim() || 'Not provided') : null,
+      reviewed_by: reviewerUserId,
+      reviewed_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+
+    const updated = await getDoc(docRef);
+    return updated.exists() ? ({ id: updated.id, ...updated.data() } as NannyDocument) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
 // --- AGENCIES ---
 export const getAgencies = async (): Promise<AgencyProfile[]> => {
   const path = 'agency_profiles';
   try {
     const snapshot = await getDocs(collection(db, path));
-    const agencies = await Promise.all(snapshot.docs.map(async (d) => {
-      const agencyData = d.data();
-      const userDoc = await getDoc(doc(db, 'users', d.id));
-      return {
-        id: d.id,
-        ...agencyData,
-        users: userDoc.exists() ? userDoc.data() : null
-      } as AgencyProfile;
-    }));
+    const agencies = snapshot.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      users: null,
+    } as AgencyProfile));
     return agencies;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
@@ -762,28 +2344,135 @@ export const getAgencyById = async (id: string): Promise<AgencyProfile | null> =
   }
 };
 
+export const resolveAgencyIdsForUser = async (userId: string): Promise<string[]> => {
+  if (!userId) return [];
+
+  const ids = new Set<string>();
+  const addId = (value: any) => {
+    if (typeof value === 'string' && value.trim()) {
+      ids.add(value.trim());
+    }
+  };
+
+  // Candidate 1: explicit references on users document.
+  // This should be first because Firestore rules also derive agency membership from this linkage.
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (userDoc.exists()) {
+      addId(userDoc.data().agency_id);
+      addId(userDoc.data().agency_profile_id);
+    }
+  } catch {
+    // Continue with other resolution strategies.
+  }
+
+  // Candidate 2: legacy pattern where agency profile doc ID equals user UID
+  try {
+    const agencyDoc = await getDoc(doc(db, 'agency_profiles', userId));
+    if (agencyDoc.exists()) addId(userId);
+  } catch {
+    // Continue with other resolution strategies.
+  }
+
+  // Candidate 3: recruiter seat linkage (for recruiters, not admins)
+  try {
+    const recruiterQuery = query(collection(db, 'agency_recruiters'), where('user_id', '==', userId));
+    const recruiterSnap = await getDocs(recruiterQuery);
+    if (!recruiterSnap.empty) {
+      recruiterSnap.docs.forEach((seatDoc) => addId(seatDoc.data().agency_id));
+      console.log(`[DEBUG] resolveAgencyIdsForUser(${userId}): recruiter at ${recruiterSnap.size} agencies`);
+    }
+  } catch {
+    // Continue with other resolution strategies.
+  }
+
+  // Candidate 4: Check if user is ADMIN of an agency (owner_uid field)
+  try {
+    const adminQuery = query(collection(db, 'agency_profiles'), where('owner_uid', '==', userId));
+    const adminSnap = await getDocs(adminQuery);
+    if (!adminSnap.empty) {
+      adminSnap.docs.forEach((agencyDoc) => addId(agencyDoc.id));
+      console.log(`[DEBUG] resolveAgencyIdsForUser(${userId}): admin of ${adminSnap.size} agencies`);
+    }
+  } catch (err) {
+    console.error(`[DEBUG] resolveAgencyIdsForUser(${userId}): owner_uid query failed:`, err);
+  }
+
+  // Candidate 5: other admin-id fields in agency profile docs (fallback)
+  const agencyLinkFields = ['user_id', 'owner_id', 'admin_id'];
+  for (const field of agencyLinkFields) {
+    try {
+      const linkedProfilesQuery = query(collection(db, 'agency_profiles'), where(field, '==', userId));
+      const linkedProfilesSnap = await getDocs(linkedProfilesQuery);
+      linkedProfilesSnap.docs.forEach((profileDoc) => addId(profileDoc.id));
+    } catch {
+      // Ignore this field if query is unavailable under current rules/indexes.
+    }
+  }
+
+  const result = Array.from(ids);
+  console.log(`[DEBUG] resolveAgencyIdsForUser(${userId}): resolved agency IDs:`, result);
+  return result;
+};
+
 export const resolveAgencyIdForUser = async (userId: string): Promise<string | null> => {
-  if (!userId) return null;
+  const agencyIds = await resolveAgencyIdsForUser(userId);
+  return agencyIds[0] || null;
+};
 
-  const agencyDoc = await getDoc(doc(db, 'agency_profiles', userId));
-  if (agencyDoc.exists()) return userId;
-
-  const userDoc = await getDoc(doc(db, 'users', userId));
-  if (userDoc.exists()) {
-    const directAgencyId = userDoc.data().agency_id;
-    if (typeof directAgencyId === 'string' && directAgencyId) return directAgencyId;
+export const getAgencyConversationsForUser = async (userId: string) => {
+  const agencyIds = await resolveAgencyIdsForUser(userId);
+  console.log(`[DEBUG] getAgencyConversationsForUser(${userId}): resolved agency IDs:`, agencyIds);
+  if (agencyIds.length === 0) {
+    console.log(`[DEBUG] getAgencyConversationsForUser(${userId}): no agency IDs found, returning empty`);
+    return [];
   }
 
-  const recruiterQuery = query(collection(db, 'agency_recruiters'), where('user_id', '==', userId));
-  const recruiterSnap = await getDocs(recruiterQuery);
-  if (!recruiterSnap.empty) {
-    const activeSeat = recruiterSnap.docs.find((d) => d.data().status === 'active');
-    const seat = activeSeat || recruiterSnap.docs[0];
-    const agencyId = seat.data().agency_id;
-    if (typeof agencyId === 'string' && agencyId) return agencyId;
-  }
+  const grouped = await Promise.all(agencyIds.map((id) => {
+    console.log(`[DEBUG] getAgencyConversationsForUser: querying conversations for agency ${id}`);
+    return getAgencyConversations(id);
+  }));
+  console.log(`[DEBUG] getAgencyConversationsForUser(${userId}): grouped results:`, grouped);
+  const merged = grouped.flat();
 
-  return null;
+  const unique = new Map<string, any>();
+  merged.forEach((conversation: any) => {
+    if (!conversation?.id) return;
+    const existing = unique.get(conversation.id);
+    if (!existing) {
+      unique.set(conversation.id, conversation);
+      return;
+    }
+
+    const toMillis = (value: any): number => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const currentTs = toMillis(conversation.updated_at || conversation.created_at);
+    const existingTs = toMillis(existing.updated_at || existing.created_at);
+    if (currentTs > existingTs) {
+      unique.set(conversation.id, conversation);
+    }
+  });
+
+  const values = Array.from(unique.values());
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  return values.sort((a: any, b: any) => {
+    const aUpdated = toMillis(a.updated_at || a.created_at);
+    const bUpdated = toMillis(b.updated_at || b.created_at);
+    return bUpdated - aUpdated;
+  });
 };
 
 export const updateAgencyProfile = async (id: string, updates: any) => {
@@ -980,12 +2669,60 @@ export const getFamilyApplications = async (familyId: string): Promise<any[]> =>
   }
 };
 
+export const getFamilyPlacementApplications = async (familyId: string): Promise<Application[]> => {
+  const path = 'applications';
+  try {
+    const q = query(collection(db, path), where('family_id', '==', familyId));
+    const snapshot = await getDocs(q);
+    const apps = await Promise.all(snapshot.docs.map(async (d) => {
+      const data = d.data();
+      const [jobDoc, nannyDoc] = await Promise.all([
+        getDoc(doc(db, 'jobs', data.job_id)),
+        getDoc(doc(db, 'nanny_profiles', data.nanny_id))
+      ]);
+
+      let jobWithAgency: Job | null = null;
+      if (jobDoc.exists()) {
+        const jobData = jobDoc.data();
+        const agencyDoc = await getDoc(doc(db, 'agency_profiles', jobData.agency_id));
+        jobWithAgency = {
+          id: jobDoc.id,
+          ...jobData,
+          agency_profiles: agencyDoc.exists() ? agencyDoc.data() : null
+        } as Job;
+      }
+
+      return {
+        id: d.id,
+        ...data,
+        jobs: jobWithAgency,
+        nanny_profiles: nannyDoc.exists() ? nannyDoc.data() : null
+      } as Application;
+    }));
+
+    const toMillis = (value: any): number => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    return apps.sort((a, b) => toMillis(b.updated_at || b.created_at) - toMillis(a.updated_at || a.created_at));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
 export const getFamilyCareHistory = async (familyId: string): Promise<CareHistory[]> => {
   const path = 'care_history';
   try {
-    const q = query(collection(db, path), where('family_id', '==', familyId), orderBy('end_date', 'desc'));
+    const q = query(collection(db, path), where('family_id', '==', familyId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CareHistory));
+    return snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() } as CareHistory))
+      .sort((a, b) => toMillisSafe(b.updated_at || b.end_date || b.start_date) - toMillisSafe(a.updated_at || a.end_date || a.start_date));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -1057,7 +2794,17 @@ export const addCareHistory = async (history: CareHistory) => {
   }
 };
 
-export const recordCareHistoryFromApplication = async (applicationId: string) => {
+const addDaysIso = (value: string, days: number) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+};
+
+export const recordCareHistoryFromApplication = async (
+  applicationId: string,
+  placementStatus: 'active' | 'completed' = 'completed'
+) => {
   const appPath = `application/${applicationId}`;
   try {
     const familyAppDoc = await getDoc(doc(db, 'family_applications', applicationId));
@@ -1085,12 +2832,17 @@ export const recordCareHistoryFromApplication = async (applicationId: string) =>
       where('nanny_id', '==', nannyId)
     );
     const existingSnap = await getDocs(existingQ);
-    if (!existingSnap.empty) {
-      return { id: existingSnap.docs[0].id };
-    }
+    const existingDoc = existingSnap.empty ? null : existingSnap.docs[0];
+    const existingHistory = existingDoc ? (existingDoc.data() as CareHistory) : null;
 
     const agencyDoc = await getDoc(doc(db, 'agency_profiles', agencyId));
     const nannyDoc = await getDoc(doc(db, 'nanny_profiles', nannyId));
+    const derivedStartDate = existingHistory?.start_date
+      || app.start_date
+      || (typeof app.active_at?.toDate === 'function' ? app.active_at.toDate().toISOString() : app.active_at)
+      || new Date().toISOString();
+    const weekOneReviewAvailableAt = existingHistory?.week_one_review_available_at || addDaysIso(derivedStartDate, 7);
+    const completedAt = new Date().toISOString();
 
     const history: CareHistory = {
       family_id: familyId,
@@ -1106,14 +2858,28 @@ export const recordCareHistoryFromApplication = async (applicationId: string) =>
       location_neighborhood: jobData?.location_neighborhood,
       agency_name: agencyDoc.exists() ? (agencyDoc.data() as any).company_name : undefined,
       nanny_name: nannyDoc.exists() ? `${(nannyDoc.data() as any).first_name || ''} ${(nannyDoc.data() as any).last_name || ''}`.trim() : undefined,
-      start_date: app.start_date || '',
-      end_date: new Date().toISOString(),
-      summary: app.call_note || 'Care placement completed.',
-      reviewed_agency_by_family: false,
-      reviewed_nanny_by_family: false,
+      placement_status: placementStatus,
+      start_date: derivedStartDate,
+      end_date: placementStatus === 'completed' ? (existingHistory?.end_date || completedAt) : existingHistory?.end_date,
+      week_one_review_available_at: weekOneReviewAvailableAt,
+      summary: app.call_note || (placementStatus === 'completed' ? 'Care placement completed.' : 'Placement started and is in progress.'),
+      reviewed_agency_by_family: existingHistory?.reviewed_agency_by_family || false,
+      reviewed_nanny_by_family: existingHistory?.reviewed_nanny_by_family || false,
+      reviewed_agency_week_one_by_family: existingHistory?.reviewed_agency_week_one_by_family || false,
+      reviewed_nanny_week_one_by_family: existingHistory?.reviewed_nanny_week_one_by_family || false,
+      reviewed_agency_completion_by_family: existingHistory?.reviewed_agency_completion_by_family || false,
+      reviewed_nanny_completion_by_family: existingHistory?.reviewed_nanny_completion_by_family || false,
       rating: 0,
       review: ''
     };
+
+    if (existingDoc) {
+      await updateDoc(existingDoc.ref, {
+        ...history,
+        updated_at: serverTimestamp(),
+      });
+      return { id: existingDoc.id };
+    }
 
     return await addCareHistory(history);
   } catch (error) {
@@ -1122,14 +2888,21 @@ export const recordCareHistoryFromApplication = async (applicationId: string) =>
 };
 
 // --- REVIEWS ---
-export interface NannyReview {
-  id?: string;
+export type NannyReview = StructuredNannyReview;
+
+export interface NannyReviewInput extends Partial<StructuredNannyReview> {
   nanny_id: string;
   reviewer_id: string;
-  reviewer_role: 'family' | 'agency' | 'nanny';
-  rating: number;
-  comment: string;
-  created_at?: any;
+  reviewer_type?: NannyReviewerType;
+  reviewer_role?: NannyReviewerType;
+  relationship_context?: NannyReviewRelationshipContext;
+  rating?: number;
+  comment?: string;
+}
+
+export interface NannyReviewSummary extends NannyReviewAggregate {
+  averageRating: number;
+  highlightText: string;
 }
 
 export interface AgencyReview {
@@ -1142,16 +2915,124 @@ export interface AgencyReview {
   created_at?: any;
 }
 
+const normalizeReviewScore = (value: unknown, fallback = 5) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(1, Math.min(5, Math.round(numeric)));
+};
+
+const buildStructuredNannyReview = (review: NannyReviewInput): StructuredNannyReview => {
+  const reviewerType = (review.reviewer_type || review.reviewer_role || 'family') as NannyReviewerType;
+  const legacyRating = normalizeReviewScore(review.rating, 5);
+
+  return normalizeStructuredNannyReview({
+    ...review,
+    reviewer_type: reviewerType,
+    reviewer_role: reviewerType,
+    relationship_context: review.relationship_context || (reviewerType === 'agency' ? 'placed' : 'engagement_completed'),
+    reliability_rating: normalizeReviewScore(review.reliability_rating, legacyRating),
+    communication_rating: normalizeReviewScore(review.communication_rating, legacyRating),
+    punctuality: typeof review.punctuality === 'boolean' ? review.punctuality : legacyRating >= 4,
+    rehire: typeof review.rehire === 'boolean' ? review.rehire : legacyRating >= 4,
+    strengths: sanitizeReviewText(review.strengths || review.comment, 120),
+    notes: sanitizeReviewText(review.notes || review.comment, 240),
+    status: review.status || 'active',
+    moderated_status: review.moderated_status || 'approved',
+    visible_to_agencies: review.visible_to_agencies ?? true,
+    visible_to_families: review.visible_to_families ?? true,
+    internal_only: review.internal_only ?? false,
+  });
+};
+
+const getAgencyNannyReviewEligibility = async (review: StructuredNannyReview) => {
+  if (review.relationship_reference_type === 'application' && review.relationship_reference_id) {
+    const applicationDoc = await getDoc(doc(db, 'applications', review.relationship_reference_id));
+    if (!applicationDoc.exists()) {
+      return { allowed: false, message: 'Application record not found.' };
+    }
+
+    const application = applicationDoc.data() as any;
+    if (application.agency_id !== review.reviewer_id || application.nanny_id !== review.nanny_id) {
+      return { allowed: false, message: 'This application does not match the selected nanny.' };
+    }
+
+    return { allowed: true };
+  }
+
+  if (review.relationship_reference_type === 'managed_profile' || review.relationship_context === 'managed') {
+    const profile = await getNannyById(review.nanny_id);
+    if (profile?.agency_id === review.reviewer_id) {
+      return { allowed: true };
+    }
+    return { allowed: false, message: 'Only the managing agency can review this nanny from the talent pool.' };
+  }
+
+  const applicationQuery = query(collection(db, 'applications'), where('agency_id', '==', review.reviewer_id));
+  const snapshot = await getDocs(applicationQuery);
+  const matching = snapshot.docs.find((entry) => (entry.data() as any).nanny_id === review.nanny_id);
+  if (matching) {
+    return { allowed: true };
+  }
+
+  return { allowed: false, message: 'A verified agency relationship is required before submitting a review.' };
+};
+
+const getFamilyNannyReviewEligibility = async (review: StructuredNannyReview) => {
+  if (!review.relationship_reference_id) {
+    return { allowed: false, message: 'Completed care history is required before a family can review a nanny.' };
+  }
+
+  const careHistoryDoc = await getDoc(doc(db, 'care_history', review.relationship_reference_id));
+  if (!careHistoryDoc.exists()) {
+    return { allowed: false, message: 'Care history record not found.' };
+  }
+
+  const careHistory = careHistoryDoc.data() as any;
+  if (careHistory.family_id !== review.reviewer_id || careHistory.nanny_id !== review.nanny_id) {
+    return { allowed: false, message: 'This care history record does not match the selected nanny.' };
+  }
+
+  return { allowed: true };
+};
+
 export const getNannyReviews = async (nannyId: string): Promise<NannyReview[]> => {
   const path = 'nanny_reviews';
   try {
     const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NannyReview));
+    return snapshot.docs.map((d) => normalizeStructuredNannyReview({ id: d.id, ...d.data() }));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
   }
+};
+
+export const getNannyReviewSummary = async (
+  nannyId: string,
+  shiftScoreConfig?: ShiftScoreConfigOverrides
+): Promise<NannyReviewSummary> => {
+  const reviews = await getNannyReviews(nannyId);
+  const config = resolveShiftScoreConfig(shiftScoreConfig);
+  const reviewSummary = aggregateShiftScoreReviews(reviews, config.reviewWeights);
+  const aggregate: NannyReviewAggregate = {
+    reviewCount: reviewSummary.reviewCount,
+    agencyReviewCount: reviewSummary.agencyReviewCount,
+    familyReviewCount: reviewSummary.familyReviewCount,
+    averageReliability: reviewSummary.averageReliability,
+    averageCommunication: reviewSummary.averageCommunication,
+    punctualityRate: reviewSummary.punctualityRate,
+    rehireRate: reviewSummary.rehireRate,
+    shiftScore: reviewSummary.shiftScore,
+    strongSignals: reviewSummary.highlights,
+  };
+
+  return {
+    ...aggregate,
+    averageRating: aggregate.reviewCount > 0
+      ? Math.round(((aggregate.averageReliability + aggregate.averageCommunication) / 2) * 10) / 10
+      : 0,
+    highlightText: reviewSummary.highlightText,
+  };
 };
 
 export const getAgencyReviews = async (agencyId: string): Promise<AgencyReview[]> => {
@@ -1166,15 +3047,50 @@ export const getAgencyReviews = async (agencyId: string): Promise<AgencyReview[]
   }
 };
 
-export const addNannyReview = async (review: NannyReview) => {
+export const addNannyReview = async (review: NannyReviewInput) => {
   const path = 'nanny_reviews';
   try {
+    const structuredReview = buildStructuredNannyReview(review);
+    const validationErrors = validateStructuredNannyReview(structuredReview);
+    if (validationErrors.length > 0) {
+      throw new Error(validationErrors[0]);
+    }
+
+    const eligibility = structuredReview.reviewer_type === 'agency'
+      ? await getAgencyNannyReviewEligibility(structuredReview)
+      : await getFamilyNannyReviewEligibility(structuredReview);
+
+    if (!eligibility.allowed) {
+      throw new Error(eligibility.message);
+    }
+
+    const duplicateQuery = query(
+      collection(db, path),
+      where('nanny_id', '==', structuredReview.nanny_id),
+      where('reviewer_id', '==', structuredReview.reviewer_id),
+      where('reviewer_type', '==', structuredReview.reviewer_type)
+    );
+    const duplicateSnapshot = await getDocs(duplicateQuery);
+    const duplicate = duplicateSnapshot.docs.find((entry) => {
+      const data = entry.data() as any;
+      return (
+        (data.relationship_reference_id || '') === (structuredReview.relationship_reference_id || '') &&
+        (data.relationship_reference_type || '') === (structuredReview.relationship_reference_type || '')
+      );
+    });
+
+    if (duplicate) {
+      throw new Error('A review has already been submitted for this relationship.');
+    }
+
     const docRef = await addDoc(collection(db, path), {
-      ...review,
-      created_at: serverTimestamp()
+      ...structuredReview,
+      reviewer_role: structuredReview.reviewer_type,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
     });
     const savedDoc = await getDoc(docRef);
-    return { id: savedDoc.id, ...savedDoc.data() } as NannyReview;
+    return normalizeStructuredNannyReview({ id: savedDoc.id, ...savedDoc.data() });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -1195,10 +3111,12 @@ export const addAgencyReview = async (review: AgencyReview) => {
 };
 
 export const getNannyReviewStats = async (nannyId: string) => {
-  const reviews = await getNannyReviews(nannyId);
-  const count = reviews.length;
-  const avg = count > 0 ? reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / count : 0;
-  return { count, avg };
+  const summary = await getNannyReviewSummary(nannyId);
+  return {
+    count: summary.reviewCount,
+    avg: summary.averageRating,
+    summary,
+  };
 };
 
 export const getAgencyReviewStats = async (agencyId: string) => {
@@ -1212,18 +3130,22 @@ export const submitCareHistoryReview = async ({
   careHistoryId,
   familyId,
   target,
+  phase = 'completion',
   agencyId,
   nannyId,
   rating,
-  comment
+  comment,
+  review
 }: {
   careHistoryId: string;
   familyId: string;
   target: 'agency' | 'nanny';
+  phase?: 'week_one' | 'completion';
   agencyId?: string;
   nannyId?: string;
   rating: number;
   comment: string;
+  review?: Omit<NannyReviewInput, 'nanny_id' | 'reviewer_id' | 'reviewer_type' | 'reviewer_role' | 'relationship_reference_type' | 'relationship_reference_id'>;
 }) => {
   const path = `care_history/${careHistoryId}`;
   try {
@@ -1236,7 +3158,12 @@ export const submitCareHistoryReview = async ({
         comment
       });
       await updateDoc(doc(db, 'care_history', careHistoryId), {
-        reviewed_agency_by_family: true,
+        ...(phase === 'week_one'
+          ? { reviewed_agency_week_one_by_family: true }
+          : {
+              reviewed_agency_by_family: true,
+              reviewed_agency_completion_by_family: true,
+            }),
         updated_at: serverTimestamp()
       });
     }
@@ -1245,12 +3172,22 @@ export const submitCareHistoryReview = async ({
       await addNannyReview({
         nanny_id: nannyId,
         reviewer_id: familyId,
+        reviewer_type: 'family',
         reviewer_role: 'family',
+        relationship_reference_type: 'care_history',
+        relationship_reference_id: careHistoryId,
+        relationship_context: review?.relationship_context || (phase === 'week_one' ? 'trial_completed' : 'engagement_completed'),
         rating,
-        comment
+        comment,
+        ...review,
       });
       await updateDoc(doc(db, 'care_history', careHistoryId), {
-        reviewed_nanny_by_family: true,
+        ...(phase === 'week_one'
+          ? { reviewed_nanny_week_one_by_family: true }
+          : {
+              reviewed_nanny_by_family: true,
+              reviewed_nanny_completion_by_family: true,
+            }),
         updated_at: serverTimestamp()
       });
     }
@@ -1592,14 +3529,58 @@ export const getUsers = async () => {
   const path = 'users';
   try {
     const snapshot = await getDocs(collection(db, path));
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    return snapshot.docs
+      .map(d => ({ id: d.id, status: 'active', ...d.data() } as User))
+      .sort((a, b) => {
+        const aDate = (() => {
+          if (!a.created_at) return 0;
+          if (typeof a.created_at?.toDate === 'function') return a.created_at.toDate().getTime();
+          if (typeof a.created_at?.seconds === 'number') return a.created_at.seconds * 1000;
+          const parsed = new Date(a.created_at).getTime();
+          return Number.isNaN(parsed) ? 0 : parsed;
+        })();
+        const bDate = (() => {
+          if (!b.created_at) return 0;
+          if (typeof b.created_at?.toDate === 'function') return b.created_at.toDate().getTime();
+          if (typeof b.created_at?.seconds === 'number') return b.created_at.seconds * 1000;
+          const parsed = new Date(b.created_at).getTime();
+          return Number.isNaN(parsed) ? 0 : parsed;
+        })();
+        return bDate - aDate;
+      });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const updateAdminUser = async (
+  userId: string,
+  updates: Partial<Pick<User, 'role' | 'status'>>
+): Promise<User | null> => {
+  const path = `users/${userId}`;
+  try {
+    if (!userId) return null;
+
+    const payload: Record<string, any> = {
+      updated_at: serverTimestamp(),
+    };
+
+    if (updates.role) payload.role = updates.role;
+    if (updates.status) payload.status = updates.status;
+
+    await updateDoc(doc(db, 'users', userId), payload);
+    const updated = await getDoc(doc(db, 'users', userId));
+    return updated.exists() ? ({ id: updated.id, status: 'active', ...updated.data() } as User) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
   }
 };
 
 export const getConversations = async (userId: string, role: 'family' | 'nanny' | 'agency') => {
   const path = 'conversations';
+  if (!userId) return [];
   try {
     let q = query(collection(db, path), where('participants', 'array-contains', userId));
     const snapshot = await getDocs(q);
@@ -1620,15 +3601,18 @@ export const getConversations = async (userId: string, role: 'family' | 'nanny' 
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+    return [];
   }
 };
 
 export const getAgencyConversations = async (agencyId: string) => {
   const path = 'conversations';
   try {
+    console.log(`[DEBUG] getAgencyConversations(${agencyId}): querying conversations`);
     const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snapshot = await getDocs(q);
     const conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    console.log(`[DEBUG] getAgencyConversations(${agencyId}): found ${conversations.length} conversations`);
 
     const toMillis = (value: any): number => {
       if (!value) return 0;
@@ -1712,6 +3696,304 @@ export const addNannyToAgencyTalentPool = async (agencyId: string, nannyId: stri
     return { id: docRef.id };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const updateAgencyTalentPoolItem = async (
+  itemId: string,
+  updates: {
+    status?: string;
+    tags?: string[];
+    latest_note?: string;
+  }
+) => {
+  const path = `agency_talent_pool/${itemId}`;
+  try {
+    const docRef = doc(db, 'agency_talent_pool', itemId);
+    await updateDoc(docRef, {
+      ...updates,
+      updated_at: serverTimestamp(),
+    });
+    const updatedDoc = await getDoc(docRef);
+    return updatedDoc.exists() ? { id: updatedDoc.id, ...updatedDoc.data() } : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return null;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agency Subscription & Add-On API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getAgencySubscription = async (
+  agencyId: string
+): Promise<AgencySubscription | null> => {
+  const path = 'agency_subscriptions';
+  try {
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      orderBy('created_at', 'desc'),
+      firestoreLimit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data() } as AgencySubscription;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+};
+
+export const getAgencyAddons = async (
+  agencyId: string
+): Promise<AgencyAddon[]> => {
+  const path = 'agency_addons';
+  try {
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      where('status', '==', 'active')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AgencyAddon));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const startAgencyPlanCheckout = async ({
+  agencyId,
+  userId,
+  planCode,
+  returnUrl,
+  cancelUrl,
+}: {
+  agencyId: string;
+  userId: string;
+  planCode: PlanCode;
+  returnUrl: string;
+  cancelUrl: string;
+}) => {
+  const response = await fetch('/api/paypal/agency-plan/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agencyId, userId, planCode, returnUrl, cancelUrl })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to start agency checkout.');
+  }
+  return payload;
+};
+
+export const finalizeAgencyPlanCheckout = async ({
+  agencyId,
+  userId,
+  planCode,
+  subscriptionId,
+}: {
+  agencyId: string;
+  userId: string;
+  planCode: PlanCode;
+  subscriptionId?: string;
+}) => {
+  const response = await fetch('/api/paypal/agency-plan/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agencyId, userId, planCode, subscriptionId })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to activate agency plan.');
+  }
+  return payload;
+};
+
+/**
+ * Creates or replaces the active subscription for an agency.
+ * Also denormalizes plan_tier onto agency_profiles so directory pages
+ * can display tier badges without N+1 subscription lookups.
+ * When billing is wired (PayPal), call this after a successful payment.
+ */
+export const upsertAgencySubscription = async (
+  agencyId: string,
+  planCode: PlanCode,
+  priceAtPurchase: number
+): Promise<string> => {
+  const path = 'agency_subscriptions';
+  try {
+    const now = new Date().toISOString();
+    const renewal = new Date();
+    renewal.setMonth(renewal.getMonth() + 1);
+
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      firestoreLimit(1)
+    );
+    const snap = await getDocs(q);
+
+    let subId: string;
+
+    if (!snap.empty) {
+      const existingRef = snap.docs[0].ref;
+      await updateDoc(existingRef, {
+        plan_code: planCode,
+        status: 'active',
+        renewal_date: renewal.toISOString(),
+        price_at_purchase: priceAtPurchase,
+        updated_at: now,
+      });
+      subId = snap.docs[0].id;
+    } else {
+      const ref = await addDoc(collection(db, path), {
+        agency_id: agencyId,
+        plan_code: planCode,
+        status: 'active',
+        start_date: now,
+        renewal_date: renewal.toISOString(),
+        price_at_purchase: priceAtPurchase,
+        created_at: now,
+        updated_at: now,
+      });
+      subId = ref.id;
+    }
+
+    // Denormalize plan_tier onto agency_profiles for directory ranking
+    try {
+      await updateDoc(doc(db, 'agency_profiles', agencyId), {
+        plan_tier: planCode,
+        updated_at: now,
+      });
+    } catch {
+      // Non-blocking: profile update may fail if user isn't the profile owner
+    }
+
+    return subId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+};
+
+/**
+ * Activates or deactivates an add-on for an agency.
+ * active = true to enable, false to cancel.
+ * Also denormalizes `sponsored` onto agency_profiles when the
+ * featured_agency_boost addon changes.
+ */
+export const upsertAgencyAddon = async (
+  agencyId: string,
+  addonCode: AddonCode,
+  priceAtPurchase: number,
+  active: boolean
+): Promise<void> => {
+  const path = 'agency_addons';
+  try {
+    const now = new Date().toISOString();
+    const renewal = new Date();
+    renewal.setMonth(renewal.getMonth() + 1);
+
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      where('addon_code', '==', addonCode),
+      firestoreLimit(1)
+    );
+    const snap = await getDocs(q);
+
+    const status = active ? 'active' : 'cancelled';
+
+    if (!snap.empty) {
+      await updateDoc(snap.docs[0].ref, {
+        status,
+        renewal_date: active ? renewal.toISOString() : snap.docs[0].data().renewal_date,
+        price_at_purchase: priceAtPurchase,
+        updated_at: now,
+      });
+    } else {
+      if (!active) return;
+      await addDoc(collection(db, path), {
+        agency_id: agencyId,
+        addon_code: addonCode,
+        status: 'active',
+        start_date: now,
+        renewal_date: renewal.toISOString(),
+        price_at_purchase: priceAtPurchase,
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
+    // Denormalize sponsored flag onto agency_profiles for directory display
+    if (addonCode === 'featured_agency_boost') {
+      try {
+        await updateDoc(doc(db, 'agency_profiles', agencyId), {
+          sponsored: active,
+          updated_at: now,
+        });
+      } catch {
+        // Non-blocking
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+};
+
+/** Count active (published) job postings for an agency — used to enforce plan limits. */
+export const getActiveJobCount = async (agencyId: string): Promise<number> => {
+  const path = 'jobs';
+  try {
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      where('status', '==', 'published')
+    );
+    const snap = await getDocs(q);
+    return snap.size;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return 0;
+  }
+};
+
+/** Count nanny profiles managed by an agency — used to enforce plan limits. */
+export const getAgencyNannyProfileCount = async (
+  agencyId: string
+): Promise<number> => {
+  const path = 'nanny_profiles';
+  try {
+    const q = query(collection(db, path), where('agency_id', '==', agencyId));
+    const snap = await getDocs(q);
+    return snap.size;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return 0;
+  }
+};
+
+/** Count active recruiter seats for an agency — used to enforce plan limits. */
+export const getRecruiterSeatCount = async (agencyId: string): Promise<number> => {
+  const path = 'agency_recruiters';
+  try {
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      where('status', '==', 'active')
+    );
+    const snap = await getDocs(q);
+    return snap.size;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return 0;
   }
 };
 
@@ -1840,32 +4122,41 @@ export const createAgencyInquiryConversation = async ({
 
 export const getMessages = async (conversationId: string) => {
   const path = `conversations/${conversationId}/messages`;
+  if (!conversationId) return [];
   try {
     const q = query(collection(db, path), orderBy('created_at', 'asc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+    return [];
   }
 };
 
 export const sendMessage = async (conversationId: string, senderType: 'family' | 'agency' | 'nanny', senderId: string, message: string) => {
   const path = `conversations/${conversationId}/messages`;
+  const trimmedMessage = message.trim();
+  if (!conversationId || !senderId || !trimmedMessage) return null;
   try {
     const docRef = await addDoc(collection(db, path), {
       sender_id: senderId,
       sender_type: senderType,
-      content: message,
+      content: trimmedMessage,
       created_at: serverTimestamp()
     });
     
     const newDoc = await getDoc(docRef);
-    const createdMessage = { id: newDoc.id, ...newDoc.data() };
+    const createdMessage = {
+      id: newDoc.id,
+      ...newDoc.data(),
+      content: (newDoc.data() as any)?.content || trimmedMessage,
+      created_at: (newDoc.data() as any)?.created_at || new Date().toISOString()
+    };
 
     // Update last message in conversation (non-blocking for send success)
     try {
       await updateDoc(doc(db, 'conversations', conversationId), {
-        last_message: message,
+        last_message: trimmedMessage,
         updated_at: serverTimestamp()
       });
     } catch (updateError) {
@@ -1877,4 +4168,534 @@ export const sendMessage = async (conversationId: string, senderType: 'family' |
     handleFirestoreError(error, OperationType.CREATE, path);
     return null;
   }
+};
+
+export type FamilyRequestStatus =
+  | 'submitted'
+  | 'matched'
+  | 'no_match'
+  | 'in_progress'
+  | 'accepted'
+  | 'closed';
+
+export type FamilyRequestCareType = 'full-time' | 'part-time' | 'temporary';
+export type FamilyRequestLiveIn = 'live-in' | 'live-out' | 'either';
+export type FamilyRequestAssignmentStatus = 'new' | 'accepted' | 'declined' | 'more_details';
+
+export interface FamilyRequestInput {
+  parent_name: string;
+  email: string;
+  phone?: string;
+  borough: string;
+  neighborhood?: string;
+  children_count: number;
+  child_age_groups: string[];
+  care_type: FamilyRequestCareType;
+  live_in: FamilyRequestLiveIn;
+  start_date?: string;
+  schedule?: string;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  languages?: string[];
+  driver_required?: boolean;
+  pet_friendly?: boolean;
+  special_needs?: boolean;
+  special_requirements?: string;
+  notes?: string;
+}
+
+export interface FamilyRequestRecord extends FamilyRequestInput {
+  id: string;
+  family_id: string | null;
+  status: FamilyRequestStatus;
+  top_match_count?: number;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface AgencyCapabilityProfile {
+  id: string;
+  agency_id: string;
+  boroughs_served: string[];
+  neighborhoods_served: string[];
+  supported_care_types: string[];
+  supported_age_groups: string[];
+  supports_live_in: boolean;
+  supports_live_out: boolean;
+  supports_special_needs: boolean;
+  supports_driver_requests: boolean;
+  supported_languages: string[];
+  budget_min?: number | null;
+  budget_max?: number | null;
+  is_featured?: boolean;
+  featured_until?: any;
+  has_priority_lead_boost?: boolean;
+  priority_lead_until?: any;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface FamilyRequestMatchRow {
+  id: string;
+  request_id: string;
+  agency_id: string;
+  score: number;
+  base_score: number;
+  sponsored_boost: number;
+  tier: MatchTier;
+  reasons: string[];
+  breakdown: {
+    location: number;
+    care_type: number;
+    age_group: number;
+    special_requirements: number;
+    budget: number;
+  };
+  status: FamilyRequestAssignmentStatus;
+  agency_response_message?: string;
+  responded_at?: any;
+  created_at?: any;
+  updated_at?: any;
+}
+
+const normalizeRequestStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim().toLowerCase() : ''))
+    .filter(Boolean);
+};
+
+const requestAssignmentsCollection = 'family_request_assignments';
+
+const getDefaultAgencyCapabilityFromProfile = (agency: AgencyProfile): AgencyCapabilityProfile => {
+  const specialties = normalizeRequestStringList((agency as any).specialties || []);
+  return {
+    id: agency.id,
+    agency_id: agency.id,
+    boroughs_served: normalizeRequestStringList((agency as any).boroughs || []),
+    neighborhoods_served: normalizeRequestStringList((agency as any).neighborhoods || []),
+    supported_care_types: specialties.filter((s) =>
+      ['full-time', 'part-time', 'temporary', 'live-in', 'live-out'].some((token) => s.includes(token))
+    ),
+    supported_age_groups: specialties.filter((s) =>
+      ['infant', 'newborn', 'toddler', 'preschool', 'school-age', 'teen'].some((token) => s.includes(token))
+    ),
+    supports_live_in: specialties.some((s) => s.includes('live-in')),
+    supports_live_out: specialties.some((s) => s.includes('live-out') || s.includes('part-time') || s.includes('full-time')),
+    supports_special_needs: specialties.some((s) => s.includes('special needs')),
+    supports_driver_requests: specialties.some((s) => s.includes('driver')),
+    supported_languages: normalizeRequestStringList((agency as any).languages || []),
+    budget_min: typeof (agency as any).budget_min === 'number' ? (agency as any).budget_min : null,
+    budget_max: typeof (agency as any).budget_max === 'number' ? (agency as any).budget_max : null,
+    is_featured: !!((agency as any).sponsored || (agency as any).isSponsored),
+    has_priority_lead_boost: false,
+  };
+};
+
+export const getAgencyCapabilities = async (agencyId: string): Promise<AgencyCapabilityProfile | null> => {
+  const path = `agency_capabilities/${agencyId}`;
+  if (!agencyId) return null;
+  try {
+    const capabilityDoc = await getDoc(doc(db, 'agency_capabilities', agencyId));
+    if (!capabilityDoc.exists()) return null;
+    return {
+      id: capabilityDoc.id,
+      ...(capabilityDoc.data() as any),
+    } as AgencyCapabilityProfile;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+};
+
+export const upsertAgencyCapabilities = async (
+  agencyId: string,
+  payload: Partial<AgencyCapabilityProfile>
+) => {
+  const path = `agency_capabilities/${agencyId}`;
+  if (!agencyId) return false;
+  try {
+    const docRef = doc(db, 'agency_capabilities', agencyId);
+    await setDoc(docRef, {
+      agency_id: agencyId,
+      boroughs_served: normalizeRequestStringList(payload.boroughs_served || []),
+      neighborhoods_served: normalizeRequestStringList(payload.neighborhoods_served || []),
+      supported_care_types: normalizeRequestStringList(payload.supported_care_types || []),
+      supported_age_groups: normalizeRequestStringList(payload.supported_age_groups || []),
+      supports_live_in: !!payload.supports_live_in,
+      supports_live_out: payload.supports_live_out !== false,
+      supports_special_needs: !!payload.supports_special_needs,
+      supports_driver_requests: !!payload.supports_driver_requests,
+      supported_languages: normalizeRequestStringList(payload.supported_languages || []),
+      budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
+      budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,
+      is_featured: !!payload.is_featured,
+      featured_until: payload.featured_until || null,
+      has_priority_lead_boost: !!payload.has_priority_lead_boost,
+      priority_lead_until: payload.priority_lead_until || null,
+      updated_at: serverTimestamp(),
+      created_at: serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return false;
+  }
+};
+
+const getAgencyAddonStatusMap = async (): Promise<Record<string, { featured: boolean; priority: boolean }>> => {
+  try {
+    const addonQuery = query(collection(db, 'agency_addons'), where('status', '==', 'active'));
+    const addonSnap = await getDocs(addonQuery);
+    const map: Record<string, { featured: boolean; priority: boolean }> = {};
+
+    addonSnap.docs.forEach((addonDoc) => {
+      const data = addonDoc.data() as any;
+      const agencyId = String(data.agency_id || '');
+      if (!agencyId) return;
+      if (!map[agencyId]) map[agencyId] = { featured: false, priority: false };
+      if (data.addon_code === 'featured_agency_boost') map[agencyId].featured = true;
+      if (data.addon_code === 'priority_lead_boost') map[agencyId].priority = true;
+    });
+
+    return map;
+  } catch {
+    return {};
+  }
+};
+
+export const rankAgenciesForFamilyRequest = async (request: FamilyRequestInput) => {
+  const agencies = await getAgencies();
+  if (!agencies.length) return [];
+
+  const addonMap = await getAgencyAddonStatusMap();
+  const capabilities = await Promise.all(
+    agencies.map(async (agency) => {
+      const capability = await getAgencyCapabilities(agency.id);
+      return {
+        agency,
+        capability: capability || getDefaultAgencyCapabilityFromProfile(agency),
+      };
+    })
+  );
+
+  const ranked = capabilities.map(({ agency, capability }) => {
+    const addonStatus = addonMap[agency.id] || { featured: false, priority: false };
+    const normalizedCapability = {
+      ...capability,
+      is_featured: !!(capability.is_featured || addonStatus.featured || (agency as any).sponsored || (agency as any).isSponsored),
+      has_priority_lead_boost: !!(capability.has_priority_lead_boost || addonStatus.priority),
+    };
+
+    const result = scoreAgencyForFamilyRequest(
+      {
+        borough: request.borough,
+        neighborhood: request.neighborhood || '',
+        child_age_groups: normalizeRequestStringList(request.child_age_groups || []),
+        care_type: request.care_type,
+        live_in: request.live_in,
+        budget_min: request.budget_min ?? null,
+        budget_max: request.budget_max ?? null,
+        languages: normalizeRequestStringList(request.languages || []),
+        driver_required: !!request.driver_required,
+        special_needs: !!request.special_needs,
+      },
+      normalizedCapability
+    );
+
+    return {
+      agency,
+      capability: normalizedCapability,
+      ...result,
+    };
+  });
+
+  return ranked
+    .filter((row) => row.score >= MATCH_THRESHOLD)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.base_score !== a.base_score) return b.base_score - a.base_score;
+      if (b.sponsored_boost !== a.sponsored_boost) return b.sponsored_boost - a.sponsored_boost;
+      return (a.agency.company_name || '').localeCompare(b.agency.company_name || '');
+    });
+};
+
+export const submitFamilyRequestAndMatch = async (
+  familyId: string | null,
+  payload: FamilyRequestInput,
+  maxAssignments = 8
+): Promise<{ requestId: string | null; matchCount: number }> => {
+  const path = 'family_requests';
+  try {
+    const now = Timestamp.now();
+    const sanitized: FamilyRequestInput = {
+      parent_name: payload.parent_name.trim(),
+      email: payload.email.trim().toLowerCase(),
+      phone: payload.phone?.trim() || '',
+      borough: payload.borough.trim(),
+      neighborhood: payload.neighborhood?.trim() || '',
+      children_count: Math.max(1, Number(payload.children_count) || 1),
+      child_age_groups: normalizeRequestStringList(payload.child_age_groups || []),
+      care_type: payload.care_type,
+      live_in: payload.live_in,
+      start_date: payload.start_date || '',
+      schedule: payload.schedule || '',
+      budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
+      budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,
+      languages: normalizeRequestStringList(payload.languages || []),
+      driver_required: !!payload.driver_required,
+      pet_friendly: !!payload.pet_friendly,
+      special_needs: !!payload.special_needs,
+      special_requirements: payload.special_requirements?.trim() || '',
+      notes: payload.notes?.trim() || '',
+    };
+
+    const requestRef = await addDoc(collection(db, path), {
+      ...sanitized,
+      family_id: familyId || null,
+      status: 'submitted' as FamilyRequestStatus,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const ranked = await rankAgenciesForFamilyRequest(sanitized);
+    const selectedMatches = ranked.slice(0, Math.max(1, maxAssignments));
+
+    await Promise.all(selectedMatches.map(async (match) => {
+      const assignmentId = `${requestRef.id}_${match.agency.id}`;
+      await setDoc(doc(db, requestAssignmentsCollection, assignmentId), {
+        request_id: requestRef.id,
+        family_id: familyId || null,
+        agency_id: match.agency.id,
+        score: match.score,
+        base_score: match.base_score,
+        sponsored_boost: match.sponsored_boost,
+        tier: match.tier,
+        reasons: match.reasons,
+        breakdown: match.breakdown,
+        status: 'new' as FamilyRequestAssignmentStatus,
+        created_at: now,
+        updated_at: now,
+      }, { merge: true });
+
+      addAgencyNotification(
+        match.agency.id,
+        `New family request in ${sanitized.borough}`,
+        `${sanitized.parent_name} requested ${sanitized.care_type} care`,
+        `/agency/family-requests/${assignmentId}`
+      ).catch(() => {
+        // notifications are best-effort
+      });
+    }));
+
+    await updateDoc(doc(db, path, requestRef.id), {
+      status: selectedMatches.length ? 'matched' : 'no_match',
+      top_match_count: selectedMatches.length,
+      updated_at: serverTimestamp(),
+    });
+
+    return { requestId: requestRef.id, matchCount: selectedMatches.length };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    return { requestId: null, matchCount: 0 };
+  }
+};
+
+export const getFamilyRequestById = async (requestId: string): Promise<FamilyRequestRecord | null> => {
+  const path = `family_requests/${requestId}`;
+  if (!requestId) return null;
+  try {
+    const requestDoc = await getDoc(doc(db, 'family_requests', requestId));
+    if (!requestDoc.exists()) return null;
+    return { id: requestDoc.id, ...(requestDoc.data() as any) } as FamilyRequestRecord;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+};
+
+export const getFamilyRequestsForFamily = async (familyId: string): Promise<FamilyRequestRecord[]> => {
+  const path = 'family_requests';
+  if (!familyId) return [];
+  try {
+    const requestQuery = query(collection(db, path), where('family_id', '==', familyId));
+    const snapshot = await getDocs(requestQuery);
+    return snapshot.docs
+      .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) } as FamilyRequestRecord))
+      .sort((a, b) => {
+        const aTs = (a.created_at?.seconds || 0);
+        const bTs = (b.created_at?.seconds || 0);
+        return bTs - aTs;
+      });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getMatchedAgenciesForRequest = async (requestId: string) => {
+  const path = requestAssignmentsCollection;
+  if (!requestId) return [];
+  try {
+    const matchQuery = query(collection(db, path), where('request_id', '==', requestId));
+    const snapshot = await getDocs(matchQuery);
+    const rows = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) } as FamilyRequestMatchRow));
+
+    const agencies = await Promise.all(rows.map((row) => getAgencyById(row.agency_id)));
+    return rows
+      .map((row, index) => ({ ...row, agency: agencies[index] }))
+      .filter((row) => !!row.agency)
+      .sort((a, b) => b.score - a.score);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getAgencyFamilyRequestInbox = async (agencyId: string): Promise<Array<FamilyRequestMatchRow & { request: FamilyRequestRecord | null }>> => {
+  const path = requestAssignmentsCollection;
+  if (!agencyId) return [];
+  try {
+    const assignmentQuery = query(collection(db, path), where('agency_id', '==', agencyId));
+    const snapshot = await getDocs(assignmentQuery);
+    const rows = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) } as FamilyRequestMatchRow));
+
+    const requests = await Promise.all(rows.map((row) => getFamilyRequestById(row.request_id)));
+    return rows
+      .map((row, index) => ({ ...row, request: requests[index] }))
+      .sort((a, b) => {
+        const aPending = a.status === 'new' ? 0 : 1;
+        const bPending = b.status === 'new' ? 0 : 1;
+        if (aPending !== bPending) return aPending - bPending;
+        if (b.score !== a.score) return b.score - a.score;
+        const aTs = a.created_at?.seconds || 0;
+        const bTs = b.created_at?.seconds || 0;
+        return bTs - aTs;
+      });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getAgencyFamilyRequestAssignment = async (assignmentId: string) => {
+  const path = `${requestAssignmentsCollection}/${assignmentId}`;
+  if (!assignmentId) return null;
+  try {
+    const assignmentDoc = await getDoc(doc(db, requestAssignmentsCollection, assignmentId));
+    if (!assignmentDoc.exists()) return null;
+    const assignment = { id: assignmentDoc.id, ...(assignmentDoc.data() as any) } as FamilyRequestMatchRow;
+
+    const [request, agency] = await Promise.all([
+      getFamilyRequestById(assignment.request_id),
+      getAgencyById(assignment.agency_id),
+    ]);
+
+    return { ...assignment, request, agency };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+};
+
+export const respondToFamilyRequestAssignment = async (
+  assignmentId: string,
+  agencyId: string,
+  response: FamilyRequestAssignmentStatus,
+  message?: string
+) => {
+  const path = `${requestAssignmentsCollection}/${assignmentId}`;
+  if (!assignmentId || !agencyId) return { ok: false, conversationId: null as string | null };
+  try {
+    const assignment = await getAgencyFamilyRequestAssignment(assignmentId);
+    if (!assignment || assignment.agency_id !== agencyId) {
+      return { ok: false, conversationId: null as string | null };
+    }
+
+    await updateDoc(doc(db, requestAssignmentsCollection, assignmentId), {
+      status: response,
+      agency_response_message: message?.trim() || '',
+      responded_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+
+    const requestData = assignment.request;
+    if (!requestData) return { ok: true, conversationId: null as string | null };
+
+    if (response === 'accepted') {
+      await updateDoc(doc(db, 'family_requests', requestData.id), {
+        status: 'accepted' as FamilyRequestStatus,
+        updated_at: serverTimestamp(),
+      });
+
+      let conversationId: string | null = null;
+      if (requestData.family_id) {
+        const convo = await startConversation(
+          requestData.family_id,
+          agencyId,
+          requestData.parent_name,
+          assignment.agency?.company_name || 'Agency'
+        );
+        conversationId = convo?.id || null;
+
+        if (conversationId) {
+          const intro = [
+            `Your family request has been accepted by ${assignment.agency?.company_name || 'the agency'}.`,
+            message?.trim() ? `Agency note: ${message.trim()}` : null,
+            'You can continue coordination in this thread.',
+          ].filter(Boolean).join('\n');
+
+          await sendMessage(conversationId, 'agency', agencyId, intro);
+          addFamilyNotification(
+            requestData.family_id,
+            'Agency accepted your request',
+            `${assignment.agency?.company_name || 'An agency'} accepted your childcare request.`,
+            `/family/messages?conversation=${conversationId}`
+          ).catch(() => {
+            // non-critical
+          });
+        }
+      }
+
+      return { ok: true, conversationId };
+    }
+
+    if (response === 'declined') {
+      addFamilyNotification(
+        requestData.family_id || '',
+        'Agency declined request',
+        `${assignment.agency?.company_name || 'An agency'} declined your request. We'll keep matching you with others.`,
+        `/family/requests/${requestData.id}`
+      ).catch(() => {
+        // non-critical
+      });
+    }
+
+    if (response === 'more_details') {
+      addFamilyNotification(
+        requestData.family_id || '',
+        'Agency requested more details',
+        `${assignment.agency?.company_name || 'An agency'} requested more information for your request.`,
+        `/family/requests/${requestData.id}`
+      ).catch(() => {
+        // non-critical
+      });
+    }
+
+    return { ok: true, conversationId: null as string | null };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return { ok: false, conversationId: null as string | null };
+  }
+};
+
+export const setAgencyFeaturedStatus = async (
+  agencyId: string,
+  isFeatured: boolean,
+  hasPriorityLeadBoost: boolean
+) => {
+  return upsertAgencyCapabilities(agencyId, {
+    is_featured: isFeatured,
+    has_priority_lead_boost: hasPriorityLeadBoost,
+  });
 };

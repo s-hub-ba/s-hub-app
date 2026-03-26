@@ -1,13 +1,37 @@
 import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
+import net from 'net';
 import paypalRoutes from './server/paypal.js';
 import agencyRoutes from './server/routes/agency.js';
 import nannyRoutes from './server/routes/nanny.js';
 
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = net
+      .createServer()
+      .once('error', () => resolve(false))
+      .once('listening', () => {
+        tester.close(() => resolve(true));
+      })
+      .listen(port, '0.0.0.0');
+  });
+}
+
+async function findAvailablePort(preferredPort: number, range = 50): Promise<number> {
+  for (let offset = 0; offset <= range; offset += 1) {
+    const candidate = preferredPort + offset;
+    if (await isPortAvailable(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error(`No available port found between ${preferredPort} and ${preferredPort + range}`);
+}
+
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const preferredPort = Number(process.env.PORT || 3000);
+  const port = await findAvailablePort(preferredPort);
 
   app.use(cors());
   app.use(express.json());
@@ -26,8 +50,15 @@ async function startServer() {
 
   // Vite middleware for development and SPA fallback
   if (process.env.NODE_ENV !== 'production') {
+    // Keep HMR off by default to avoid websocket port collisions (can be enabled explicitly).
+    if (process.env.ENABLE_HMR !== 'true') {
+      process.env.DISABLE_HMR = 'true';
+    }
+
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -39,8 +70,9 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  app.listen(port, '0.0.0.0', () => {
+    const suffix = port !== preferredPort ? ` (preferred ${preferredPort} was busy)` : '';
+    console.log(`Server running on http://0.0.0.0:${port}${suffix}`);
   });
 }
 

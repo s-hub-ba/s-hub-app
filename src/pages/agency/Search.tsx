@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search as SearchIcon, Filter, MapPin, Star, ShieldCheck, BookmarkPlus, Check } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool } from '../../lib/api';
+import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, getNannyBgStatusMap } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function GlobalSearch() {
@@ -11,6 +11,7 @@ export default function GlobalSearch() {
   const [nannies, setNannies] = useState<any[]>([]);
   const [savedNannyIds, setSavedNannyIds] = useState<Set<string>>(new Set());
   const [savingNannyIds, setSavingNannyIds] = useState<Set<string>>(new Set());
+  const [bgStatusByNanny, setBgStatusByNanny] = useState<Record<string, any>>({});
   const [selectedBorough, setSelectedBorough] = useState('All');
   const [minExperience, setMinExperience] = useState(0);
 
@@ -28,6 +29,8 @@ export default function GlobalSearch() {
       try {
         const fetchedNannies = await getNannies();
         setNannies(fetchedNannies);
+        const statusMap = await getNannyBgStatusMap(fetchedNannies.map((item) => item.id));
+        setBgStatusByNanny(statusMap);
 
         if (agencyId) {
           const pool = await getAgencyTalentPool(agencyId);
@@ -77,6 +80,12 @@ export default function GlobalSearch() {
 
     return matchesSearch && matchesBorough && matchesExperience;
   });
+
+  const formatBgStatus = (status: string) => {
+    if (status === 'checked') return { label: 'BG Checked', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    if (status === 'expired') return { label: 'BG Check Expired', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+    return { label: 'BG Not Checked', className: 'bg-stone-100 text-stone-700 border-stone-200' };
+  };
 
   return (
     <div className="space-y-8 pb-12">
@@ -143,6 +152,8 @@ export default function GlobalSearch() {
           filteredNannies.map((nanny, index) => {
             const isSaved = savedNannyIds.has(nanny.id);
             const isSaving = savingNannyIds.has(nanny.id);
+            const bgStatus = bgStatusByNanny[nanny.id];
+            const bgMeta = formatBgStatus(bgStatus?.status || 'not_checked');
             return (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -158,7 +169,7 @@ export default function GlobalSearch() {
                     </div>
                     <div className="flex items-center gap-1 bg-stone-100 px-2 py-1 rounded-lg">
                       <Star className="h-3.5 w-3.5 text-yellow-500 fill-current" />
-                      <span className="text-sm font-bold text-stone-900">{nanny.years_experience ?? '—'}</span>
+                      <span className="text-sm font-bold text-stone-900">{nanny.years_experience ?? 'ï¿½'}</span>
                     </div>
                   </div>
 
@@ -183,6 +194,18 @@ export default function GlobalSearch() {
                       {(!nanny.certifications || nanny.certifications.length === 0) && (
                         <span className="text-xs text-stone-400">No certifications listed</span>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-1.5">Background Signal</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${bgMeta.className}`}>
+                        {bgMeta.label}
+                      </span>
+                      {bgStatus?.confidence ? (
+                        <span className="text-xs text-stone-500">Confidence {Math.round(bgStatus.confidence)}%</span>
+                      ) : null}
                     </div>
                   </div>
                 </div>

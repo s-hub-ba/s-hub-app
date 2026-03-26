@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Nanny uploads are stored under nanny-documents/{nannyId}/...
+    // Any authenticated user can read to support admin review flows.
+    match /nanny-documents/{nannyId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == nannyId;
+    }
+
+    // Deny all other storage paths by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

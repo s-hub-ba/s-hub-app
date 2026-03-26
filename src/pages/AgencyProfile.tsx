@@ -2,19 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ShieldCheck, MapPin, Globe, Calendar, CheckCircle2, Star, MessageSquare } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { startConversation, getAgencyById, getAgencyReviewStats, getAgencyPosts, followAgency, unfollowAgency, getFamilyFollowedAgencies, getFamilyProfile, AgencyProfile as AgencyProfileType, AgencyPost, FamilyProfile } from '../lib/api';
+import { createAgencyInquiryConversation, getAgencyById, getAgencyReviewStats, getAgencyPosts, followAgency, unfollowAgency, getFamilyFollowedAgencies, getFamilyProfile, AgencyProfile as AgencyProfileType, AgencyPost, FamilyProfile } from '../lib/api';
 
 
 export default function AgencyProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, role } = useAuth();
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const [agency, setAgency] = useState<AgencyProfileType | null>(null);
   const [familyProfile, setFamilyProfile] = useState<FamilyProfile | null>(null);
   const [reviewStats, setReviewStats] = useState({ avg: 0, count: 0 });
   const [posts, setPosts] = useState<AgencyPost[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
-  const [isStartingChat, setIsStartingChat] = useState(false);
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
+  const [inquiryDescription, setInquiryDescription] = useState('');
+  const [inquiryScheduleType, setInquiryScheduleType] = useState<'date_range' | 'weekly_days'>('weekly_days');
+  const [inquiryStartDate, setInquiryStartDate] = useState('');
+  const [inquiryEndDate, setInquiryEndDate] = useState('');
+  const [inquiryWeekdays, setInquiryWeekdays] = useState<string[]>([]);
+  const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -68,20 +75,60 @@ export default function AgencyProfile() {
     loadFamilyProfile();
   }, [role, user]);
 
-  const handleContactAgency = async () => {
+  const handleToggleWeekday = (day: string) => {
+    setInquiryWeekdays(prev => prev.includes(day) ? prev.filter(item => item !== day) : [...prev, day]);
+  };
+
+  const handleSendInquiry = async () => {
     if (!user || role !== 'family' || !agency || !id) {
       navigate('/login');
       return;
     }
-    setIsStartingChat(true);
+
+    const trimmedDescription = inquiryDescription.trim();
+    if (!trimmedDescription) {
+      setInquiryError('Please describe your care needs before sending your inquiry.');
+      return;
+    }
+
+    if (inquiryScheduleType === 'date_range' && (!inquiryStartDate || !inquiryEndDate)) {
+      setInquiryError('Please include both start and end dates for a date-range inquiry.');
+      return;
+    }
+
+    if (inquiryScheduleType === 'weekly_days' && inquiryWeekdays.length === 0) {
+      setInquiryError('Please select at least one weekday for a weekly schedule inquiry.');
+      return;
+    }
+
+    setInquiryError(null);
+    setIsSubmittingInquiry(true);
     try {
       const familyName = familyProfile?.family_name || familyProfile?.name || user.email || 'Family';
-      const conversation = await startConversation(user.uid, id, familyName, agency.company_name);
+      const conversation = await createAgencyInquiryConversation({
+        familyId: user.uid,
+        agencyId: id,
+        familyName,
+        familyEmail: user.email || undefined,
+        familyPhone: familyProfile?.phone || undefined,
+        familyBorough: familyProfile?.location_borough || undefined,
+        agencyName: agency.company_name,
+        inquiry: {
+          description: trimmedDescription,
+          schedule_type: inquiryScheduleType,
+          start_date: inquiryScheduleType === 'date_range' ? inquiryStartDate : undefined,
+          end_date: inquiryScheduleType === 'date_range' ? inquiryEndDate : undefined,
+          weekdays: inquiryScheduleType === 'weekly_days' ? inquiryWeekdays : undefined,
+        }
+      });
+
       if (conversation?.id) {
         navigate(`/family/messages?conversation=${conversation.id}`);
+      } else {
+        setInquiryError('Unable to send inquiry right now. Please try again.');
       }
     } finally {
-      setIsStartingChat(false);
+      setIsSubmittingInquiry(false);
     }
   };
 
@@ -228,25 +275,116 @@ export default function AgencyProfile() {
 
             {/* Contact / Message */}
             <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-stone-200">
-              <h2 className="text-xl font-bold text-stone-900 mb-2">Contact Agency</h2>
+              <h2 className="text-xl font-bold text-stone-900 mb-2">Send an Inquiry</h2>
               <p className="text-sm text-stone-500 mb-6">
-                Open a direct message thread with {agency?.company_name || 'this agency'} to discuss your childcare needs.
+                Parents can send an inquiry to {agency?.company_name || 'this agency'} and continue the conversation in Messages.
               </p>
               {user && role === 'family' ? (
-                <button
-                  onClick={handleContactAgency}
-                  disabled={isStartingChat}
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <MessageSquare className="h-5 w-5" />
-                  {isStartingChat ? 'Opening chat...' : `Message ${agency?.company_name || 'Agency'}`}
-                </button>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-2">Care needs</label>
+                    <textarea
+                      value={inquiryDescription}
+                      onChange={(e) => setInquiryDescription(e.target.value)}
+                      rows={4}
+                      placeholder="Share details like child age, preferred timing, and any special requirements..."
+                      className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-2">Schedule type</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInquiryScheduleType('weekly_days')}
+                        className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                          inquiryScheduleType === 'weekly_days'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                        }`}
+                      >
+                        Weekly days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInquiryScheduleType('date_range')}
+                        className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                          inquiryScheduleType === 'date_range'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                        }`}
+                      >
+                        Date range
+                      </button>
+                    </div>
+                  </div>
+
+                  {inquiryScheduleType === 'weekly_days' ? (
+                    <div>
+                      <label className="block text-sm font-medium text-stone-700 mb-2">Preferred weekdays</label>
+                      <div className="flex flex-wrap gap-2">
+                        {weekdays.map((day) => {
+                          const selected = inquiryWeekdays.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => handleToggleWeekday(day)}
+                              className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                                selected
+                                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-2">Start date</label>
+                        <input
+                          type="date"
+                          value={inquiryStartDate}
+                          onChange={(e) => setInquiryStartDate(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-2">End date</label>
+                        <input
+                          type="date"
+                          value={inquiryEndDate}
+                          onChange={(e) => setInquiryEndDate(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {inquiryError && (
+                    <p className="text-sm text-rose-600">{inquiryError}</p>
+                  )}
+
+                  <button
+                    onClick={handleSendInquiry}
+                    disabled={isSubmittingInquiry}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <MessageSquare className="h-5 w-5" />
+                    {isSubmittingInquiry ? 'Sending inquiry...' : 'Send Inquiry'}
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => navigate('/login')}
                   className="w-full py-3 px-4 bg-stone-900 hover:bg-stone-800 text-white font-semibold rounded-xl transition-colors shadow-sm"
                 >
-                  Sign in to message this agency
+                  Sign in as a parent to send an inquiry
                 </button>
               )}
             </div>

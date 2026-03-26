@@ -53,3 +53,46 @@ The server will start on `http://localhost:3000`, serving both the Vite React fr
 - **Backend:** Express.js running on Node.js. Serves API routes (`/api/*`) and falls back to Vite middleware for SPA routing.
 - **Database & Auth:** Supabase (PostgreSQL + GoTrue Auth).
 - **Payments:** PayPal REST API for agency subscriptions (Starter, Professional, Enterprise). Webhooks are handled at `/api/paypal/webhook`.
+
+## 4. Family Request Matching
+
+Shift Me Up now supports structured family childcare requests with relevance ranking and agency inbox routing.
+
+### Family Flow
+- Route: `/family/request-care`
+- Submit request fields: contact, location, children, care type, live-in/out, schedule, budget, languages, and special requirements.
+- Results route: `/family/requests/:id`
+- Families see ranked agencies with transparent reasons (location fit, care type support, age-group support, etc.).
+
+### Agency Flow
+- Inbox route: `/agency/family-requests`
+- Detail route: `/agency/family-requests/:assignmentId`
+- Agencies can accept, decline, or request more details.
+- Accepting a request can open a family-agency conversation thread.
+
+### Matching Logic
+- Implemented in `src/lib/familyMatching.ts`.
+- Weighted scoring:
+	- Location: 40
+	- Care type: 20
+	- Child age-group fit: 15
+	- Special requirements: 15
+	- Budget compatibility: 10
+- Eligibility threshold: 60+
+- Tier labels:
+	- 85+: Best match
+	- 70-84: Great match
+	- 60-69: Possible match
+	- <60: hidden
+- Sponsored/featured boosts are capped and only applied for already-eligible agencies.
+
+### Firestore Collections
+- `family_requests`: family request records and lifecycle status.
+- `agency_capabilities`: structured service metadata used by ranking.
+- `family_request_assignments`: request-to-agency match rows, scores, reasons, and agency response status.
+
+### Security Rules
+- New rules were added in `firestore.rules` for:
+	- `agency_capabilities`
+	- `family_requests`
+	- `family_request_assignments`

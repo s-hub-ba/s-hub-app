@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Baby, Mail, Lock, ArrowRight } from 'lucide-react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
@@ -29,6 +29,15 @@ export default function Login() {
           if (userDoc.exists()) {
             const userData = userDoc.data();
             const role = userData.role as string;
+            const status = userData.status as string | undefined;
+
+            if (status === 'inactive') {
+              await signOut(auth);
+              setError('This account has been deactivated. Please contact support.');
+              setIsLoading(false);
+              return;
+            }
+
             if (role) window.localStorage.setItem('userRole', role);
 
             if (role === 'family') navigate('/family/dashboard');

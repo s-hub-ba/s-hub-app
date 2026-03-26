@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Send, User, Building2 } from 'lucide-react';
+import { MessageSquare, Send, Building2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { getConversations, getMessages, sendMessage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function NannyMessages() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const nannyId = user?.uid || '';
+  const requestedConversationId = searchParams.get('conversation');
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -33,41 +38,99 @@ export default function NannyMessages() {
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      if (!nannyId) {
-        setConversations([]);
-        setActiveConversation(null);
-        setMessages([]);
-        return;
-      }
+    if (!nannyId) {
+      setConversations([]);
+      setActiveConversation(null);
+      setMessages([]);
+      return;
+    }
 
+    let cancelled = false;
+    const loadConversations = async () => {
       try {
-        const convos = await getConversations(nannyId, 'nanny');
+        setLoadError(null);
+        const convos = (await getConversations(nannyId, 'nanny')) || [];
+        if (cancelled) return;
+
         setConversations(convos);
-        if (convos.length > 0) {
-          setActiveConversation(convos[0]);
-          const msgs = await getMessages(convos[0].id);
-          setMessages((msgs || []).filter(Boolean));
+
+        if (convos.length === 0) {
+          setActiveConversation(null);
+          setMessages([]);
+          return;
         }
+
+        setActiveConversation((prev: any) => {
+          const preferred = requestedConversationId ? convos.find((convo) => convo.id === requestedConversationId) : null;
+          const existing = prev?.id ? convos.find((convo) => convo.id === prev.id) : null;
+          return preferred || existing || convos[0];
+        });
       } catch (error) {
         console.error('Error loading conversations:', error);
+        if (!cancelled) {
+          setLoadError('Unable to load conversations right now. Please refresh and try again.');
+        }
       }
     };
-    loadData();
-  }, [nannyId]);
+
+    loadConversations();
+    const intervalId = window.setInterval(loadConversations, 7000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [nannyId, requestedConversationId]);
+
+  useEffect(() => {
+    if (!activeConversation?.id) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadMessages = async () => {
+      const msgs = await getMessages(activeConversation.id);
+      if (!cancelled) {
+        setMessages((msgs || []).filter(Boolean));
+      }
+    };
+
+    loadMessages();
+    const intervalId = window.setInterval(loadMessages, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeConversation?.id]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nannyId || !newMessage.trim() || !activeConversation) return;
+    const trimmedMessage = newMessage.trim();
+    if (!nannyId || !trimmedMessage || !activeConversation || isSending) return;
 
+    setIsSending(true);
     try {
-      const msg = await sendMessage(activeConversation.id, 'nanny', nannyId, newMessage);
+      const msg = await sendMessage(activeConversation.id, 'nanny', nannyId, trimmedMessage);
       if (msg?.id) {
         setMessages(prev => [...prev, msg].filter(Boolean));
         setNewMessage('');
+
+        const updatedAt = new Date().toISOString();
+        setConversations(prev => {
+          const next = (prev || []).map(convo => convo.id === activeConversation.id
+            ? { ...convo, last_message: trimmedMessage, updated_at: updatedAt }
+            : convo
+          );
+          return next.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
+        });
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      setLoadError('Unable to send your message. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -79,6 +142,12 @@ export default function NannyMessages() {
           <p className="text-stone-500 mt-1">Communicate with agencies and families.</p>
         </div>
       </div>
+
+      {loadError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
 
       <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex h-full min-h-[500px]">
         {/* Conversations List */}
@@ -96,10 +165,8 @@ export default function NannyMessages() {
               conversations.map(convo => (
                 <button
                   key={convo.id}
-                  onClick={async () => {
+                  onClick={() => {
                     setActiveConversation(convo);
-                    const msgs = await getMessages(convo.id);
-                    setMessages((msgs || []).filter(Boolean));
                   }}
                   className={`w-full p-4 text-left border-b border-stone-100 transition-colors ${
                     activeConversation?.id === convo.id 
@@ -145,10 +212,10 @@ export default function NannyMessages() {
                     <p>No messages yet. Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.filter(Boolean).map((msg, idx) => {
+                  messages.filter(Boolean).map((msg) => {
                     const isMe = msg.sender_type === 'nanny' && msg.sender_id === nannyId;
                     return (
-                      <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div key={msg.id || `${msg.sender_id || 'unknown'}-${msg.created_at?.seconds || msg.created_at || 'unknown-time'}`} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${
                           isMe 
                             ? 'bg-emerald-600 text-white rounded-br-sm' 
@@ -176,7 +243,7 @@ export default function NannyMessages() {
                   />
                   <button 
                     type="submit"
-                    disabled={!newMessage.trim()}
+                    disabled={!newMessage.trim() || isSending}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                   >
                     <Send className="h-5 w-5" />

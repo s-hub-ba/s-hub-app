@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
-import { getJobs, getApplicationsForNanny, getNannyById, getNannyReviews, computeShiftScore } from '../../lib/api';
+import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2, Coins, TrendingUp } from 'lucide-react';
+import { getJobs, getApplicationsForNanny, getNannyById, getNannyDocuments, getNannyReviews, getNannyReviewSummary, computeShiftScore, getNannyPremiumAnalytics, getNannyCreditWallet } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function NannyDashboard() {
@@ -12,14 +12,20 @@ export default function NannyDashboard() {
     activeApps: 0,
     shiftScore: 0,
     profileCompletion: 0,
-    familyRatingAvg: 0,
-    familyRatingCount: 0,
-    agencyRatingAvg: 0,
-    agencyRatingCount: 0
+    verifiedDocumentCount: 0,
+    documentBonus: 0,
+    reviewCount: 0,
+    averageReliability: 0,
+    averageCommunication: 0,
+    punctualityRate: 0,
+    rehireRate: 0,
+    reviewSignal: 0,
   });
   const [recommendedJobs, setRecommendedJobs] = useState<any[]>([]);
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [premiumAnalytics, setPremiumAnalytics] = useState<any>(null);
+  const [creditWallet, setCreditWallet] = useState<any>(null);
 
   const nannyId = user?.uid || '';
 
@@ -37,29 +43,29 @@ export default function NannyDashboard() {
           getNannyById(nannyId)
         ]);
 
+        const [analytics, wallet] = await Promise.all([
+          getNannyPremiumAnalytics(nannyId),
+          getNannyCreditWallet(nannyId)
+        ]);
+        setPremiumAnalytics(analytics);
+        setCreditWallet(wallet);
+
+        const documents = await getNannyDocuments(nannyId);
+        const approvedDocumentCount = documents.filter((doc) => doc.status === 'approved').length;
+
         setProfile(fetchedProfile);
 
-        const activeApps = apps.filter(a => ['applied', 'reviewing', 'interviewing', 'interview_scheduled'].includes(a.status));
-        const reviews = await getNannyReviews(nannyId);
-
-        const familyReviews = reviews.filter((r) => r.reviewer_role === 'family');
-        const agencyReviews = reviews.filter((r) => r.reviewer_role === 'agency');
-        const familyRatingCount = familyReviews.length;
-        const agencyRatingCount = agencyReviews.length;
-        const familyRatingAvg = familyRatingCount > 0
-          ? familyReviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / familyRatingCount
-          : 0;
-        const agencyRatingAvg = agencyRatingCount > 0
-          ? agencyReviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / agencyRatingCount
-          : 0;
+        const activeApps = apps.filter(a => ['applied', 'reviewing', 'interviewing', 'interview_invited', 'accepted', 'hired', 'active', 'pending_family_approval'].includes(a.status));
+        const [reviews, reviewSummary] = await Promise.all([
+          getNannyReviews(nannyId),
+          getNannyReviewSummary(nannyId),
+        ]);
 
         const shiftScoreData = computeShiftScore(
           fetchedProfile,
           apps.length,
-          familyRatingAvg,
-          familyRatingCount,
-          agencyRatingAvg,
-          agencyRatingCount
+          approvedDocumentCount,
+          reviewSummary
         );
         const profileCompletion = Math.round((shiftScoreData.details.completedFields / shiftScoreData.details.totalFields) * 100);
 
@@ -68,10 +74,14 @@ export default function NannyDashboard() {
           activeApps: activeApps.length,
           shiftScore: shiftScoreData.score,
           profileCompletion,
-          familyRatingAvg,
-          familyRatingCount,
-          agencyRatingAvg,
-          agencyRatingCount
+          verifiedDocumentCount: shiftScoreData.details.verifiedDocumentCount,
+          documentBonus: shiftScoreData.details.documentBonus,
+          reviewCount: reviewSummary.reviewCount,
+          averageReliability: reviewSummary.averageReliability,
+          averageCommunication: reviewSummary.averageCommunication,
+          punctualityRate: reviewSummary.punctualityRate,
+          rehireRate: reviewSummary.rehireRate,
+          reviewSignal: reviewSummary.shiftScore,
         }));
 
         setRecentReviews(reviews);
@@ -123,6 +133,9 @@ export default function NannyDashboard() {
               <h2 className="text-3xl font-bold text-stone-900">{stats.shiftScore}</h2>
               <span className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">Professional</span>
             </div>
+            <p className="text-xs text-stone-500 mt-1">
+              {stats.verifiedDocumentCount} approved docs • +{stats.documentBonus} score bonus
+            </p>
           </div>
         </div>
 
@@ -153,25 +166,74 @@ export default function NannyDashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm">
-          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Family Rating</p>
+          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Reliability</p>
           <div className="flex items-end gap-2 mt-1">
-            <h3 className="text-3xl font-bold text-stone-900">{stats.familyRatingAvg.toFixed(1)}</h3>
-            <span className="text-sm text-stone-500">({stats.familyRatingCount} reviews)</span>
+            <h3 className="text-3xl font-bold text-stone-900">{stats.averageReliability.toFixed(1)}</h3>
+            <span className="text-sm text-stone-500">({stats.reviewCount} reviews)</span>
           </div>
           <div className="h-2 bg-stone-100 rounded-full mt-3 overflow-hidden">
-            <div style={{ width: `${Math.min(100, (stats.familyRatingAvg / 5) * 100)}%` }} className="h-full bg-emerald-500" />
+            <div style={{ width: `${Math.min(100, (stats.averageReliability / 5) * 100)}%` }} className="h-full bg-emerald-500" />
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm">
-          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Agency Partner Rating</p>
+          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Review Signal</p>
           <div className="flex items-end gap-2 mt-1">
-            <h3 className="text-3xl font-bold text-stone-900">{stats.agencyRatingAvg.toFixed(1)}</h3>
-            <span className="text-sm text-stone-500">({stats.agencyRatingCount} reviews)</span>
+            <h3 className="text-3xl font-bold text-stone-900">{stats.reviewSignal.toFixed(1)}</h3>
+            <span className="text-sm text-stone-500">ShiftScore review component</span>
           </div>
           <div className="h-2 bg-stone-100 rounded-full mt-3 overflow-hidden">
-            <div style={{ width: `${Math.min(100, (stats.agencyRatingAvg / 5) * 100)}%` }} className="h-full bg-blue-500" />
+            <div style={{ width: `${Math.min(100, (stats.reviewSignal / 5) * 100)}%` }} className="h-full bg-blue-500" />
           </div>
+          <p className="text-xs text-stone-500 mt-3">
+            {Math.round(stats.punctualityRate * 100)}% punctual • {Math.round(stats.rehireRate * 100)}% would rehire
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Premium Analytics</p>
+              <h3 className="text-xl font-bold text-stone-900 mt-1">
+                {premiumAnalytics?.is_premium ? 'Premium Active' : 'Premium Inactive'}
+              </h3>
+            </div>
+            <Link to="/nanny/development" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800">
+              Open Development Agent
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+            <div className="rounded-2xl border border-stone-200 p-4 bg-stone-50">
+              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Acceptance Rate</p>
+              <p className="mt-2 text-2xl font-bold text-stone-900">{premiumAnalytics?.acceptance_rate_pct || 0}%</p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 p-4 bg-stone-50">
+              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Completion Rate</p>
+              <p className="mt-2 text-2xl font-bold text-stone-900">{premiumAnalytics?.completion_rate_pct || 0}%</p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 p-4 bg-stone-50">
+              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">30d Application Velocity</p>
+              <p className="mt-2 text-2xl font-bold text-stone-900 inline-flex items-center gap-1">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
+                {premiumAnalytics?.application_velocity_30d || 0}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
+          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Development Credits</p>
+          <p className="mt-3 text-3xl font-bold text-stone-900 inline-flex items-center gap-2">
+            <Coins className="h-7 w-7 text-amber-500" />
+            {Number(creditWallet?.balance_credits || 0)}
+          </p>
+          <p className="text-xs text-stone-500 mt-2">Each development-agent run uses 1 credit.</p>
+          <Link to="/nanny/development" className="mt-4 inline-flex text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+            Manage credits and sessions
+          </Link>
         </div>
       </div>
 
@@ -248,13 +310,12 @@ export default function NannyDashboard() {
               ) : (
                 recentReviews.slice(0, 3).map((review) => (
                   <div key={review.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                    <div className="flex items-center gap-1 mb-1">
-                      {Array.from({ length: 5 }).map((_, sIndex) => (
-                        <Star key={sIndex} className={`h-3.5 w-3.5 ${sIndex < (review.rating ?? 0) ? 'text-yellow-400 fill-current' : 'text-stone-200'}`} />
-                      ))}
+                    <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                      <span className="font-semibold text-stone-700">Reliability {review.reliability_rating}/5</span>
+                      <span className="font-semibold text-stone-700">Communication {review.communication_rating}/5</span>
                     </div>
-                    <p className="text-sm text-stone-600 italic line-clamp-2">"{review.comment || 'No comment provided.'}"</p>
-                    <p className="text-xs text-stone-400 mt-2">— {review.reviewer_role === 'family' ? 'Family' : 'Agency'} reviewer</p>
+                    <p className="text-sm text-stone-600 italic line-clamp-2">"{review.strengths || review.notes || 'No additional details provided.'}"</p>
+                    <p className="text-xs text-stone-400 mt-2">— {review.reviewer_type === 'family' ? 'Family' : 'Agency'} reviewer</p>
                   </div>
                 ))
               )}

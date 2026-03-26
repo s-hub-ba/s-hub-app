@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Bell, MessageSquare, Briefcase, Star } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { getFamilyNotifications, getAgencyNotifications, getNannyNotifications } from '../lib/api';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getFamilyNotifications, getAgencyNotifications, getNannyNotifications, resolveAgencyIdsForUser } from '../lib/api';
 
 export type NotificationType = 'application' | 'message' | 'review' | 'system';
 
@@ -72,20 +70,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       } else if (role === 'agency_admin' || role === 'agency_recruiter') {
         try {
-          let agencyId = user.uid;
-          if (role === 'agency_recruiter') {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-            agencyId = userDoc.exists() ? (userDoc.data().agency_id || '') : '';
-          }
-
-          if (!agencyId) {
+          const agencyIds = await resolveAgencyIdsForUser(user.uid);
+          if (agencyIds.length === 0) {
             setNotifications([]);
             return;
           }
 
-          const agencyNotifs = await getAgencyNotifications(agencyId);
-          if (agencyNotifs?.length) {
-            setNotifications(agencyNotifs.map((notif) => ({
+          const groupedNotifs = await Promise.all(agencyIds.map((agencyId) => getAgencyNotifications(agencyId)));
+          const allAgencyNotifs = groupedNotifs.flat().filter(Boolean);
+          const uniqueNotifs = new Map<string, any>();
+          allAgencyNotifs.forEach((notif) => {
+            if (!notif?.id) return;
+            uniqueNotifs.set(notif.id, notif);
+          });
+
+          const agencyNotifs = Array.from(uniqueNotifs.values());
+          if (agencyNotifs.length) {
+            const normalized = agencyNotifs.map((notif) => ({
               id: notif.id || createNotificationId(),
               type: notif.type,
               title: notif.title,
@@ -93,7 +94,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
               read: notif.read ?? false,
               link: notif.link
-            })));
+            }));
+
+            normalized.sort((a, b) => {
+              const aTs = new Date(a.time).getTime();
+              const bTs = new Date(b.time).getTime();
+              return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
+            });
+
+            setNotifications(normalized);
+          } else {
+            setNotifications([]);
           }
         } catch (error) {
           console.error('Error loading agency notifications:', error);

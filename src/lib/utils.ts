@@ -35,3 +35,49 @@ export function getShiftScoreTier(score: number): string {
   if (score >= 60) return 'Emerging';
   return 'Developing';
 }
+
+export function toDate(value: unknown): Date | null {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const candidate = value as { toDate?: () => Date; seconds?: number };
+    if (typeof candidate.toDate === 'function') {
+      const date = candidate.toDate();
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (typeof candidate.seconds === 'number') {
+      const date = new Date(candidate.seconds * 1000);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function formatJobSchedule(job: {
+  schedule_type?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  weekdays?: string[] | null;
+  schedule_summary?: string | null;
+  schedule?: string | null;
+}): string {
+  if (job.schedule_type === 'date_range') {
+    return `Date range: ${job.start_date || 'TBD'} to ${job.end_date || 'TBD'}`;
+  }
+
+  if (job.schedule_type === 'weekly_days') {
+    const selectedDays = Array.isArray(job.weekdays) ? job.weekdays.filter(Boolean) : [];
+    return `Weekdays: ${selectedDays.join(', ') || 'Not specified'}`;
+  }
+
+  if (job.schedule_summary) return job.schedule_summary;
+  if (job.schedule) return job.schedule;
+  return 'Schedule not specified';
+}

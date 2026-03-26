@@ -3,6 +3,7 @@ import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, BookmarkPlus, Che
 import { motion } from 'motion/react';
 import { getJobs, createApplication, getApplicationsForNanny } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobSchedule, toDate } from '../../lib/utils';
 
 export default function NannyJobs() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,6 +48,14 @@ export default function NannyJobs() {
     job.agency_profiles?.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     job.location_neighborhood?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const formatJobStart = (job: any) => {
+    if (job.schedule_type === 'weekly_days') return 'Recurring weekly';
+    const startDate = toDate(job.start_date);
+    return startDate
+      ? `Starts ${startDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+      : 'Start date TBD';
+  };
 
   return (
     <div className="space-y-8 pb-12">
@@ -136,14 +145,19 @@ export default function NannyJobs() {
                   {job.description}
                 </p>
 
+                <div className="mb-6">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-50 border border-stone-200 text-stone-600">
+                    <Clock className="h-3.5 w-3.5 mr-1" />
+                    {formatJobSchedule(job)}
+                  </span>
+                </div>
+
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-4 border-t border-stone-100">
                   <div className="flex flex-wrap gap-2">
-                    {job.start_date && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-50 border border-stone-200 text-stone-600">
-                        <Clock className="h-3.5 w-3.5 mr-1" />
-                        Starts {new Date(job.start_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                      </span>
-                    )}
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-50 border border-stone-200 text-stone-600">
+                      <Clock className="h-3.5 w-3.5 mr-1" />
+                      {formatJobStart(job)}
+                    </span>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
                     <button 

@@ -38,12 +38,14 @@ export default function JoinAgency() {
       await setDoc(doc(db, 'users', user.uid), {
         email,
         role: 'agency_admin',
+        agency_id: user.uid,
         created_at: serverTimestamp()
       });
 
       await setDoc(doc(db, 'agency_profiles', user.uid), {
         company_name: agencyName,
         contact_person: contactName,
+        owner_uid: user.uid,
         created_at: serverTimestamp()
       });
 

@@ -26,18 +26,46 @@ service cloud.firestore {
       return isAuthenticated() && (getRole() == 'agency' || getRole() == 'agency_admin' || getRole() == 'agency_recruiter');
     }
 
+    function userAgencyId() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? (
+            (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.agency_id is string
+              ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.agency_id
+              : null)
+            != null
+              ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.agency_id
+              : (
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.agency_profile_id is string
+                    ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.agency_profile_id
+                    : null
+                )
+          )
+        : null;
+    }
+
     function agencyIdForCurrentUser() {
-      return (getRole() == 'agency_admin' || getRole() == 'agency')
-        ? request.auth.uid
-        : (getRole() == 'agency_recruiter'
-            ? (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-                ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.agency_id
-                : null)
-            : null);
+      return isAgency()
+        ? (
+            userAgencyId() != null
+              ? userAgencyId()
+              : (
+                  // Backward-compatible fallback for legacy agency-admin accounts.
+                  exists(/databases/$(database)/documents/agency_profiles/$(request.auth.uid))
+                    ? request.auth.uid
+                    : null
+                )
+          )
+        : null;
     }
 
     function isAgencyMemberOf(agencyId) {
       return isAgency() && agencyIdForCurrentUser() == agencyId;
+    }
+
+    function isAgencyAdminOf(agencyId) {
+      return isAuthenticated()
+        && (getRole() == 'agency_admin' || getRole() == 'agency')
+        && (isAgencyMemberOf(agencyId) || isLegacyAgencyOwner(agencyId));
     }
 
     // Backward-compatible fallback for legacy accounts where users.role may be missing,
@@ -59,8 +87,58 @@ service cloud.firestore {
       return isAuthenticated() && getRole() == 'nanny';
     }
 
+    function userNannyId() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? (
+            (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nanny_id is string
+              ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nanny_id
+              : null)
+            != null
+              ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nanny_id
+              : (
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nanny_profile_id is string
+                    ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nanny_profile_id
+                    : null
+                )
+          )
+        : null;
+    }
+
+    function nannyIdForCurrentUser() {
+      return isNanny()
+        ? (
+            userNannyId() != null
+              ? userNannyId()
+              : (
+                  exists(/databases/$(database)/documents/nanny_profiles/$(request.auth.uid))
+                    ? request.auth.uid
+                    : null
+                )
+          )
+        : null;
+    }
+
+    function isNannyProfileOwner(nannyId) {
+      return isAuthenticated() && (
+        nannyIdForCurrentUser() == nannyId
+        || request.auth.uid == nannyId
+      );
+    }
+
     function isFamily() {
       return isAuthenticated() && getRole() == 'family';
+    }
+
+    function canAgencyAccessFamilyRequest(requestId) {
+      return isAgency()
+        && agencyIdForCurrentUser() is string
+        && exists(/databases/$(database)/documents/family_request_assignments/$(requestId + '_' + agencyIdForCurrentUser()));
+    }
+
+    function canAgencyAccessAssignment(assignmentData) {
+      return isAgency()
+        && assignmentData.agency_id is string
+        && isAgencyMemberOf(assignmentData.agency_id);
     }
 
     function isValidEmail(email) {
@@ -84,6 +162,21 @@ service cloud.firestore {
              data.description is string && data.description.size() > 0 && data.description.size() < 5000;
     }
 
+    function isValidStructuredNannyReview(data) {
+      return data.nanny_id is string
+        && data.reviewer_id is string
+        && data.reviewer_type in ['agency', 'family']
+        && data.relationship_context in ['managed', 'applied', 'interviewed', 'placed', 'trial_completed', 'placement_completed', 'engagement_completed']
+        && data.reliability_rating is int
+        && data.reliability_rating >= 1
+        && data.reliability_rating <= 5
+        && data.communication_rating is int
+        && data.communication_rating >= 1
+        && data.communication_rating <= 5
+        && data.punctuality is bool
+        && data.rehire is bool;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -100,8 +193,24 @@ service cloud.firestore {
     }
 
     match /agency_profiles/{userId} {
-      allow read: if isAuthenticated();
+      // Agency directory is public, so profiles must be readable without auth.
+      allow read: if true;
       allow write: if isOwner(userId) || isAgencyMemberOf(userId) || isLegacyAgencyOwner(userId) || isAdmin();
+    }
+
+    match /agency_recruiters/{seatId} {
+      allow read: if isAdmin()
+        || (isAuthenticated() && request.auth.uid == resource.data.user_id)
+        || (resource.data.agency_id is string && isAgencyMemberOf(resource.data.agency_id));
+
+      allow create: if isAdmin()
+        || (request.resource.data.agency_id is string && isAgencyAdminOf(request.resource.data.agency_id));
+
+      allow update: if isAdmin()
+        || (resource.data.agency_id is string && isAgencyAdminOf(resource.data.agency_id));
+
+      allow delete: if isAdmin()
+        || (resource.data.agency_id is string && isAgencyAdminOf(resource.data.agency_id));
     }
 
     match /families/{userId} {
@@ -111,15 +220,27 @@ service cloud.firestore {
 
     match /jobs/{jobId} {
       allow read: if true; // Publicly viewable jobs
-      allow create: if isAgency() && request.resource.data.agency_id == request.auth.uid && isValidJob(request.resource.data);
-      allow update: if (isAgency() && resource.data.agency_id == request.auth.uid && isValidJob(request.resource.data)) || isAdmin();
-      allow delete: if (isAgency() && resource.data.agency_id == request.auth.uid) || isAdmin();
+      allow create: if request.resource.data.agency_id is string
+        && isAgencyMemberOf(request.resource.data.agency_id)
+        && isValidJob(request.resource.data);
+      allow update: if ((resource.data.agency_id is string && isAgencyMemberOf(resource.data.agency_id))
+          && isValidJob(request.resource.data)) || isAdmin();
+      allow delete: if (resource.data.agency_id is string && isAgencyMemberOf(resource.data.agency_id)) || isAdmin();
     }
 
     match /applications/{appId} {
-      allow read: if isAuthenticated() && (request.auth.uid == resource.data.nanny_id || isAgency() || isAdmin());
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.nanny_id
+        || request.auth.uid == resource.data.family_id
+        || isAgency()
+        || isAdmin()
+      );
       allow create: if isNanny() && request.resource.data.nanny_id == request.auth.uid;
-      allow update: if (isAgency() || isNanny() && request.auth.uid == resource.data.nanny_id) || isAdmin();
+      allow update: if (
+        isAgency()
+        || (isNanny() && request.auth.uid == resource.data.nanny_id)
+        || (isFamily() && request.auth.uid == resource.data.family_id)
+      ) || isAdmin();
     }
 
     match /saved_jobs/{saveId} {
@@ -132,6 +253,67 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.family_id || isAgency() || isAdmin());
       allow create: if isFamily() && request.resource.data.family_id == request.auth.uid;
       allow update: if (isAgency() || isFamily() && request.auth.uid == resource.data.family_id) || isAdmin();
+    }
+
+    match /agency_capabilities/{agencyId} {
+      allow read: if true;
+      allow create: if isAdmin()
+        || (isAuthenticated()
+            && request.resource.data.agency_id == agencyId
+            && (isAgencyMemberOf(agencyId) || isLegacyAgencyOwner(agencyId)));
+      allow update: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.agency_id == agencyId
+            && request.resource.data.agency_id == resource.data.agency_id
+            && (isAgencyMemberOf(agencyId) || isLegacyAgencyOwner(agencyId)));
+      allow delete: if isAdmin();
+    }
+
+    match /family_requests/{requestId} {
+      allow read: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid)
+        || canAgencyAccessFamilyRequest(requestId);
+
+      allow create: if isAuthenticated()
+        && (
+          (isFamily() && request.resource.data.family_id == request.auth.uid)
+          || request.resource.data.family_id == null
+        )
+        && request.resource.data.parent_name is string
+        && request.resource.data.email is string
+        && request.resource.data.borough is string
+        && request.resource.data.care_type in ['full-time', 'part-time', 'temporary']
+        && request.resource.data.live_in in ['live-in', 'live-out', 'either'];
+
+      allow update: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid)
+        || canAgencyAccessFamilyRequest(requestId);
+
+      allow delete: if isAdmin();
+    }
+
+    match /family_request_assignments/{assignmentId} {
+      allow read: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid)
+        || canAgencyAccessAssignment(resource.data);
+
+      allow create: if isAdmin()
+        || (isAuthenticated()
+            && request.resource.data.agency_id is string
+            && request.resource.data.request_id is string
+            && assignmentId == request.resource.data.request_id + '_' + request.resource.data.agency_id
+            && (
+              canAgencyAccessAssignment(request.resource.data)
+              || (
+                isFamily()
+                && request.resource.data.family_id == request.auth.uid
+                && exists(/databases/$(database)/documents/family_requests/$(request.resource.data.request_id))
+                && get(/databases/$(database)/documents/family_requests/$(request.resource.data.request_id)).data.family_id == request.auth.uid
+              )
+            ));
+
+      allow update: if isAdmin() || canAgencyAccessAssignment(resource.data);
+      allow delete: if isAdmin();
     }
 
     match /conversations/{convId} {
@@ -202,9 +384,210 @@ service cloud.firestore {
       allow delete: if isAdmin() || isAgencyMemberOf(resource.data.agency_id) || isLegacyAgencyOwner(resource.data.agency_id);
     }
 
+    match /nanny_documents/{docId} {
+      allow read: if isAdmin() || (
+        isAuthenticated()
+        && resource.data.nanny_id is string
+        && (isNannyProfileOwner(resource.data.nanny_id) || request.auth.uid == resource.data.uploader_user_id)
+      ) || (
+        isAgency()
+        && resource.data.nanny_id is string
+        && resource.data.type == 'reference'
+        && resource.data.status == 'approved'
+        && resource.data.reference_shared_with_agencies == true
+        && resource.data.shared_with_agency_ids is list
+        && agencyIdForCurrentUser() in resource.data.shared_with_agency_ids
+      );
+
+      allow create: if isAuthenticated()
+        && request.resource.data.nanny_id is string
+        && request.resource.data.uploader_user_id == request.auth.uid
+        && isNannyProfileOwner(request.resource.data.nanny_id)
+        && request.resource.data.status in ['uploaded', 'under_review'];
+
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && resource.data.nanny_id is string
+        && isNannyProfileOwner(resource.data.nanny_id)
+        && (
+          (
+            resource.data.status in ['uploaded', 'under_review']
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.approved_by == resource.data.approved_by
+            && request.resource.data.approved_at == resource.data.approved_at
+          )
+          ||
+          (
+            resource.data.status == 'approved'
+            && resource.data.type == 'reference'
+            && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+              'reference_shared_with_agencies',
+              'shared_with_agency_ids',
+              'updated_at'
+            ])
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.reviewed_by == resource.data.reviewed_by
+            && request.resource.data.reviewed_at == resource.data.reviewed_at
+            && request.resource.data.reference_shared_with_agencies is bool
+            && request.resource.data.shared_with_agency_ids is list
+          )
+        )
+      );
+
+      allow delete: if isAdmin() || (
+        isAuthenticated()
+        && resource.data.nanny_id is string
+        && isNannyProfileOwner(resource.data.nanny_id)
+      );
+    }
+
+    match /nanny_credit_wallets/{nannyId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == nannyId);
+
+      allow create: if isAdmin() || (
+        isAuthenticated()
+        && request.auth.uid == nannyId
+        && request.resource.data.nanny_id == nannyId
+      );
+
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && request.auth.uid == nannyId
+        && resource.data.nanny_id == nannyId
+        && request.resource.data.nanny_id == nannyId
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /nanny_credit_ledger/{entryId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.nanny_id);
+      allow create: if isAdmin() || (
+        isAuthenticated()
+        && request.auth.uid == request.resource.data.nanny_id
+      );
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /nanny_development_sessions/{sessionId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.nanny_id);
+
+      allow create: if isAdmin() || (
+        isAuthenticated()
+        && request.auth.uid == request.resource.data.nanny_id
+      );
+
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /nanny_bg_checks/{checkId} {
+      allow read: if isAdmin() || (
+        isAuthenticated()
+        && isAgency()
+        && resource.data.source_agency_id is string
+        && isAgencyMemberOf(resource.data.source_agency_id)
+      );
+
+      allow create: if isAuthenticated()
+        && isAgency()
+        && request.resource.data.source_agency_id is string
+        && request.resource.data.nanny_id is string
+        && request.resource.data.source_user_id == request.auth.uid
+        && isAgencyMemberOf(request.resource.data.source_agency_id)
+        && checkId == request.resource.data.source_agency_id + '_' + request.resource.data.nanny_id;
+
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && isAgency()
+        && resource.data.source_agency_id is string
+        && request.resource.data.source_agency_id == resource.data.source_agency_id
+        && request.resource.data.nanny_id == resource.data.nanny_id
+        && isAgencyMemberOf(resource.data.source_agency_id)
+      );
+
+      allow delete: if isAdmin() || (
+        isAuthenticated()
+        && isAgency()
+        && resource.data.source_agency_id is string
+        && isAgencyMemberOf(resource.data.source_agency_id)
+      );
+    }
+
+    match /nanny_bg_status_public/{nannyId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAdmin() || (
+        isAuthenticated()
+        && isAgency()
+        && request.resource.data.nanny_id is string
+        && request.resource.data.nanny_id == nannyId
+        && agencyIdForCurrentUser() is string
+        && exists(/databases/$(database)/documents/nanny_bg_checks/$(agencyIdForCurrentUser() + '_' + nannyId))
+      );
+
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && isAgency()
+        && request.resource.data.nanny_id is string
+        && request.resource.data.nanny_id == nannyId
+        && agencyIdForCurrentUser() is string
+        && exists(/databases/$(database)/documents/nanny_bg_checks/$(agencyIdForCurrentUser() + '_' + nannyId))
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /nanny_bg_check_audit_logs/{logId} {
+      allow read: if isAdmin();
+
+      allow create: if (isAdmin() && request.resource.data.actor_user_id == request.auth.uid) || (
+        isAuthenticated()
+        && isAgency()
+        && request.resource.data.source_agency_id is string
+        && request.resource.data.actor_user_id == request.auth.uid
+        && isAgencyMemberOf(request.resource.data.source_agency_id)
+      );
+
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     match /nanny_reviews/{reviewId} {
       allow read: if true;
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && isValidStructuredNannyReview(request.resource.data)
+        && (
+          (
+            request.resource.data.reviewer_type == 'family'
+            && isFamily()
+            && request.resource.data.reviewer_id == request.auth.uid
+            && request.resource.data.relationship_reference_type == 'care_history'
+            && request.resource.data.relationship_reference_id is string
+            && exists(/databases/$(database)/documents/care_history/$(request.resource.data.relationship_reference_id))
+            && get(/databases/$(database)/documents/care_history/$(request.resource.data.relationship_reference_id)).data.family_id == request.auth.uid
+            && get(/databases/$(database)/documents/care_history/$(request.resource.data.relationship_reference_id)).data.nanny_id == request.resource.data.nanny_id
+          ) || (
+            request.resource.data.reviewer_type == 'agency'
+            && isAgency()
+            && agencyIdForCurrentUser() is string
+            && request.resource.data.reviewer_id == agencyIdForCurrentUser()
+            && (
+              (
+                request.resource.data.relationship_reference_type == 'application'
+                && request.resource.data.relationship_reference_id is string
+                && exists(/databases/$(database)/documents/applications/$(request.resource.data.relationship_reference_id))
+                && get(/databases/$(database)/documents/applications/$(request.resource.data.relationship_reference_id)).data.agency_id == agencyIdForCurrentUser()
+                && get(/databases/$(database)/documents/applications/$(request.resource.data.relationship_reference_id)).data.nanny_id == request.resource.data.nanny_id
+              ) || (
+                request.resource.data.relationship_reference_type == 'managed_profile'
+                && exists(/databases/$(database)/documents/nanny_profiles/$(request.resource.data.nanny_id))
+                && get(/databases/$(database)/documents/nanny_profiles/$(request.resource.data.nanny_id)).data.agency_id == agencyIdForCurrentUser()
+              )
+            )
+          )
+        );
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -213,6 +596,60 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isAuthenticated();
       allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Agency Subscriptions ───────────────────────────────────────────────
+    // One subscription document per agency. Agency admins can read/write their
+    // own subscription; admins can read/write any.
+
+    match /agency_subscriptions/{subId} {
+      allow read: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.agency_id is string
+            && isAgencyAdminOf(resource.data.agency_id));
+
+      allow create: if isAuthenticated()
+        && request.resource.data.agency_id is string
+        && isAgencyAdminOf(request.resource.data.agency_id)
+        && request.resource.data.plan_code in ['starter', 'professional', 'enterprise']
+        && request.resource.data.status in ['active', 'inactive', 'cancelled', 'trial'];
+
+      allow update: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.agency_id is string
+            && isAgencyAdminOf(resource.data.agency_id)
+            && request.resource.data.agency_id == resource.data.agency_id
+            && request.resource.data.plan_code in ['starter', 'professional', 'enterprise']
+            && request.resource.data.status in ['active', 'inactive', 'cancelled', 'trial']);
+
+      allow delete: if isAdmin();
+    }
+
+    // ─── Agency Add-Ons ───────────────────────────────────────────────────────
+    // One document per (agency × addon) pair. Agency admins can read/write
+    // their own addons; admins can read/write any.
+
+    match /agency_addons/{addonId} {
+      allow read: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.agency_id is string
+            && isAgencyAdminOf(resource.data.agency_id));
+
+      allow create: if isAuthenticated()
+        && request.resource.data.agency_id is string
+        && isAgencyAdminOf(request.resource.data.agency_id)
+        && request.resource.data.addon_code in ['featured_agency_boost', 'priority_lead_boost', 'bulk_import']
+        && request.resource.data.status in ['active', 'inactive', 'cancelled'];
+
+      allow update: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.agency_id is string
+            && isAgencyAdminOf(resource.data.agency_id)
+            && request.resource.data.agency_id == resource.data.agency_id
+            && request.resource.data.addon_code == resource.data.addon_code
+            && request.resource.data.status in ['active', 'inactive', 'cancelled']);
+
       allow delete: if isAdmin();
     }
   }

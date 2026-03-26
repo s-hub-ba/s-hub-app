@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { MessageSquare, Send, User, Building2 } from 'lucide-react';
+import { MessageSquare, Send, Building2 } from 'lucide-react';
 import { getConversations, getMessages, sendMessage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -11,6 +11,8 @@ export default function FamilyMessages() {
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const familyId = user?.uid || '';
   const conversationFromQuery = new URLSearchParams(location.search).get('conversation');
@@ -49,24 +51,72 @@ export default function FamilyMessages() {
   };
 
   useEffect(() => {
-    if (!familyId) return;
-    const loadData = async () => {
+    if (!familyId) {
+      setConversations([]);
+      setActiveConversation(null);
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadConversations = async () => {
       try {
+        setLoadError(null);
         const convos = (await getConversations(familyId, 'family')) || [];
+        if (cancelled) return;
+
         setConversations(convos);
-        if (convos.length > 0) {
-          const preferred = conversationFromQuery ? convos.find(c => c.id === conversationFromQuery) : null;
-          const nextActive = preferred || convos[0];
-          setActiveConversation(nextActive);
-          const msgs = await getMessages(nextActive.id);
-          setMessages((msgs || []).filter(Boolean));
+
+        if (convos.length === 0) {
+          setActiveConversation(null);
+          setMessages([]);
+          return;
         }
+
+        setActiveConversation((prev: any) => {
+          const preferred = conversationFromQuery ? convos.find(c => c.id === conversationFromQuery) : null;
+          const existing = prev?.id ? convos.find(c => c.id === prev.id) : null;
+          return preferred || existing || convos[0];
+        });
       } catch (error) {
         console.error('Error loading conversations:', error);
+        if (!cancelled) {
+          setLoadError('Unable to load messages right now. Please refresh and try again.');
+        }
       }
     };
-    loadData();
+
+    loadConversations();
+    const intervalId = window.setInterval(loadConversations, 7000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [familyId, conversationFromQuery]);
+
+  useEffect(() => {
+    if (!activeConversation?.id) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadMessages = async () => {
+      const msgs = await getMessages(activeConversation.id);
+      if (!cancelled) {
+        setMessages((msgs || []).filter(Boolean));
+      }
+    };
+
+    loadMessages();
+    const intervalId = window.setInterval(loadMessages, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeConversation?.id]);
 
   if (!familyId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to view messages.</div>;
@@ -74,16 +124,30 @@ export default function FamilyMessages() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !activeConversation) return;
+    const trimmedMessage = newMessage.trim();
+    if (!trimmedMessage || !activeConversation || isSending) return;
 
+    setIsSending(true);
     try {
-      const msg = await sendMessage(activeConversation.id, 'family', familyId, newMessage);
+      const msg = await sendMessage(activeConversation.id, 'family', familyId, trimmedMessage);
       if (msg?.id) {
         setMessages(prev => [...prev, msg].filter(Boolean));
         setNewMessage('');
+
+        const updatedAt = new Date().toISOString();
+        setConversations(prev => {
+          const next = (prev || []).map(convo => convo.id === activeConversation.id
+            ? { ...convo, last_message: trimmedMessage, updated_at: updatedAt }
+            : convo
+          );
+          return next.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
+        });
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      setLoadError('Unable to send your message. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -95,6 +159,12 @@ export default function FamilyMessages() {
           <p className="text-stone-500 mt-1">Communicate with agencies about your applications.</p>
         </div>
       </div>
+
+      {loadError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
 
       <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex h-full min-h-[500px]">
         {/* Conversations List */}
@@ -112,10 +182,8 @@ export default function FamilyMessages() {
               conversations.map(convo => (
                 <button
                   key={convo.id}
-                  onClick={async () => {
+                  onClick={() => {
                     setActiveConversation(convo);
-                    const msgs = await getMessages(convo.id);
-                    setMessages((msgs || []).filter(Boolean));
                   }}
                   className={`w-full p-4 text-left border-b border-stone-100 transition-colors ${
                     activeConversation?.id === convo.id 
@@ -172,7 +240,7 @@ export default function FamilyMessages() {
                 ) : (
                   messages.filter(Boolean).map(msg => (
                     <div 
-                      key={msg.id || `${msg.sender_id || 'unknown'}-${msg.created_at?.seconds || Date.now()}`} 
+                      key={msg.id || `${msg.sender_id || 'unknown'}-${msg.created_at?.seconds || msg.created_at || 'unknown-time'}`} 
                       className={`flex flex-col max-w-[80%] ${
                         msg.sender_type === 'family' ? 'ml-auto items-end' : 'mr-auto items-start'
                       }`}
@@ -203,7 +271,7 @@ export default function FamilyMessages() {
                   />
                   <button 
                     type="submit"
-                    disabled={!newMessage.trim()}
+                    disabled={!newMessage.trim() || isSending}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                   >
                     <Send className="h-5 w-5" />

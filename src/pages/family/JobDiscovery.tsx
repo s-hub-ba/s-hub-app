@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, MapPin, Briefcase, Clock, DollarSign, Heart, Baby, Filter, Star } from 'lucide-react';
 import { getJobs, saveJob, unsaveJob, getSavedJobs } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobSchedule, toDate } from '../../lib/utils';
 
 export default function JobDiscovery() {
   const { user } = useAuth();
@@ -57,6 +58,12 @@ export default function JobDiscovery() {
     
     return matchesSearch && matchesBorough && matchesSchedule;
   });
+
+  const formatStartLabel = (job: any) => {
+    if (job.schedule_type === 'weekly_days') return 'Recurring weekly';
+    const startDate = toDate(job.start_date);
+    return startDate ? `Starts: ${startDate.toLocaleDateString()}` : 'Start date TBD';
+  };
 
   return (
     <div className="space-y-8 pb-12">
@@ -184,7 +191,7 @@ export default function JobDiscovery() {
                   <Clock className="h-4 w-4 text-stone-400 mt-0.5 shrink-0" />
                   <div>
                     <span className="block font-bold text-stone-900">Schedule</span>
-                    <span className="text-xs">{job.schedule}</span>
+                    <span className="text-xs">{formatJobSchedule(job)}</span>
                   </div>
                 </div>
               </div>
@@ -196,7 +203,7 @@ export default function JobDiscovery() {
             
             <div className="p-6 bg-stone-50 border-t border-stone-100 flex items-center justify-between mt-auto">
               <div className="text-xs font-medium text-stone-500">
-                Starts: {job.start_date}
+                {formatStartLabel(job)}
               </div>
               <Link 
                 to={`/family/jobs/${job.id}`}
