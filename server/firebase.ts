@@ -8,7 +8,16 @@ function parseServiceAccountFromEnv() {
 
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed?.private_key === 'string') {
+    if (
+      typeof parsed?.project_id !== 'string'
+      || typeof parsed?.client_email !== 'string'
+      || typeof parsed?.private_key !== 'string'
+    ) {
+      console.error('[firebase-admin] FIREBASE_SERVICE_ACCOUNT_KEY is missing required fields');
+      return null;
+    }
+
+    if (typeof parsed.private_key === 'string') {
       parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
     }
     return parsed;
@@ -20,11 +29,15 @@ function parseServiceAccountFromEnv() {
 
 if (!admin.apps.length) {
   const serviceAccount = parseServiceAccountFromEnv();
-
-  admin.initializeApp({
-    credential: serviceAccount ? admin.credential.cert(serviceAccount) : undefined,
+  const initOptions: admin.AppOptions = {
     projectId: firebaseConfig.projectId,
-  });
+  };
+
+  if (serviceAccount) {
+    initOptions.credential = admin.credential.cert(serviceAccount);
+  }
+
+  admin.initializeApp(initOptions);
 }
 
 const dbId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
