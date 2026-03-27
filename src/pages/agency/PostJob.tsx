@@ -92,7 +92,9 @@ export default function PostJob() {
           You currently have <span className="font-semibold">{activeJobCount}</span> active.
         </p>
         <p className="text-stone-400 text-sm mb-6">
-          Upgrade to Professional or Enterprise for unlimited job listings.
+          {limit === 0
+            ? 'Free agencies can receive family requests, but publishing jobs starts on Starter.'
+            : 'Upgrade to Pro or Team for higher job capacity and faster growth.'}
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link

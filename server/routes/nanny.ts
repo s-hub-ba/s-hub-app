@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, auth } from '../firebase.js';
 
 const router = Router();
+const NANNY_FREE_APPLICATION_LIMIT = 5;
 
 const getHeaderValue = (value: unknown): string => {
   if (Array.isArray(value)) return String(value[0] || '').trim();
@@ -45,6 +46,16 @@ const requireNannyAuth = async (req: any, res: any, next: any) => {
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
+};
+
+const isPremiumNanny = async (nannyId: string) => {
+  const profileDoc = await db.collection('nanny_profiles').doc(nannyId).get();
+  if (!profileDoc.exists) return false;
+
+  const premiumUntil = profileDoc.data()?.premium_until;
+  if (!premiumUntil) return false;
+  const premiumUntilMs = new Date(String(premiumUntil)).getTime();
+  return Number.isFinite(premiumUntilMs) && premiumUntilMs > Date.now();
 };
 
 // POST /api/nanny/register - Register a nanny (handles invite links)
@@ -150,6 +161,77 @@ router.put('/profile', requireNannyAuth, async (req, res) => {
     return res.json({ id: nannyId, ...updatedProfile.data() });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/nanny/applications - Create nanny job application with server-side quota enforcement
+router.post('/applications', requireNannyAuth, async (req, res) => {
+  const callerNannyId = String((req as any).userId || '');
+  const { jobId, nannyId, coverLetter } = req.body || {};
+
+  if (!callerNannyId || !jobId || !nannyId) {
+    return res.status(400).json({ error: 'jobId and nannyId are required' });
+  }
+
+  if (callerNannyId !== String(nannyId)) {
+    return res.status(403).json({ error: 'Forbidden: cannot submit applications for another nanny' });
+  }
+
+  try {
+    const duplicateSnapshot = await db.collection('applications')
+      .where('nanny_id', '==', callerNannyId)
+      .where('job_id', '==', String(jobId))
+      .limit(1)
+      .get();
+
+    if (!duplicateSnapshot.empty) {
+      return res.status(409).json({ error: 'You already applied to this job.' });
+    }
+
+    const premium = await isPremiumNanny(callerNannyId);
+    if (!premium) {
+      const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const existingApps = await db.collection('applications')
+        .where('nanny_id', '==', callerNannyId)
+        .get();
+
+      const usedInWindow = existingApps.docs.filter((docSnap) => {
+        const createdAt = docSnap.data()?.created_at;
+        const createdAtMs = new Date(String(createdAt || 0)).getTime();
+        return Number.isFinite(createdAtMs) && createdAtMs >= thirtyDaysAgoMs;
+      }).length;
+
+      if (usedInWindow >= NANNY_FREE_APPLICATION_LIMIT) {
+        return res.status(403).json({
+          error: `You have used all ${NANNY_FREE_APPLICATION_LIMIT} free applications for the last 30 days. Upgrade to premium to apply without limits.`,
+          code: 'NANNY_APPLICATION_LIMIT_REACHED',
+        });
+      }
+    }
+
+    const jobDoc = await db.collection('jobs').doc(String(jobId)).get();
+    if (!jobDoc.exists) {
+      return res.status(404).json({ error: 'Job not found.' });
+    }
+
+    const jobData = jobDoc.data() || {};
+    const nowIso = new Date().toISOString();
+    const docRef = await db.collection('applications').add({
+      job_id: String(jobId),
+      nanny_id: callerNannyId,
+      agency_id: jobData.agency_id || null,
+      family_id: jobData.family_id || null,
+      cover_letter: String(coverLetter || ''),
+      status: 'applied',
+      status_history: [{ status: 'applied', actor_role: 'nanny', at: nowIso }],
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    const created = await docRef.get();
+    return res.json({ id: created.id, ...(created.data() || {}) });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to create application' });
   }
 });
 

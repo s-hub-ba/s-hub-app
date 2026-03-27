@@ -149,15 +149,20 @@ export default function FamilyRequestForm() {
     setSubmitting(true);
     setError('');
 
-    const result = await submitFamilyRequestAndMatch(familyId, form);
-    setSubmitting(false);
+    try {
+      const result = await submitFamilyRequestAndMatch(familyId, form);
+      setSubmitting(false);
 
-    if (!result.requestId) {
-      setError('Unable to submit request right now. Please try again.');
-      return;
+      if (!result.requestId) {
+        setError('Unable to submit request right now. Please try again.');
+        return;
+      }
+
+      navigate(`/family/requests/${result.requestId}`);
+    } catch (error: any) {
+      setSubmitting(false);
+      setError(error?.message || 'Unable to submit request right now. Please try again.');
     }
-
-    navigate(`/family/requests/${result.requestId}`);
   };
 
   if (!familyId) {
@@ -181,6 +186,10 @@ export default function FamilyRequestForm() {
 
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
         Families never contact nannies directly. Agencies coordinate all introductions and communication.
+      </div>
+
+      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        Families stay free. You can keep one active childcare request open at a time so agencies respond to a single clear brief.
       </div>
 
       {error && (

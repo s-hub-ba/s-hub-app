@@ -1,13 +1,14 @@
 ﻿import { useEffect, useState, type ReactNode } from 'react';
 import { CreditCard, CheckCircle2, AlertCircle, Users, Briefcase, ChevronRight, Zap, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { resolveAgencyIdForUser } from '../../lib/api';
+import { getActiveJobCount, getAgencyNannyProfileCount, getRecruiterSeatCount, resolveAgencyIdForUser } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgencyEntitlements } from '../../lib/entitlements';
-import { formatLimit, ADDON_CONFIG_MAP } from '../../lib/plans';
+import { formatLimit, ADDON_CONFIG_MAP, PLAN_CODES, PLAN_CONFIG_MAP } from '../../lib/plans';
 import { toDate } from '../../lib/utils';
 
 const PLAN_COLOR_MAP: Record<string, string> = {
+  stone: 'bg-stone-100 text-stone-700',
   emerald: 'bg-emerald-100 text-emerald-700',
   blue: 'bg-blue-100 text-blue-700',
   red: 'bg-red-100 text-red-700',
@@ -16,8 +17,10 @@ const PLAN_COLOR_MAP: Record<string, string> = {
 export default function Billing() {
   const { user } = useAuth();
   const [agencyId, setAgencyId] = useState('');
+  const [usage, setUsage] = useState({ recruiterSeats: 0, activeJobs: 0, nannyProfiles: 0 });
 
   const { entitlements, subscription, loading: loadingSub } = useAgencyEntitlements(agencyId);
+  const fallbackPlan = PLAN_CONFIG_MAP[PLAN_CODES.FREE];
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -30,6 +33,25 @@ export default function Billing() {
     };
     resolveAgency();
   }, [user]);
+
+  useEffect(() => {
+    if (!agencyId) {
+      setUsage({ recruiterSeats: 0, activeJobs: 0, nannyProfiles: 0 });
+      return;
+    }
+
+    Promise.all([
+      getRecruiterSeatCount(agencyId),
+      getActiveJobCount(agencyId),
+      getAgencyNannyProfileCount(agencyId),
+    ])
+      .then(([recruiterSeats, activeJobs, nannyProfiles]) => {
+        setUsage({ recruiterSeats, activeJobs, nannyProfiles });
+      })
+      .catch(() => {
+        setUsage({ recruiterSeats: 0, activeJobs: 0, nannyProfiles: 0 });
+      });
+  }, [agencyId]);
 
   const plan = entitlements?.plan;
   const planBadgeClass = plan ? (PLAN_COLOR_MAP[plan.color] ?? 'bg-stone-100 text-stone-700') : '';
@@ -73,7 +95,7 @@ export default function Billing() {
                   {loadingSub ? (
                     <div className="h-7 w-32 bg-stone-100 rounded animate-pulse" />
                   ) : (
-                    <h2 className="text-2xl font-bold text-stone-900">{plan?.name ?? 'Starter'} Plan</h2>
+                    <h2 className="text-2xl font-bold text-stone-900">{plan?.name ?? fallbackPlan.name} Plan</h2>
                   )}
                   {!loadingSub && subscription?.status === 'active' && (
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${planBadgeClass}`}>
@@ -83,18 +105,18 @@ export default function Billing() {
                   )}
                   {!loadingSub && (!subscription || subscription.status === 'none' as any) && (
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-stone-100 text-stone-600">
-                      Default
+                      Free Default
                     </span>
                   )}
                 </div>
-                <p className="text-stone-500">Billed monthly Â· {plan?.tagline ?? 'Launch'}</p>
+                <p className="text-stone-500">Billed monthly - {plan?.tagline ?? fallbackPlan.tagline}</p>
               </div>
               <div className="text-left md:text-right">
                 {loadingSub ? (
                   <div className="h-10 w-24 bg-stone-100 rounded animate-pulse" />
                 ) : (
                   <div className="text-3xl font-bold text-stone-900">
-                    ${plan?.monthly_price ?? 29}
+                    ${plan?.monthly_price ?? fallbackPlan.monthly_price}
                     <span className="text-lg text-stone-500 font-medium">/mo</span>
                   </div>
                 )}
@@ -114,19 +136,19 @@ export default function Billing() {
                   icon={<Users className="h-5 w-5" />}
                   iconBg="bg-blue-100 text-blue-600"
                   label="Recruiter Seats"
-                  value={formatLimit(entitlements?.recruiterSeatLimit ?? 1)}
+                  value={formatLimit(entitlements?.recruiterSeatLimit ?? fallbackPlan.recruiter_seat_limit)}
                 />
                 <LimitCard
                   icon={<Briefcase className="h-5 w-5" />}
                   iconBg="bg-purple-100 text-purple-600"
                   label="Active Job Listings"
-                  value={formatLimit(entitlements?.activeJobLimit ?? 5)}
+                  value={formatLimit(entitlements?.activeJobLimit ?? fallbackPlan.active_job_limit)}
                 />
                 <LimitCard
                   icon={<Users className="h-5 w-5" />}
                   iconBg="bg-emerald-100 text-emerald-600"
                   label="Nanny Profiles"
-                  value={formatLimit(entitlements?.nannyProfileLimit ?? 50)}
+                  value={formatLimit(entitlements?.nannyProfileLimit ?? fallbackPlan.nanny_profile_limit)}
                 />
               </div>
             </div>
@@ -203,7 +225,7 @@ export default function Billing() {
               <div>
                 <h3 className="font-bold text-orange-900">Platform Policy</h3>
                 <p className="text-sm text-orange-800 mt-1 leading-relaxed">
-                  An active subscription is required to post jobs and access the nanny search pool.
+                  Free agencies can receive and manage family requests. Paid plans unlock job posting, recruiter seats, and advanced agency tools.
                   Families do not contact nannies directly. Agencies coordinate all matching.
                 </p>
               </div>
@@ -215,15 +237,19 @@ export default function Billing() {
             <h3 className="font-bold text-stone-900 mb-4">Quick Plan Overview</h3>
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center justify-between">
+                <span className="text-stone-600">Free</span>
+                <span className="font-semibold text-stone-900">$0/mo</span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-stone-600">Starter</span>
                 <span className="font-semibold text-stone-900">$29/mo</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-stone-600">Professional</span>
+                <span className="text-stone-600">Pro</span>
                 <span className="font-semibold text-stone-900">$59/mo</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-stone-600">Enterprise</span>
+                <span className="text-stone-600">Team</span>
                 <span className="font-semibold text-stone-900">$149/mo</span>
               </div>
             </div>
@@ -232,6 +258,34 @@ export default function Billing() {
               className="mt-4 w-full py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors flex items-center justify-center gap-2"
             >
               View All Plans
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6">
+            <h3 className="font-bold text-stone-900 mb-4">Current Usage</h3>
+            <div className="space-y-3 text-sm">
+              <UsageRow
+                label="Recruiter Seats"
+                used={usage.recruiterSeats}
+                limit={entitlements?.recruiterSeatLimit ?? fallbackPlan.recruiter_seat_limit}
+              />
+              <UsageRow
+                label="Active Jobs"
+                used={usage.activeJobs}
+                limit={entitlements?.activeJobLimit ?? fallbackPlan.active_job_limit}
+              />
+              <UsageRow
+                label="Nanny Profiles"
+                used={usage.nannyProfiles}
+                limit={entitlements?.nannyProfileLimit ?? fallbackPlan.nanny_profile_limit}
+              />
+            </div>
+            <Link
+              to="/agency/subscription"
+              className="mt-4 w-full py-2.5 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors flex items-center justify-center gap-2"
+            >
+              Upgrade If Near Limits
               <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
@@ -282,6 +336,28 @@ function LimitCard({
           {value}
         </p>
       </div>
+    </div>
+  );
+}
+
+function UsageRow({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+}) {
+  const nearLimit = limit !== null && limit > 0 && used / limit >= 0.8;
+  const reachedLimit = limit !== null && used >= limit;
+
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-stone-600">{label}</span>
+      <span className={`font-semibold ${reachedLimit ? 'text-rose-600' : nearLimit ? 'text-amber-600' : 'text-stone-900'}`}>
+        {used}/{limit === null ? 'Unlimited' : limit}
+      </span>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, auth } from '../firebase.js';
-import { calculateSubscriptionPrice } from '../services/billing.js';
+import { PLAN_CODES, PLAN_JOB_LIMITS, PLAN_RECRUITER_LIMITS, calculateSubscriptionPrice } from '../services/billing.js';
 
 const router = Router();
 
@@ -51,6 +51,38 @@ const generateUniqueInviteCode = async () => {
   throw new Error('Failed to generate unique invite code');
 };
 
+const resolveAgencyPlanCode = async (agencyId: string) => {
+  const subscriptionSnapshot = await db.collection('agency_subscriptions')
+    .where('agency_id', '==', agencyId)
+    .get();
+
+  if (subscriptionSnapshot.empty) return PLAN_CODES.FREE;
+
+  const subscription = subscriptionSnapshot.docs
+    .map((docSnap) => docSnap.data() || {})
+    .sort((a, b) => {
+      const aTime = new Date(String(a.created_at || a.updated_at || 0)).getTime();
+      const bTime = new Date(String(b.created_at || b.updated_at || 0)).getTime();
+      return bTime - aTime;
+    })[0] || {};
+  const planCode = typeof subscription.plan_code === 'string' ? subscription.plan_code : PLAN_CODES.FREE;
+  const isActive = subscription.status === 'active' || subscription.status === 'trial';
+  return isActive ? planCode : PLAN_CODES.FREE;
+};
+
+const canActForAgency = async (agencyId: string, callerUserId: string) => {
+  if (!agencyId || !callerUserId) return false;
+  if (callerUserId === agencyId) return true;
+
+  const recruiterSnap = await db.collection('agency_recruiters')
+    .where('agency_id', '==', agencyId)
+    .where('user_id', '==', callerUserId)
+    .limit(1)
+    .get();
+
+  return !recruiterSnap.empty;
+};
+
 // GET /api/agency/public-list - Public directory list for unauthenticated visitors
 router.get('/public-list', async (_req: any, res: any) => {
   try {
@@ -80,6 +112,61 @@ router.get('/public-list', async (_req: any, res: any) => {
   }
 });
 
+// POST /api/agency/jobs - Create a job via backend with plan enforcement
+router.post('/jobs', requireAgencyOwner, async (req: any, res: any) => {
+  const agency_id = String(req.agency_id || '');
+  const callerUserId = String(req.user_id || '');
+  const payload = req.body || {};
+
+  if (!agency_id || !callerUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!payload.title || !payload.description) {
+    return res.status(400).json({ error: 'title and description are required' });
+  }
+
+  try {
+    const callerAllowed = await canActForAgency(agency_id, callerUserId);
+    if (!callerAllowed) {
+      return res.status(403).json({ error: 'Forbidden: user does not belong to this agency' });
+    }
+
+    const planCode = await resolveAgencyPlanCode(agency_id);
+    const shouldCountAgainstLimit = (payload.status || 'published') === 'published';
+
+    if (shouldCountAgainstLimit) {
+      const activeJobSnapshot = await db.collection('jobs')
+        .where('agency_id', '==', agency_id)
+        .where('status', '==', 'published')
+        .get();
+
+      const jobLimit = PLAN_JOB_LIMITS[planCode as keyof typeof PLAN_JOB_LIMITS] ?? 0;
+      if (jobLimit !== null && activeJobSnapshot.size >= jobLimit) {
+        return res.status(403).json({
+          error: planCode === PLAN_CODES.FREE
+            ? 'Free agencies can create a profile and receive family requests, but job posting starts on the Starter plan.'
+            : `Your current plan allows ${jobLimit} active job posting${jobLimit === 1 ? '' : 's'}. Upgrade to publish more jobs.`,
+          code: 'JOB_LIMIT_REACHED',
+        });
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const docRef = await db.collection('jobs').add({
+      ...payload,
+      agency_id,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    const created = await docRef.get();
+    return res.json({ id: created.id, ...(created.data() || {}) });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to create job' });
+  }
+});
+
 // POST /api/agency/recruiter - Add a recruiter seat
 router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
   const { email, first_name, last_name } = req.body;
@@ -90,6 +177,22 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
   }
 
   try {
+    const planCode = await resolveAgencyPlanCode(agency_id);
+    const recruiterLimit = PLAN_RECRUITER_LIMITS[planCode as keyof typeof PLAN_RECRUITER_LIMITS] ?? 0;
+    const currentRecruiterSnapshot = await db.collection('agency_recruiters')
+      .where('agency_id', '==', agency_id)
+      .where('status', '==', 'active')
+      .get();
+
+    if (recruiterLimit !== null && currentRecruiterSnapshot.size >= recruiterLimit) {
+      return res.status(403).json({
+        error: planCode === PLAN_CODES.FREE
+          ? 'Free agencies include the owner account only. Upgrade to Starter or above to add recruiter seats.'
+          : `Your current plan includes ${recruiterLimit} recruiter seat${recruiterLimit === 1 ? '' : 's'}. Upgrade to add more recruiters.`,
+        code: 'RECRUITER_LIMIT_REACHED',
+      });
+    }
+
     // Prevent duplicate recruiter seat for this agency by email
     const existingRecruiterSnapshot = await db.collection('agency_recruiters')
       .where('agency_id', '==', agency_id)
@@ -133,7 +236,7 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
       created_at: new Date().toISOString()
     });
 
-    // 3. Update or initialize subscription pricing
+    // Legacy billing sync: only update existing seat-priced subscriptions.
     const subSnapshot = await db.collection('subscriptions').where('agency_id', '==', agency_id).limit(1).get();
 
     if (!subSnapshot.empty) {
@@ -149,20 +252,9 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
       });
 
       console.log(`[Billing] Agency ${agency_id} price increased to $${newTotal}/mo`);
-    } else {
-      const newCount = 1;
-      const newTotal = calculateSubscriptionPrice(newCount);
-      await db.collection('subscriptions').add({
-        agency_id,
-        recruiter_count: newCount,
-        total_price: newTotal,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-      console.log(`[Billing] Agency ${agency_id} subscription created: $${newTotal}/mo`);
     }
 
-    res.json({ success: true, message: 'Recruiter added and billing updated' });
+    res.json({ success: true, message: 'Recruiter added successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -218,7 +310,7 @@ router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) =
       console.log(`[Billing] Agency ${agency_id} price updated to $${newTotal}/mo`);
     }
 
-    res.json({ success: true, message: 'Recruiter removed and billing updated' });
+    res.json({ success: true, message: 'Recruiter removed successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

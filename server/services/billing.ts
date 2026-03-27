@@ -1,6 +1,7 @@
 // ─── Plan codes (mirrors src/lib/plans.ts for server-side use) ────────────────
 
 export const PLAN_CODES = {
+  FREE: 'free',
   STARTER: 'starter',
   PROFESSIONAL: 'professional',
   ENTERPRISE: 'enterprise',
@@ -11,9 +12,24 @@ export type PlanCode = (typeof PLAN_CODES)[keyof typeof PLAN_CODES];
 // ─── Plan prices ──────────────────────────────────────────────────────────────
 
 export const PLAN_PRICES: Record<PlanCode, number> = {
+  [PLAN_CODES.FREE]: 0.00,
   [PLAN_CODES.STARTER]: 29.00,
   [PLAN_CODES.PROFESSIONAL]: 59.00,
   [PLAN_CODES.ENTERPRISE]: 149.00, // configurable 149–199
+};
+
+export const PLAN_RECRUITER_LIMITS: Record<PlanCode, number | null> = {
+  [PLAN_CODES.FREE]: 0,
+  [PLAN_CODES.STARTER]: 1,
+  [PLAN_CODES.PROFESSIONAL]: 3,
+  [PLAN_CODES.ENTERPRISE]: null,
+};
+
+export const PLAN_JOB_LIMITS: Record<PlanCode, number | null> = {
+  [PLAN_CODES.FREE]: 0,
+  [PLAN_CODES.STARTER]: 5,
+  [PLAN_CODES.PROFESSIONAL]: null,
+  [PLAN_CODES.ENTERPRISE]: null,
 };
 
 export const ENTERPRISE_PRICE_RANGE = { min: 149, max: 199 };
@@ -58,7 +74,7 @@ export function getPlanPrice(
     );
     return Number(clamped.toFixed(2));
   }
-  return PLAN_PRICES[planCode] ?? PLAN_PRICES[PLAN_CODES.STARTER];
+  return PLAN_PRICES[planCode] ?? PLAN_PRICES[PLAN_CODES.FREE];
 }
 
 /**

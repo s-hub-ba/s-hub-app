@@ -8,6 +8,7 @@
 // ─── Plan Codes ─────────────────────────────────────────────────────────────
 
 export const PLAN_CODES = {
+  FREE: 'free',
   STARTER: 'starter',
   PROFESSIONAL: 'professional',
   ENTERPRISE: 'enterprise',
@@ -42,7 +43,7 @@ export interface Plan {
   description: string;
   /** Short blurb about the ideal customer */
   target: string;
-  color: 'emerald' | 'blue' | 'red';
+  color: 'stone' | 'emerald' | 'blue' | 'red';
 
   // Usage limits (null = unlimited)
   recruiter_seat_limit: Limit;
@@ -70,6 +71,32 @@ export interface Plan {
 // ─── Plans Config ─────────────────────────────────────────────────────────────
 
 export const PLANS: Plan[] = [
+  {
+    id: 'free',
+    code: PLAN_CODES.FREE,
+    name: 'Free',
+    tagline: 'Profile',
+    monthly_price: 0,
+    description: 'Create your agency profile, receive family requests, and explore the platform before upgrading.',
+    target: 'Agencies evaluating the marketplace',
+    color: 'stone',
+    recruiter_seat_limit: 0,
+    active_job_limit: 0,
+    nanny_profile_limit: 10,
+    has_invite_link: false,
+    has_family_request_inbox: true,
+    has_advanced_search: false,
+    has_priority_family_discovery: false,
+    has_early_family_request_access: false,
+    has_agency_branding: false,
+    has_top_marketplace_placement: false,
+    has_priority_lead_access: false,
+    has_advanced_matching: false,
+    has_bulk_import: false,
+    has_api_access: false,
+    has_dedicated_support: false,
+    is_active: true,
+  },
   {
     id: 'starter',
     code: PLAN_CODES.STARTER,
@@ -99,8 +126,8 @@ export const PLANS: Plan[] = [
   {
     id: 'professional',
     code: PLAN_CODES.PROFESSIONAL,
-    name: 'Professional',
-    tagline: 'Growth',
+    name: 'Pro',
+    tagline: 'Scale',
     monthly_price: 59,
     description: 'Grow your placements with priority visibility and faster access to families.',
     target: 'Growing agencies',
@@ -126,8 +153,8 @@ export const PLANS: Plan[] = [
   {
     id: 'enterprise',
     code: PLAN_CODES.ENTERPRISE,
-    name: 'Enterprise',
-    tagline: 'Scale',
+    name: 'Team',
+    tagline: 'Operate',
     // Configurable price between ENTERPRISE_PRICE_RANGE.min and max
     monthly_price: 149,
     description: 'Scale your agency with premium visibility, automation, and high-quality leads.',
@@ -266,7 +293,7 @@ export interface AgencyEntitlements {
 
 /**
  * Computes an AgencyEntitlements object from a subscription + active addons.
- * Pass null subscription to get Starter defaults (graceful degradation).
+ * Pass null subscription to get Free defaults.
  */
 export function resolveEntitlements(
   subscription: AgencySubscription | null,
@@ -275,13 +302,13 @@ export function resolveEntitlements(
   const isActive =
     subscription?.status === 'active' || subscription?.status === 'trial';
 
-  // Graceful default: treat missing/inactive subscription as Starter
+  // Graceful default: treat missing/inactive subscription as Free
   const planCode: PlanCode =
     isActive && subscription?.plan_code
       ? subscription.plan_code
-      : PLAN_CODES.STARTER;
+      : PLAN_CODES.FREE;
 
-  const plan = PLAN_CONFIG_MAP[planCode] ?? PLAN_CONFIG_MAP[PLAN_CODES.STARTER];
+  const plan = PLAN_CONFIG_MAP[planCode] ?? PLAN_CONFIG_MAP[PLAN_CODES.FREE];
 
   const activeAddonCodes = addons
     .filter((a) => a.status === 'active')
@@ -333,12 +360,12 @@ export function resolveEntitlements(
  * Higher numbers appear first. This is additive; base relevance scoring
  * should still be the primary sort key.
  *
- * Enterprise = +300, Professional = +200, Featured boost addon = +100
+ * Team = +300, Pro = +200, Featured boost addon = +100
  */
 export function getDiscoveryBoost(entitlements: AgencyEntitlements): number {
   let boost = 0;
-  if (entitlements.hasTopMarketplacePlacement) boost += 300;   // Enterprise
-  else if (entitlements.canAccessPriorityDiscovery) boost += 200; // Professional
+  if (entitlements.hasTopMarketplacePlacement) boost += 300;   // Team
+  else if (entitlements.canAccessPriorityDiscovery) boost += 200; // Pro
   if (entitlements.isFeaturedAgency) boost += 100;              // Addon
   return boost;
 }

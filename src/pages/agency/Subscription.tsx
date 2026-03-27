@@ -29,24 +29,28 @@ function isCredentialSetupError(message: string): boolean {
 }
 
 const PLAN_ACCENT: Record<string, string> = {
+  stone: 'border-stone-500 ring-2 ring-stone-300',
   emerald: 'border-emerald-500 ring-2 ring-emerald-400',
   blue: 'border-blue-500 ring-2 ring-blue-400',
   red: 'border-red-500 ring-2 ring-red-400',
 };
 
 const PLAN_BADGE: Record<string, string> = {
+  stone: 'bg-stone-200 text-stone-700',
   emerald: 'bg-emerald-100 text-emerald-700',
   blue: 'bg-blue-100 text-blue-700',
   red: 'bg-red-100 text-red-700',
 };
 
 const PLAN_BUTTON: Record<string, string> = {
+  stone: 'bg-stone-700 hover:bg-stone-800',
   emerald: 'bg-emerald-600 hover:bg-emerald-700',
   blue: 'bg-blue-600 hover:bg-blue-700',
   red: 'bg-red-600 hover:bg-red-700',
 };
 
 const PLAN_ICON: Record<string, string> = {
+  stone: '⚪',
   emerald: '🟢',
   blue: '🔵',
   red: '🔴',
@@ -116,10 +120,11 @@ export default function Subscription() {
     completeCheckout();
   }, [agencyId, refresh, user]);
 
-  const currentPlanCode = entitlements?.plan_code ?? PLAN_CODES.STARTER;
+  const currentPlanCode = entitlements?.plan_code ?? PLAN_CODES.FREE;
 
   const handleSelectPlan = async (planCode: PlanCode) => {
     if (!agencyId || saving || !user?.uid) return;
+    if (planCode === PLAN_CODES.FREE) return;
     const plan = PLAN_CONFIG_MAP[planCode];
     setSaving(planCode);
     setSuccessMsg(null);
@@ -226,10 +231,11 @@ export default function Subscription() {
       </AnimatePresence>
 
       {/* Plan Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {PLANS.map((plan) => {
           const isActive = plan.code === currentPlanCode;
           const isSaving = saving === plan.code;
+          const canCheckout = plan.code !== PLAN_CODES.FREE;
 
           return (
             <motion.div
@@ -285,7 +291,7 @@ export default function Subscription() {
               <div className="px-6 pb-6 mt-auto">
                 <button
                   onClick={() => handleSelectPlan(plan.code)}
-                  disabled={isActive || !!saving}
+                  disabled={isActive || !!saving || !canCheckout}
                   className={`w-full py-3 rounded-xl text-sm font-bold text-white shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${PLAN_BUTTON[plan.color]}`}
                 >
                   {isSaving ? (
@@ -295,6 +301,8 @@ export default function Subscription() {
                       <CheckCircle2 className="h-4 w-4" />
                       Current Plan
                     </>
+                  ) : !canCheckout ? (
+                    'Default Free Plan'
                   ) : (
                     <>
                       Select {plan.name}
@@ -414,7 +422,7 @@ export default function Subscription() {
           <p className="font-semibold mb-0.5">Platform Policy Reminder</p>
           <p className="text-amber-800 leading-relaxed">
             Families do not contact nannies directly. Agencies remain the central
-            coordinator of all matching and communication on Shift Me Up.
+            coordinator of all matching and communication on Shift Me Up. Free agencies can receive requests, while paid plans unlock job posting and team growth.
           </p>
         </div>
       </div>

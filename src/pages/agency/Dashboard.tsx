@@ -5,6 +5,7 @@ import {
   getJobs,
   getApplicationsForAgency,
   getAgencyById,
+  getRecruiterSeatCount,
   resolveAgencyIdForUser,
   getAgencyConversations,
   updateInquiryStage,
@@ -12,6 +13,8 @@ import {
   type InquiryStage
 } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAgencyEntitlements } from '../../lib/entitlements';
+import { formatLimit } from '../../lib/plans';
 
 const INQUIRY_STAGE_LABELS: Record<InquiryStage, string> = {
   new: 'New',
@@ -25,6 +28,8 @@ export default function AgencyDashboard() {
   const [isResolvingAgency, setIsResolvingAgency] = useState(true);
   const [agency, setAgency] = useState<any>(null);
   const [inquiries, setInquiries] = useState<any[]>([]);
+  const [seatCount, setSeatCount] = useState(0);
+  const { entitlements } = useAgencyEntitlements(agencyId);
   const [stats, setStats] = useState({
     activeJobs: 0,
     newApps: 0,
@@ -80,18 +85,20 @@ export default function AgencyDashboard() {
     const loadData = async () => {
       if (!agencyId) return;
       try {
-        const [agencyData, jobs, apps, conversations, talentPoolItems] = await Promise.all([
+        const [agencyData, jobs, apps, conversations, talentPoolItems, seats] = await Promise.all([
           getAgencyById(agencyId),
           getJobs(agencyId),
           getApplicationsForAgency(agencyId),
           getAgencyConversations(agencyId),
-          getAgencyTalentPool(agencyId)
+          getAgencyTalentPool(agencyId),
+          getRecruiterSeatCount(agencyId),
         ]);
 
         setAgency(agencyData);
 
         const newApps = apps.filter(a => a.status === 'applied');
         const inquiryThreads = (conversations || []).filter((c: any) => c.inquiry_type === 'agency_intro');
+        setSeatCount(seats);
 
         setInquiries(inquiryThreads.slice(0, 5));
         setStats({
@@ -145,8 +152,10 @@ export default function AgencyDashboard() {
             <Star className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-blue-900">Starter Plan Active</h3>
-            <p className="text-xs text-blue-700">Your subscription renews on Apr 15, 2026. 1 Recruiter Seat.</p>
+            <h3 className="text-sm font-bold text-blue-900">{entitlements?.plan?.name || 'Free'} Plan Active</h3>
+            <p className="text-xs text-blue-700">
+              Recruiter Seats: {seatCount}/{formatLimit(entitlements?.recruiterSeatLimit ?? 0)}
+            </p>
           </div>
         </div>
         <Link to="/agency/billing" className="text-sm font-medium text-blue-700 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-sm">

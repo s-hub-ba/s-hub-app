@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, BookmarkPlus, CheckCircle2, Star } from 'lucide-react';
+import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, BookmarkPlus, CheckCircle2, Star, AlertCircle, Zap } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getJobs, createApplication, getApplicationsForNanny } from '../../lib/api';
+import { getJobs, createApplication, getApplicationsForNanny, getNannyApplicationQuota } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule, toDate } from '../../lib/utils';
 
@@ -9,6 +9,8 @@ export default function NannyJobs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [jobs, setJobs] = useState<any[]>([]);
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
+  const [quota, setQuota] = useState<{ isPremium: boolean; monthlyLimit: number | null; used: number; remaining: number | null } | null>(null);
+  const [error, setError] = useState('');
   const { user } = useAuth();
   
   const nannyId = user?.uid || '';
@@ -19,11 +21,15 @@ export default function NannyJobs() {
 
   const loadData = async () => {
     try {
-      const fetchedJobs = await getJobs();
+      const [fetchedJobs, applications, applicationQuota] = await Promise.all([
+        getJobs(),
+        getApplicationsForNanny(nannyId),
+        getNannyApplicationQuota(nannyId),
+      ]);
+
       setJobs(fetchedJobs);
-      
-      const applications = await getApplicationsForNanny(nannyId);
       setAppliedJobIds(new Set(applications.map(a => a.job_id)));
+      setQuota(applicationQuota);
     } catch (error) {
       console.error('Error loading jobs:', error);
     }
@@ -35,13 +41,17 @@ export default function NannyJobs() {
     }
 
     try {
+      setError('');
       await createApplication(jobId, nannyId, 'Applied from job marketplace');
       await loadData();
       console.log('Application submitted successfully!');
     } catch (err: any) {
+      setError(err?.message || 'Unable to submit application right now.');
       console.error(err.message);
     }
   };
+
+  const applicationLimitReached = quota?.monthlyLimit !== null && (quota?.remaining ?? 0) <= 0;
 
   const filteredJobs = jobs.filter(job => 
     job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -65,6 +75,27 @@ export default function NannyJobs() {
           <p className="text-stone-500 mt-1">Find premium childcare opportunities across NYC.</p>
         </div>
       </div>
+
+      {quota && (
+        <div className={`rounded-2xl border p-4 flex items-start gap-3 ${quota.isPremium ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          {quota.isPremium ? <Zap className="h-5 w-5 mt-0.5" /> : <AlertCircle className="h-5 w-5 mt-0.5" />}
+          <div>
+            <div className="font-semibold">{quota.isPremium ? 'Premium applications unlocked' : 'Free application quota'}</div>
+            <div className="text-sm mt-1">
+              {quota.isPremium
+                ? 'You can apply to as many jobs as you want while premium is active.'
+                : `${quota.used}/${quota.monthlyLimit} free applications used in the last 30 days. ${quota.remaining} remaining before premium is required.`}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5" />
+          {error}
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-col md:flex-row gap-4">
@@ -175,9 +206,10 @@ export default function NannyJobs() {
                     ) : (
                       <button 
                         onClick={() => handleApply(job.id, job.title)}
-                        className="flex-1 sm:flex-none px-6 py-2.5 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors"
+                        disabled={!!applicationLimitReached}
+                        className="flex-1 sm:flex-none px-6 py-2.5 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors disabled:bg-stone-300 disabled:cursor-not-allowed"
                       >
-                        Apply Now
+                        {applicationLimitReached ? 'Upgrade for More Applications' : 'Apply Now'}
                       </button>
                     )}
                   </div>

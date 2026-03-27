@@ -5,6 +5,7 @@ import net from 'net';
 import paypalRoutes from './server/paypal.js';
 import agencyRoutes from './server/routes/agency.js';
 import nannyRoutes from './server/routes/nanny.js';
+import familyRoutes from './server/routes/family.js';
 
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -83,6 +84,7 @@ async function startServer() {
   // Agency & Nanny Routes
   app.use('/api/agency', agencyRoutes);
   app.use('/api/nanny', nannyRoutes);
+  app.use('/api/family', familyRoutes);
 
   // Vite middleware for development and SPA fallback
   if (process.env.NODE_ENV !== 'production') {

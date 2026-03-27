@@ -16,7 +16,15 @@ import {
   runTransaction,
   limit as firestoreLimit
 } from 'firebase/firestore';
-import type { AgencySubscription, AgencyAddon, AddonCode, PlanCode } from './plans';
+import {
+  PLAN_CODES,
+  resolveEntitlements,
+  type AgencyEntitlements,
+  type AgencySubscription,
+  type AgencyAddon,
+  type AddonCode,
+  type PlanCode,
+} from './plans';
 import { scoreAgencyForFamilyRequest, MATCH_THRESHOLD, type MatchTier } from './familyMatching';
 import {
   EMPTY_NANNY_REVIEW_AGGREGATE,
@@ -75,6 +83,19 @@ async function buildApiHeaders(extra: Record<string, string> = {}): Promise<Reco
 
   return headers;
 }
+
+export const NANNY_FREE_APPLICATION_LIMIT = 5;
+export const FAMILY_FREE_ACTIVE_REQUEST_LIMIT = 1;
+
+const FREE_AGENCY_JOB_LIMIT_ERROR = 'Free agencies can create a profile and receive family requests, but job posting starts on the Starter plan.';
+
+const getTimestampMillis = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
 
 // --- Types ---
 export type AppUserRole = 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin';
@@ -484,7 +505,7 @@ export interface AgencyProfile {
   isVerified?: boolean;
   sponsored?: boolean;
   /** Denormalized from agency_subscriptions for fast directory display */
-  plan_tier?: 'starter' | 'professional' | 'enterprise';
+  plan_tier?: 'free' | 'starter' | 'professional' | 'enterprise';
   location?: string;
   bio?: string;
   created_at: any;
@@ -713,6 +734,48 @@ export const getJobById = async (id: string): Promise<Job | null> => {
 export const createJob = async (jobData: any) => {
   const path = 'jobs';
   try {
+    if (jobData?.agency_id) {
+      try {
+        const headers = await buildApiHeaders({ 'x-agency-id': String(jobData.agency_id) });
+        const response = await fetch(buildApiUrl('/api/agency/jobs'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(jobData),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok) {
+          return payload;
+        }
+
+        if (response.status === 404 || response.status >= 500) {
+          console.warn('[createJob] backend endpoint unavailable, falling back to client write');
+        } else {
+          throw new Error(payload?.error || 'Unable to create job.');
+        }
+      } catch (backendError: any) {
+        const msg = String(backendError?.message || '');
+        const isNetworkFailure = backendError instanceof TypeError || /failed to fetch|network/i.test(msg);
+        if (!isNetworkFailure && msg) {
+          throw backendError;
+        }
+      }
+    }
+
+    const shouldCountAgainstLimit = (jobData?.status || 'published') === 'published';
+    if (shouldCountAgainstLimit && jobData?.agency_id) {
+      const entitlements = await getAgencyEntitlementsForAgency(jobData.agency_id);
+      const currentCount = await getActiveJobCount(jobData.agency_id);
+
+      if (!entitlements.canCreateJobPosting(currentCount)) {
+        throw new Error(
+          entitlements.plan_code === PLAN_CODES.FREE
+            ? FREE_AGENCY_JOB_LIMIT_ERROR
+            : `Your ${entitlements.plan.name} plan allows ${entitlements.activeJobLimit} active job posting${entitlements.activeJobLimit === 1 ? '' : 's'}. Upgrade to publish more jobs.`
+        );
+      }
+    }
+
     const docRef = await addDoc(collection(db, path), {
       ...jobData,
       created_at: serverTimestamp(),
@@ -722,6 +785,7 @@ export const createJob = async (jobData: any) => {
     return { id: newDoc.id, ...newDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
   }
 };
 
@@ -790,6 +854,24 @@ export const updateJob = async (id: string, updates: any) => {
   const path = `jobs/${id}`;
   try {
     const docRef = doc(db, 'jobs', id);
+    const existingDoc = await getDoc(docRef);
+    const existingData = existingDoc.exists() ? existingDoc.data() : null;
+    const nextStatus = updates?.status || existingData?.status || 'draft';
+    const agencyId = updates?.agency_id || existingData?.agency_id;
+
+    if (agencyId && nextStatus === 'published' && existingData?.status !== 'published') {
+      const entitlements = await getAgencyEntitlementsForAgency(agencyId);
+      const currentCount = await getActiveJobCount(agencyId);
+
+      if (!entitlements.canCreateJobPosting(currentCount)) {
+        throw new Error(
+          entitlements.plan_code === PLAN_CODES.FREE
+            ? FREE_AGENCY_JOB_LIMIT_ERROR
+            : `Your ${entitlements.plan.name} plan allows ${entitlements.activeJobLimit} active job posting${entitlements.activeJobLimit === 1 ? '' : 's'}. Upgrade to publish more jobs.`
+        );
+      }
+    }
+
     await updateDoc(docRef, {
       ...updates,
       updated_at: serverTimestamp()
@@ -798,6 +880,7 @@ export const updateJob = async (id: string, updates: any) => {
     return { id: updatedDoc.id, ...updatedDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
   }
 };
 
@@ -872,6 +955,49 @@ export const getApplicationsForNanny = async (nannyId: string): Promise<Applicat
 export const createApplication = async (jobId: string, nannyId: string, coverLetter?: string) => {
   const path = 'applications';
   try {
+    if (nannyId) {
+      try {
+        const headers = await buildApiHeaders();
+        const response = await fetch(buildApiUrl('/api/nanny/applications'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ jobId, nannyId, coverLetter: coverLetter || '' }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok) {
+          return payload;
+        }
+
+        if (response.status === 404 || response.status >= 500) {
+          console.warn('[createApplication] backend endpoint unavailable, falling back to client write');
+        } else {
+          throw new Error(payload?.error || 'Unable to submit application.');
+        }
+      } catch (backendError: any) {
+        const msg = String(backendError?.message || '');
+        const isNetworkFailure = backendError instanceof TypeError || /failed to fetch|network/i.test(msg);
+        if (!isNetworkFailure && msg) {
+          throw backendError;
+        }
+      }
+    }
+
+    const applicationQuota = await getNannyApplicationQuota(nannyId);
+    if (applicationQuota.monthlyLimit !== null && applicationQuota.used >= applicationQuota.monthlyLimit) {
+      throw new Error(`You have used all ${applicationQuota.monthlyLimit} free applications for the last 30 days. Upgrade to premium to apply without limits.`);
+    }
+
+    const duplicateQuery = query(
+      collection(db, path),
+      where('nanny_id', '==', nannyId),
+      where('job_id', '==', jobId)
+    );
+    const duplicateSnapshot = await getDocs(duplicateQuery);
+    if (!duplicateSnapshot.empty) {
+      throw new Error('You already applied to this job.');
+    }
+
     // Need agency_id for filtering in getApplicationsForAgency
     const jobDoc = await getDoc(doc(db, 'jobs', jobId));
     const agencyId = jobDoc.exists() ? jobDoc.data().agency_id : null;
@@ -892,6 +1018,7 @@ export const createApplication = async (jobId: string, nannyId: string, coverLet
     return { id: newDoc.id, ...newDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
   }
 };
 
@@ -3817,6 +3944,51 @@ export const getAgencyAddons = async (
   }
 };
 
+export const getAgencyEntitlementsForAgency = async (
+  agencyId: string
+): Promise<AgencyEntitlements> => {
+  const [subscription, addons] = await Promise.all([
+    getAgencySubscription(agencyId),
+    getAgencyAddons(agencyId),
+  ]);
+
+  return resolveEntitlements(subscription, addons);
+};
+
+export const getNannyApplicationQuota = async (nannyId: string): Promise<{
+  isPremium: boolean;
+  monthlyLimit: number | null;
+  used: number;
+  remaining: number | null;
+}> => {
+  if (!nannyId) {
+    return {
+      isPremium: false,
+      monthlyLimit: NANNY_FREE_APPLICATION_LIMIT,
+      used: 0,
+      remaining: NANNY_FREE_APPLICATION_LIMIT,
+    };
+  }
+
+  const [profile, snapshot] = await Promise.all([
+    getNannyById(nannyId),
+    getDocs(query(collection(db, 'applications'), where('nanny_id', '==', nannyId))),
+  ]);
+
+  const premiumUntil = profile?.premium_until ? new Date(profile.premium_until).getTime() : 0;
+  const isPremium = premiumUntil > Date.now();
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  const used = snapshot.docs.filter((entry) => getTimestampMillis(entry.data().created_at) >= thirtyDaysAgo).length;
+  const monthlyLimit = isPremium ? null : NANNY_FREE_APPLICATION_LIMIT;
+
+  return {
+    isPremium,
+    monthlyLimit,
+    used,
+    remaining: monthlyLimit === null ? null : Math.max(0, monthlyLimit - used),
+  };
+};
+
 export const startAgencyPlanCheckout = async ({
   agencyId,
   userId,
@@ -3830,6 +4002,10 @@ export const startAgencyPlanCheckout = async ({
   returnUrl: string;
   cancelUrl: string;
 }) => {
+  if (planCode === PLAN_CODES.FREE) {
+    throw new Error('Free is the default agency tier and does not require checkout.');
+  }
+
   const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/agency-plan/checkout'), {
     method: 'POST',
@@ -3855,6 +4031,10 @@ export const finalizeAgencyPlanCheckout = async ({
   planCode: PlanCode;
   subscriptionId?: string;
 }) => {
+  if (planCode === PLAN_CODES.FREE) {
+    throw new Error('Free is the default agency tier and does not require activation.');
+  }
+
   const headers = await buildApiHeaders();
   const response = await fetch(buildApiUrl('/api/paypal/agency-plan/activate'), {
     method: 'POST',
@@ -4481,6 +4661,71 @@ export const submitFamilyRequestAndMatch = async (
 ): Promise<{ requestId: string | null; matchCount: number }> => {
   const path = 'family_requests';
   try {
+    if (familyId) {
+      try {
+        const headers = await buildApiHeaders();
+        const response = await fetch(buildApiUrl('/api/family/requests/submit'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ familyId, payload, maxAssignments }),
+        });
+
+        const serverPayload = await response.json().catch(() => ({}));
+        if (response.ok) {
+          return {
+            requestId: serverPayload?.requestId || null,
+            matchCount: Number(serverPayload?.matchCount || 0),
+          };
+        }
+
+        if (response.status === 404 || response.status >= 500) {
+          console.warn('[submitFamilyRequestAndMatch] backend endpoint unavailable, falling back to client write');
+        } else {
+          throw new Error(serverPayload?.error || 'Unable to submit request right now.');
+        }
+      } catch (backendError: any) {
+        const msg = String(backendError?.message || '');
+        const isNetworkFailure = backendError instanceof TypeError || /failed to fetch|network/i.test(msg);
+        if (!isNetworkFailure && msg) {
+          throw backendError;
+        }
+      }
+    }
+
+    if (familyId) {
+      try {
+        const headers = await buildApiHeaders();
+        const response = await fetch(buildApiUrl('/api/family/requests/eligibility'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ familyId }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok) {
+          if (!payload?.allowed) {
+            throw new Error('Families can have one active childcare request at a time. Close your existing request before submitting another.');
+          }
+        } else if (response.status !== 404 && response.status < 500) {
+          throw new Error(payload?.error || 'Unable to validate request eligibility.');
+        }
+      } catch (backendError: any) {
+        const msg = String(backendError?.message || '');
+        const isNetworkFailure = backendError instanceof TypeError || /failed to fetch|network/i.test(msg);
+        if (!isNetworkFailure && msg) {
+          throw backendError;
+        }
+      }
+
+      const activeStatuses: FamilyRequestStatus[] = ['submitted', 'matched', 'in_progress', 'accepted'];
+      const existingRequests = await getDocs(query(collection(db, path), where('family_id', '==', familyId)));
+      const activeRequestCount = existingRequests.docs.filter((entry) => activeStatuses.includes((entry.data().status || 'submitted') as FamilyRequestStatus)).length;
+
+      if (activeRequestCount >= FAMILY_FREE_ACTIVE_REQUEST_LIMIT) {
+        throw new Error('Families can have one active childcare request at a time. Close your existing request before submitting another.');
+      }
+    }
+
     const now = Timestamp.now();
     const sanitized: FamilyRequestInput = {
       parent_name: payload.parent_name.trim(),
@@ -4551,7 +4796,7 @@ export const submitFamilyRequestAndMatch = async (
     return { requestId: requestRef.id, matchCount: selectedMatches.length };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
-    return { requestId: null, matchCount: 0 };
+    throw error;
   }
 };
 

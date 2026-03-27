@@ -16,6 +16,7 @@ export default function AgencyJobs() {
   const [activeCare, setActiveCare] = useState<any[]>([]);
   const [careActionLoadingId, setCareActionLoadingId] = useState<string | null>(null);
   const [careBoardError, setCareBoardError] = useState<string | null>(null);
+  const [jobActionError, setJobActionError] = useState<string | null>(null);
 
   const [jobToDelete, setJobToDelete] = useState<string | null>(null);
 
@@ -199,24 +200,28 @@ export default function AgencyJobs() {
   const handleDelete = async () => {
     if (jobToDelete) {
       try {
+        setJobActionError(null);
         await deleteJob(jobToDelete);
         await loadJobs();
         setJobToDelete(null);
       } catch (error) {
         console.error('Error deleting job:', error);
+        setJobActionError('Unable to delete this job right now.');
       }
     }
   };
 
   const handleJobStatus = async (jobId: string, status: 'published' | 'closed') => {
     try {
+      setJobActionError(null);
       await updateJob(jobId, {
         status,
         ...(status === 'closed' ? { closed_reason: 'agency_closed' } : { closed_reason: null })
       });
       await loadJobs();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating job status:', error);
+      setJobActionError(error?.message || 'Unable to update this job right now.');
     }
   };
 
@@ -257,6 +262,15 @@ export default function AgencyJobs() {
           Post New Job
         </Link>
       </div>
+
+      {jobActionError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex items-start justify-between gap-3">
+          <span>{jobActionError}</span>
+          <Link to="/agency/subscription" className="shrink-0 font-semibold text-amber-800 hover:text-amber-900 underline">
+            Upgrade
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm">

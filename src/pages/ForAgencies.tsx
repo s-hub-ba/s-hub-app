@@ -102,7 +102,37 @@ export default function ForAgencies() {
             <p className="text-stone-400 text-lg">Choose the plan that fits your agency's hiring volume.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 max-w-6xl mx-auto">
+            <div className="bg-stone-800 p-8 rounded-3xl border border-stone-700 flex flex-col">
+              <h3 className="text-xl font-bold mb-2">Free</h3>
+              <p className="text-stone-400 text-sm mb-6">For agencies testing demand</p>
+              <div className="mb-8">
+                <span className="text-4xl font-bold">$0</span>
+                <span className="text-stone-400">/mo</span>
+              </div>
+              <ul className="space-y-4 mb-8 flex-1">
+                <li className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
+                  Public agency profile
+                </li>
+                <li className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
+                  Family request inbox access
+                </li>
+                <li className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
+                  Up to 10 private nanny profiles
+                </li>
+                <li className="flex items-center gap-3 text-sm">
+                  <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
+                  Upgrade when ready to post jobs
+                </li>
+              </ul>
+              <Link to="/join?role=agency" className="w-full py-3 px-4 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-xl transition-colors text-center">
+                Start Free
+              </Link>
+            </div>
+
             {/* Starter */}
             <div className="bg-stone-800 p-8 rounded-3xl border border-stone-700 flex flex-col">
               <h3 className="text-xl font-bold mb-2">Starter</h3>
@@ -118,11 +148,11 @@ export default function ForAgencies() {
                 </li>
                 <li className="flex items-center gap-3 text-sm">
                   <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
-                  3 Active Job Postings
+                  5 Active Job Postings
                 </li>
                 <li className="flex items-center gap-3 text-sm">
                   <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
-                  Basic Talent Search
+                  Family Request Inbox
                 </li>
                 <li className="flex items-center gap-3 text-sm">
                   <CheckCircle2 className="h-5 w-5 text-blue-500 shrink-0" />
@@ -130,7 +160,7 @@ export default function ForAgencies() {
                 </li>
               </ul>
               <Link to="/join?role=agency" className="w-full py-3 px-4 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-xl transition-colors text-center">
-                Start Free Trial
+                Choose Starter
               </Link>
             </div>
 
@@ -139,10 +169,10 @@ export default function ForAgencies() {
               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-900 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
                 Most Popular
               </div>
-              <h3 className="text-xl font-bold mb-2">Professional</h3>
+              <h3 className="text-xl font-bold mb-2">Pro</h3>
               <p className="text-blue-200 text-sm mb-6">For growing agencies</p>
               <div className="mb-8">
-                <span className="text-4xl font-bold">$149</span>
+                <span className="text-4xl font-bold">$59</span>
                 <span className="text-blue-200">/mo</span>
               </div>
               <ul className="space-y-4 mb-8 flex-1">
@@ -168,16 +198,16 @@ export default function ForAgencies() {
                 </li>
               </ul>
               <Link to="/join?role=agency" className="w-full py-3 px-4 bg-white text-blue-900 hover:bg-stone-50 font-bold rounded-xl transition-colors text-center">
-                Start Free Trial
+                Choose Pro
               </Link>
             </div>
 
-            {/* Enterprise */}
+            {/* Team */}
             <div className="bg-stone-800 p-8 rounded-3xl border border-stone-700 flex flex-col">
-              <h3 className="text-xl font-bold mb-2">Enterprise</h3>
-              <p className="text-stone-400 text-sm mb-6">For large operations</p>
+              <h3 className="text-xl font-bold mb-2">Team</h3>
+              <p className="text-stone-400 text-sm mb-6">For multi-recruiter operations</p>
               <div className="mb-8">
-                <span className="text-4xl font-bold">$399</span>
+                <span className="text-4xl font-bold">$149</span>
                 <span className="text-stone-400">/mo</span>
               </div>
               <ul className="space-y-4 mb-8 flex-1">
@@ -199,7 +229,7 @@ export default function ForAgencies() {
                 </li>
               </ul>
               <Link to="/join?role=agency" className="w-full py-3 px-4 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-xl transition-colors text-center">
-                Contact Sales
+                Choose Team
               </Link>
             </div>
           </div>

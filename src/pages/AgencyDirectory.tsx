@@ -10,7 +10,7 @@ const BOROUGHS = ['All', 'Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Isl
 
 const TIER_CONFIG: Record<string, { label: string; className: string; sortOrder: number }> = {
   [PLAN_CODES.ENTERPRISE]: {
-    label: 'Enterprise',
+    label: 'Team',
     className: 'bg-red-100 text-red-700 border border-red-200',
     sortOrder: 0,
   },
@@ -89,7 +89,7 @@ export default function AgencyDirectory() {
       return matchesBorough && matchesSearch;
     })
     .sort((a, b) => {
-      // Enterprise > Professional > Starter > none; sponsored (Featured boost) within each tier first
+      // Team > Pro > Starter > Free/none; sponsored (Featured boost) within each tier first
       const aTier = TIER_CONFIG[a.plan_tier ?? '']?.sortOrder ?? 3;
       const bTier = TIER_CONFIG[b.plan_tier ?? '']?.sortOrder ?? 3;
       if (aTier !== bTier) return aTier - bTier;
