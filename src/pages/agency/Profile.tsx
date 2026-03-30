@@ -270,7 +270,7 @@ export default function AgencyProfilePage() {
                 <input
                   type="text"
                   value={companyName}
-                  onChange={e => setCompanyName(e.target.value)}
+                  onChange={e => setCompanyName((e.target as HTMLInputElement).value)}
                   placeholder="Your agency name"
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 />
@@ -281,7 +281,7 @@ export default function AgencyProfilePage() {
                 <textarea
                   rows={5}
                   value={bio}
-                  onChange={e => setBio(e.target.value)}
+                  onChange={e => setBio((e.target as HTMLInputElement).value)}
                   placeholder="Describe your agency, philosophy, and what makes you unique..."
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                 />
@@ -295,7 +295,7 @@ export default function AgencyProfilePage() {
                   <input
                     type="url"
                     value={website}
-                    onChange={e => setWebsite(e.target.value)}
+                    onChange={e => setWebsite((e.target as HTMLInputElement).value)}
                     placeholder="https://youragency.com"
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
@@ -307,7 +307,7 @@ export default function AgencyProfilePage() {
                   <input
                     type="text"
                     value={established}
-                    onChange={e => setEstablished(e.target.value)}
+                    onChange={e => setEstablished((e.target as HTMLInputElement).value)}
                     placeholder="e.g. 2010"
                     maxLength={4}
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
@@ -327,12 +327,12 @@ export default function AgencyProfilePage() {
                   <input
                     type="url"
                     value={logo}
-                    onChange={e => setLogo(e.target.value)}
+                    onChange={e => setLogo((e.target as HTMLInputElement).value)}
                     placeholder="https://..."
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   {logo && (
-                    <img src={logo} alt="Logo preview" className="mt-3 h-16 w-16 rounded-xl object-cover border border-stone-200" referrerPolicy="no-referrer" />
+                    <img src={logo} alt="Logo preview" className="mt-3 h-16 w-16 rounded-xl object-cover border border-stone-200" referrerpolicy="no-referrer" />
                   )}
                 </div>
                 <div>
@@ -340,12 +340,12 @@ export default function AgencyProfilePage() {
                   <input
                     type="url"
                     value={cover}
-                    onChange={e => setCover(e.target.value)}
+                    onChange={e => setCover((e.target as HTMLInputElement).value)}
                     placeholder="https://..."
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   {cover && (
-                    <img src={cover} alt="Cover preview" className="mt-3 h-16 w-full rounded-xl object-cover border border-stone-200" referrerPolicy="no-referrer" />
+                    <img src={cover} alt="Cover preview" className="mt-3 h-16 w-full rounded-xl object-cover border border-stone-200" referrerpolicy="no-referrer" />
                   )}
                 </div>
               </div>
@@ -404,7 +404,7 @@ export default function AgencyProfilePage() {
                 <input
                   type="text"
                   value={customService}
-                  onChange={e => setCustomService(e.target.value)}
+                  onChange={e => setCustomService((e.target as HTMLInputElement).value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomService(); } }}
                   placeholder="Add a custom service..."
                   className="flex-1 px-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
@@ -482,7 +482,7 @@ export default function AgencyProfilePage() {
                 <input
                   type="text"
                   value={postTitle}
-                  onChange={e => setPostTitle(e.target.value)}
+                  onChange={e => setPostTitle((e.target as HTMLInputElement).value)}
                   placeholder="e.g. We're hiring summer nannies!"
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   maxLength={120}
@@ -493,7 +493,7 @@ export default function AgencyProfilePage() {
                 <textarea
                   rows={4}
                   value={postContent}
-                  onChange={e => setPostContent(e.target.value)}
+                  onChange={e => setPostContent((e.target as HTMLInputElement).value)}
                   placeholder="Share news, updates, or announcements with families who follow your agency..."
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                   maxLength={1200}

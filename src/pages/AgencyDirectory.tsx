@@ -144,7 +144,7 @@ export default function AgencyDirectory() {
                       src={agency.logo}
                       alt={agency.company_name || agency.name || 'Agency'} 
                       className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm"
-                      referrerPolicy="no-referrer"
+                      referrerpolicy="no-referrer"
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-2xl border-2 border-white shadow-sm bg-stone-100 flex items-center justify-center text-stone-600 font-bold">
@@ -182,7 +182,7 @@ export default function AgencyDirectory() {
               placeholder="Search by agency name or specialty..." 
               className="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
             />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
@@ -225,7 +225,7 @@ export default function AgencyDirectory() {
                       src={agency.logo}
                       alt={`${agency.company_name || agency.name || 'Agency'} logo`} 
                       className="w-16 h-16 rounded-xl object-cover border border-stone-100"
-                      referrerPolicy="no-referrer"
+                      referrerpolicy="no-referrer"
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-xl border border-stone-100 bg-stone-100 flex items-center justify-center text-stone-600 font-bold">

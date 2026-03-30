@@ -256,7 +256,7 @@ export default function NannyDevelopment() {
 
                 <textarea
                   value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
+                  onChange={(e) => setPrompt((e.target as HTMLInputElement).value)}
                   rows={6}
                   placeholder="Example: Help me improve my conversion from interview invites to accepted placements."
                   className="w-full rounded-2xl border border-stone-200 p-4 outline-none focus:ring-2 focus:ring-emerald-500"

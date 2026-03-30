@@ -126,7 +126,7 @@ export default function GlobalSearch() {
               placeholder="Search by name, borough, or certification..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
             />
           </div>
         </div>
@@ -136,7 +136,7 @@ export default function GlobalSearch() {
             <MapPin className="h-4 w-4 text-stone-400" />
             <select
               value={selectedBorough}
-              onChange={(e) => setSelectedBorough(e.target.value)}
+              onChange={(e) => setSelectedBorough((e.target as HTMLInputElement).value)}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
             >
               <option value="All">All Boroughs</option>
@@ -152,7 +152,7 @@ export default function GlobalSearch() {
             <Filter className="h-4 w-4 text-stone-400" />
             <select
               value={minExperience}
-              onChange={(e) => setMinExperience(Number(e.target.value))}
+              onChange={(e) => setMinExperience(Number((e.target as HTMLInputElement).value))}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
             >
               <option value="0">Any Experience</option>

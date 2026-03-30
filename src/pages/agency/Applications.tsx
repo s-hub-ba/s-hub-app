@@ -409,7 +409,7 @@ export default function AgencyApplications() {
             placeholder="Search applicants or jobs..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -504,7 +504,7 @@ export default function AgencyApplications() {
                       <select
                         className={`text-xs font-bold rounded-lg px-2.5 py-1.5 border border-transparent hover:border-stone-200 outline-none cursor-pointer appearance-none ${STATUS_COLORS[app.status as keyof typeof STATUS_COLORS]}`}
                         value={app.status}
-                        onChange={(e) => handleStatusChange(app.id, e.target.value)}
+                        onChange={(e) => handleStatusChange(app.id, (e.target as HTMLInputElement).value)}
                       >
                         {Object.entries(STATUS_LABELS).map(([key, label]) => (
                           <option key={key} value={key} className="bg-white text-stone-900">{label}</option>
@@ -708,7 +708,7 @@ export default function AgencyApplications() {
                 <input
                   type="datetime-local"
                   value={callDateTime}
-                  onChange={(e) => setCallDateTime(e.target.value)}
+                  onChange={(e) => setCallDateTime((e.target as HTMLInputElement).value)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
                 />
               </div>
@@ -716,7 +716,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Call Note</label>
                 <textarea
                   value={callNote}
-                  onChange={(e) => setCallNote(e.target.value)}
+                  onChange={(e) => setCallNote((e.target as HTMLInputElement).value)}
                   rows={4}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none transition"
                   placeholder="e.g. 15-minute intro call to discuss availability and role fit."
@@ -805,7 +805,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Relationship Context</label>
                 <select
                   value={reviewRelationshipContext}
-                  onChange={(e) => setReviewRelationshipContext(e.target.value as any)}
+                  onChange={(e) => setReviewRelationshipContext((e.target as HTMLInputElement).value as any)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 transition"
                 >
                   <option value="applied">Applied</option>
@@ -847,7 +847,7 @@ export default function AgencyApplications() {
                 <div className="relative">
                   <textarea
                     value={reviewStrengths}
-                    onChange={(e) => setReviewStrengths(e.target.value)}
+                    onChange={(e) => setReviewStrengths((e.target as HTMLInputElement).value)}
                     rows={3}
                     maxLength={120}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none transition"
@@ -865,7 +865,7 @@ export default function AgencyApplications() {
                 <div className="relative">
                   <textarea
                     value={reviewNotes}
-                    onChange={(e) => setReviewNotes(e.target.value)}
+                    onChange={(e) => setReviewNotes((e.target as HTMLInputElement).value)}
                     rows={3}
                     maxLength={240}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none transition"
@@ -923,7 +923,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Outcome</label>
                 <select
                   value={callOutcome}
-                  onChange={(e) => setCallOutcome(e.target.value as 'happened' | 'no_show' | 'cancelled')}
+                  onChange={(e) => setCallOutcome((e.target as HTMLInputElement).value as 'happened' | 'no_show' | 'cancelled')}
                   className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="happened">Call happened</option>
@@ -936,7 +936,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Notes about nanny (optional)</label>
                 <textarea
                   value={callOutcomeNotes}
-                  onChange={(e) => setCallOutcomeNotes(e.target.value)}
+                  onChange={(e) => setCallOutcomeNotes((e.target as HTMLInputElement).value)}
                   rows={4}
                   maxLength={400}
                   className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"

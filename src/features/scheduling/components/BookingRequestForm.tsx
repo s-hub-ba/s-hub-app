@@ -72,33 +72,33 @@ export const BookingRequestForm: React.FC<BookingRequestFormProps> = ({ agencyId
 
       <div>
         <label className="block text-xs text-gray-500 mb-1">Title</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} maxLength={120} />
+        <input value={title} onChange={(e) => setTitle((e.target as HTMLInputElement).value)} className={inputCls} maxLength={120} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Start</label>
-          <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} className={inputCls} required />
+          <input type="datetime-local" value={startAt} onChange={(e) => setStartAt((e.target as HTMLInputElement).value)} className={inputCls} required />
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">End</label>
-          <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} className={inputCls} required />
+          <input type="datetime-local" value={endAt} onChange={(e) => setEndAt((e.target as HTMLInputElement).value)} className={inputCls} required />
         </div>
       </div>
 
       <div>
         <label className="block text-xs text-gray-500 mb-1">General Location</label>
-        <input value={locationGeneral} onChange={(e) => setLocationGeneral(e.target.value)} placeholder="e.g. Canarsie, Brooklyn" className={inputCls} required />
+        <input value={locationGeneral} onChange={(e) => setLocationGeneral((e.target as HTMLInputElement).value)} placeholder="e.g. Canarsie, Brooklyn" className={inputCls} required />
       </div>
 
       <div>
         <label className="block text-xs text-gray-500 mb-1">Exact Address</label>
-        <input value={locationExact} onChange={(e) => setLocationExact(e.target.value)} placeholder="Full address" className={inputCls} required />
+        <input value={locationExact} onChange={(e) => setLocationExact((e.target as HTMLInputElement).value)} placeholder="Full address" className={inputCls} required />
       </div>
 
       <div>
         <label className="block text-xs text-gray-500 mb-1">Notes</label>
-        <textarea value={notesVisible} onChange={(e) => setNotesVisible(e.target.value)} rows={3} className={inputCls} />
+        <textarea value={notesVisible} onChange={(e) => setNotesVisible((e.target as HTMLInputElement).value)} rows={3} className={inputCls} />
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

@@ -261,7 +261,7 @@ export default function AgencyDashboard() {
                       </div>
                       <select
                         value={stage}
-                        onChange={(e) => handleInquiryStageChange(inq.id, e.target.value as InquiryStage)}
+                        onChange={(e) => handleInquiryStageChange(inq.id, (e.target as HTMLInputElement).value as InquiryStage)}
                         className="text-xs font-semibold rounded-lg px-2 py-1 border border-stone-200 bg-white text-stone-700"
                       >
                         {Object.entries(INQUIRY_STAGE_LABELS).map(([value, label]) => (

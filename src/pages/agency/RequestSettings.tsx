@@ -147,7 +147,7 @@ export default function AgencyRequestSettings() {
           <label className="block text-sm font-semibold text-stone-700">Neighborhoods (comma separated)</label>
           <input
             value={neighborhoodCsv}
-            onChange={(e) => setNeighborhoodCsv(e.target.value)}
+            onChange={(e) => setNeighborhoodCsv((e.target as HTMLInputElement).value)}
             placeholder="park slope, upper west side"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -187,26 +187,26 @@ export default function AgencyRequestSettings() {
         <section className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
           <h2 className="text-lg font-bold text-stone-900">Capabilities</h2>
           <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={supportsLiveIn} onChange={(e) => setSupportsLiveIn(e.target.checked)} />
+            <input type="checkbox" checked={supportsLiveIn} onChange={(e) => setSupportsLiveIn((e.target as HTMLInputElement).checked)} />
             Supports live-in placements
           </label>
           <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={supportsLiveOut} onChange={(e) => setSupportsLiveOut(e.target.checked)} />
+            <input type="checkbox" checked={supportsLiveOut} onChange={(e) => setSupportsLiveOut((e.target as HTMLInputElement).checked)} />
             Supports live-out placements
           </label>
           <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={supportsSpecialNeeds} onChange={(e) => setSupportsSpecialNeeds(e.target.checked)} />
+            <input type="checkbox" checked={supportsSpecialNeeds} onChange={(e) => setSupportsSpecialNeeds((e.target as HTMLInputElement).checked)} />
             Supports special needs placements
           </label>
           <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={supportsDriverRequests} onChange={(e) => setSupportsDriverRequests(e.target.checked)} />
+            <input type="checkbox" checked={supportsDriverRequests} onChange={(e) => setSupportsDriverRequests((e.target as HTMLInputElement).checked)} />
             Supports driver-required requests
           </label>
 
           <label className="block text-sm font-semibold text-stone-700">Languages (comma separated)</label>
           <input
             value={languageCsv}
-            onChange={(e) => setLanguageCsv(e.target.value)}
+            onChange={(e) => setLanguageCsv((e.target as HTMLInputElement).value)}
             placeholder="english, spanish"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -219,7 +219,7 @@ export default function AgencyRequestSettings() {
               type="number"
               min={0}
               value={budgetMin}
-              onChange={(e) => setBudgetMin(e.target.value)}
+              onChange={(e) => setBudgetMin((e.target as HTMLInputElement).value)}
               placeholder="Budget min"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -227,7 +227,7 @@ export default function AgencyRequestSettings() {
               type="number"
               min={0}
               value={budgetMax}
-              onChange={(e) => setBudgetMax(e.target.value)}
+              onChange={(e) => setBudgetMax((e.target as HTMLInputElement).value)}
               placeholder="Budget max"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -238,11 +238,11 @@ export default function AgencyRequestSettings() {
           </div>
 
           <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={isFeatured} onChange={(e) => setIsFeatured(e.target.checked)} />
+            <input type="checkbox" checked={isFeatured} onChange={(e) => setIsFeatured((e.target as HTMLInputElement).checked)} />
             Featured agency placement enabled
           </label>
           <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={priorityLeadBoost} onChange={(e) => setPriorityLeadBoost(e.target.checked)} />
+            <input type="checkbox" checked={priorityLeadBoost} onChange={(e) => setPriorityLeadBoost((e.target as HTMLInputElement).checked)} />
             Priority lead boost enabled
           </label>
         </section>

@@ -216,7 +216,7 @@ export default function NannyProfile() {
                 src={profile.photo_url}
                 alt="Profile" 
                 className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
-                referrerPolicy="no-referrer"
+                referrerpolicy="no-referrer"
               />
             ) : (
               <div className="w-32 h-32 rounded-full border-4 border-white shadow-md bg-stone-100 flex items-center justify-center text-4xl font-bold text-stone-600">
@@ -360,7 +360,7 @@ export default function NannyProfile() {
             <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Document Type</label>
             <select
               value={docType}
-              onChange={(e) => setDocType(e.target.value as any)}
+              onChange={(e) => setDocType((e.target as HTMLInputElement).value as any)}
               className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
             >
               <option value="cv">CV / Resume</option>
@@ -375,7 +375,7 @@ export default function NannyProfile() {
             <input
               type="text"
               value={docName}
-              onChange={(e) => setDocName(e.target.value)}
+              onChange={(e) => setDocName((e.target as HTMLInputElement).value)}
               placeholder="e.g. CPR Certificate"
               className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
             />
@@ -397,7 +397,7 @@ export default function NannyProfile() {
           <input
             type="url"
             value={docUrl}
-            onChange={(e) => setDocUrl(e.target.value)}
+            onChange={(e) => setDocUrl((e.target as HTMLInputElement).value)}
             placeholder="https://..."
             className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
           />
@@ -452,7 +452,7 @@ export default function NannyProfile() {
                                   type="checkbox"
                                   checked={checked}
                                   disabled={!!isSavingShareByDocId[doc.id]}
-                                  onChange={(e) => handleReferenceShareToggle(doc, target.agency_id, e.target.checked)}
+                                  onChange={(e) => handleReferenceShareToggle(doc, target.agency_id, (e.target as HTMLInputElement).checked)}
                                   className="h-4 w-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
                                 />
                               </label>

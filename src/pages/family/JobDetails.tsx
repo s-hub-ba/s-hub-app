@@ -240,7 +240,7 @@ export default function JobDetails() {
                   rows={4}
                   placeholder="Introduce your family and explain why you're a great fit for this position..."
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(e) => setMessage((e.target as HTMLInputElement).value)}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all resize-none bg-stone-50"
                 ></textarea>
               </div>

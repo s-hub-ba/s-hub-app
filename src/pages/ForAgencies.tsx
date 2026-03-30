@@ -37,7 +37,7 @@ export default function ForAgencies() {
               src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&q=80&w=800&h=600" 
               alt="Agency team working" 
               className="rounded-3xl shadow-2xl object-cover"
-              referrerPolicy="no-referrer"
+              referrerpolicy="no-referrer"
             />
             <div className="absolute -bottom-6 -right-6 bg-white p-6 rounded-2xl shadow-xl border border-stone-100">
               <div className="flex items-center gap-4">
