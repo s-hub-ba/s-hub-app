@@ -62,15 +62,15 @@ export default function PublicLayout() {
         <Outlet />
       </main>
 
-      <footer className="bg-stone-900 text-stone-400 py-12">
+      <footer className="bg-stone-900 text-stone-500 py-12 border-t border-stone-800/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
               <Baby className="h-6 w-6 text-emerald-500" />
               <span className="text-xl font-bold text-white tracking-tight">Shift Me Up</span>
             </div>
-            <p className="text-sm max-w-xs">
-              The premier childcare workforce platform for New York City. Connecting top-tier nannies with verified agencies.
+            <p className="text-sm max-w-xs text-stone-500/90">
+              The operating system for NYC childcare agencies.
             </p>
           </div>
           <div>
