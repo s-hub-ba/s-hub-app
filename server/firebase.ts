@@ -43,3 +43,4 @@ if (!admin.apps.length) {
 const dbId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
 export const db = getFirestore(admin.app(), dbId);
 export const auth = admin.auth();
+export const messaging = admin.messaging();

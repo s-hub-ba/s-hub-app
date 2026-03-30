@@ -4,6 +4,7 @@ import { Baby, ArrowRight, Mail, Lock, User } from 'lucide-react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { buildNannyCvid } from '../lib/nannyIdentity';
 import { isValidEmail } from '../lib/validation';
 
 export default function JoinNanny() {
@@ -54,11 +55,13 @@ export default function JoinNanny() {
       }
 
       console.log('[JoinNanny] signed up user', user.uid);
+      const cvid = buildNannyCvid(user.uid, firstName, lastName);
 
       // 2. Create the user record in Firestore
       await setDoc(doc(db, 'users', user.uid), {
         email,
         role: 'nanny',
+        nanny_id: user.uid,
         created_at: serverTimestamp()
       });
 
@@ -66,6 +69,8 @@ export default function JoinNanny() {
       await setDoc(doc(db, 'nanny_profiles', user.uid), {
         first_name: firstName,
         last_name: lastName,
+        cvid,
+        status: 'active',
         created_at: serverTimestamp()
       });
 

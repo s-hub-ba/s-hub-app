@@ -13,6 +13,8 @@ import {
   upsertAgencyNannyBgCheck,
 } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { getDisplayCvid } from '../../lib/nannyIdentity';
+import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-stone-100 text-stone-700',
@@ -58,6 +60,9 @@ export default function TalentPool() {
   const [isSavingBg, setIsSavingBg] = useState(false);
   const [bgSaveError, setBgSaveError] = useState<string | null>(null);
   const [isSavingCardActionById, setIsSavingCardActionById] = useState<Record<string, boolean>>({});
+  const [cvidCardOpen, setCvidCardOpen] = useState(false);
+  const [cvidCardNanny, setCvidCardNanny] = useState<any>(null);
+  const [cvidCardShiftScore, setCvidCardShiftScore] = useState<number | null>(null);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -256,6 +261,16 @@ export default function TalentPool() {
     await updateCardStatus(item, nextStatus);
   };
 
+  const openCvidCard = (item: any, cvid: string, shiftScore?: number) => {
+    setCvidCardNanny({
+      ...(item.nanny_profile || {}),
+      id: item.nanny_id,
+      cvid,
+    });
+    setCvidCardShiftScore(typeof shiftScore === 'number' ? shiftScore : null);
+    setCvidCardOpen(true);
+  };
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -294,6 +309,12 @@ export default function TalentPool() {
             const fullName = `${profile.first_name || 'Unknown'} ${profile.last_name || ''}`.trim();
             const isSavingCardAction = !!isSavingCardActionById[item.id];
             const statusDropdownValue = status === 'top_candidate' ? 'new' : status;
+            const cvid = getDisplayCvid({
+              cvid: profile.cvid,
+              id: item.nanny_id,
+              first_name: profile.first_name,
+              last_name: profile.last_name,
+            });
 
             return (
               <motion.article
@@ -316,6 +337,11 @@ export default function TalentPool() {
                       <div className="text-sm text-stone-500 flex items-center gap-1 mt-1">
                         <MapPin className="h-3.5 w-3.5" />
                         <span>{profile.location_borough || 'Unknown location'}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700">
+                          CVID {cvid}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -406,6 +432,13 @@ export default function TalentPool() {
                       <div className="mt-3 flex flex-wrap items-center gap-4">
                         <button
                           type="button"
+                          onClick={() => openCvidCard(item, cvid, reviewSummary?.shiftScore)}
+                          className="text-sm font-semibold text-stone-700 hover:text-stone-900"
+                        >
+                          Open CVID card
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openReviewsForNanny(item)}
                           className="text-sm font-semibold text-emerald-700 hover:text-emerald-800"
                         >
@@ -427,6 +460,17 @@ export default function TalentPool() {
           })}
         </div>
       )}
+
+      <NannyCvidCardModal
+        isOpen={cvidCardOpen}
+        nanny={cvidCardNanny}
+        shiftScore={cvidCardShiftScore}
+        onClose={() => {
+          setCvidCardOpen(false);
+          setCvidCardNanny(null);
+          setCvidCardShiftScore(null);
+        }}
+      />
 
       {reviewsOpen && selectedNanny && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">

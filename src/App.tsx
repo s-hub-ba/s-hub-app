@@ -27,6 +27,7 @@ import NannyApplications from './pages/nanny/Applications';
 import NannyDevelopment from './pages/nanny/Development';
 import NannyProfile from './pages/nanny/Profile';
 import NannyAvailability from './pages/nanny/Availability';
+import NannyCalendar from './pages/nanny/Calendar';
 import NannyOnboarding from './pages/nanny/Onboarding';
 
 import AgencyDashboard from './pages/agency/Dashboard';
@@ -37,6 +38,7 @@ import GlobalSearch from './pages/agency/Search';
 import TalentPool from './pages/agency/TalentPool';
 import Billing from './pages/agency/Billing';
 import Subscription from './pages/agency/Subscription';
+import AgencyCalendar from './pages/agency/Calendar';
 
 import AgencyMessages from './pages/agency/Messages';
 import NannyMessages from './pages/nanny/Messages';
@@ -58,6 +60,7 @@ import FamilyPlacements from './pages/family/Placements';
 import FamilyProfile from './pages/family/Profile';
 import FamilyRequestForm from './pages/family/RequestForm';
 import FamilyRequestResults from './pages/family/RequestResults';
+import FamilyCalendar from './pages/family/Calendar';
 import Notifications from './pages/Notifications';
 import AgencyFamilyRequests from './pages/agency/FamilyRequests';
 import AgencyFamilyRequestDetail from './pages/agency/FamilyRequestDetail';
@@ -101,6 +104,7 @@ export default function App() {
 
               <Route path="saved" element={<SavedJobs />} />
               <Route path="placements" element={<FamilyPlacements />} />
+              <Route path="calendar" element={<FamilyCalendar />} />
               <Route path="messages" element={<FamilyMessages />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="profile" element={<FamilyProfile />} />
@@ -118,6 +122,7 @@ export default function App() {
               <Route path="messages" element={<NannyMessages />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="availability" element={<NannyAvailability />} />
+              <Route path="calendar" element={<NannyCalendar />} />
               <Route path="profile" element={<NannyProfile />} />
             </Route>
           </Route>
@@ -136,6 +141,7 @@ export default function App() {
               <Route path="notifications" element={<Notifications />} />
               <Route path="search" element={<GlobalSearch />} />
               <Route path="talent" element={<TalentPool />} />
+              <Route path="calendar" element={<AgencyCalendar />} />
               <Route path="billing" element={<Billing />} />
               <Route path="subscription" element={<Subscription />} />
               <Route path="profile" element={<AgencyProfilePage />} />
