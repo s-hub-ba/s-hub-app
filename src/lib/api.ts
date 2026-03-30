@@ -194,6 +194,7 @@ export interface NannyProfile {
   id: string;
   first_name: string;
   last_name: string;
+  cvid?: string;
   agency_id?: string | null;
   premium_until?: string | null;
   status: string;

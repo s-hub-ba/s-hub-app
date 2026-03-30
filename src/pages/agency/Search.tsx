@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Search as SearchIcon, Filter, MapPin, Star, ShieldCheck, BookmarkPlus, Check } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, getNannyBgStatusMap } from '../../lib/api';
+import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, getNannyBgStatusMap, getNannyReviewSummary } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { getDisplayCvid } from '../../lib/nannyIdentity';
+import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 
 export default function GlobalSearch() {
   const { user } = useAuth();
@@ -14,6 +16,10 @@ export default function GlobalSearch() {
   const [bgStatusByNanny, setBgStatusByNanny] = useState<Record<string, any>>({});
   const [selectedBorough, setSelectedBorough] = useState('All');
   const [minExperience, setMinExperience] = useState(0);
+  const [cvidCardOpen, setCvidCardOpen] = useState(false);
+  const [selectedNanny, setSelectedNanny] = useState<any>(null);
+  const [selectedShiftScore, setSelectedShiftScore] = useState<number | null>(null);
+  const [loadingShiftScore, setLoadingShiftScore] = useState(false);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -87,6 +93,21 @@ export default function GlobalSearch() {
     return { label: 'BG Not Checked', className: 'bg-stone-100 text-stone-700 border-stone-200' };
   };
 
+  const openCvidCard = async (nanny: any) => {
+    setSelectedNanny(nanny);
+    setSelectedShiftScore(null);
+    setLoadingShiftScore(true);
+    setCvidCardOpen(true);
+    try {
+      const summary = await getNannyReviewSummary(nanny.id);
+      setSelectedShiftScore(summary?.shiftScore ?? null);
+    } catch {
+      setSelectedShiftScore(null);
+    } finally {
+      setLoadingShiftScore(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -105,7 +126,7 @@ export default function GlobalSearch() {
               placeholder="Search by name, borough, or certification..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
             />
           </div>
         </div>
@@ -115,7 +136,7 @@ export default function GlobalSearch() {
             <MapPin className="h-4 w-4 text-stone-400" />
             <select
               value={selectedBorough}
-              onChange={(e) => setSelectedBorough(e.target.value)}
+              onChange={(e) => setSelectedBorough((e.target as HTMLInputElement).value)}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
             >
               <option value="All">All Boroughs</option>
@@ -131,7 +152,7 @@ export default function GlobalSearch() {
             <Filter className="h-4 w-4 text-stone-400" />
             <select
               value={minExperience}
-              onChange={(e) => setMinExperience(Number(e.target.value))}
+              onChange={(e) => setMinExperience(Number((e.target as HTMLInputElement).value))}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
             >
               <option value="0">Any Experience</option>
@@ -154,6 +175,7 @@ export default function GlobalSearch() {
             const isSaving = savingNannyIds.has(nanny.id);
             const bgStatus = bgStatusByNanny[nanny.id];
             const bgMeta = formatBgStatus(bgStatus?.status || 'not_checked');
+            const cvid = getDisplayCvid(nanny);
             return (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -169,7 +191,7 @@ export default function GlobalSearch() {
                     </div>
                     <div className="flex items-center gap-1 bg-stone-100 px-2 py-1 rounded-lg">
                       <Star className="h-3.5 w-3.5 text-yellow-500 fill-current" />
-                      <span className="text-sm font-bold text-stone-900">{nanny.years_experience ?? '�'}</span>
+                      <span className="text-sm font-bold text-stone-900">{nanny.years_experience ?? '--'}</span>
                     </div>
                   </div>
 
@@ -182,6 +204,18 @@ export default function GlobalSearch() {
                     <MapPin className="h-3.5 w-3.5" />
                     {nanny.location_borough || 'Unknown location'}
                   </div>
+
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700">
+                      CVID {cvid}
+                    </span>
+                  </div>
+
+                  {nanny.bio && (
+                    <p className="mb-4 line-clamp-3 text-sm leading-6 text-stone-600">
+                      {nanny.bio}
+                    </p>
+                  )}
 
                   <div>
                     <p className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-1.5">Certifications</p>
@@ -212,6 +246,12 @@ export default function GlobalSearch() {
 
                 <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex gap-2">
                   <button
+                    onClick={() => openCvidCard(nanny)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 transition-colors"
+                  >
+                    Open CVID Card
+                  </button>
+                  <button
                     disabled={isSaved || isSaving || !agencyId}
                     onClick={() => handleAddToPool(nanny.id)}
                     className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
@@ -229,6 +269,21 @@ export default function GlobalSearch() {
           })
         )}
       </div>
+
+      <NannyCvidCardModal
+        isOpen={cvidCardOpen}
+        nanny={selectedNanny ? {
+          ...selectedNanny,
+          cvid: getDisplayCvid(selectedNanny),
+        } : null}
+        shiftScore={selectedShiftScore}
+        shiftScoreLoading={loadingShiftScore}
+        onClose={() => {
+          setCvidCardOpen(false);
+          setSelectedNanny(null);
+          setSelectedShiftScore(null);
+        }}
+      />
     </div>
   );
 }

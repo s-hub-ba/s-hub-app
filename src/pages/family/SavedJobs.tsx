@@ -308,7 +308,7 @@ export default function SavedJobs() {
                     <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Your Review</label>
                     <textarea
                       value={comment}
-                      onChange={e => setComment(e.target.value)}
+                      onChange={e => setComment((e.target as HTMLInputElement).value)}
                       rows={4}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none transition"
                       placeholder="Write your review..."
@@ -351,7 +351,7 @@ export default function SavedJobs() {
                     <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Highlights</label>
                     <textarea
                       value={strengths}
-                      onChange={e => setStrengths(e.target.value)}
+                      onChange={e => setStrengths((e.target as HTMLInputElement).value)}
                       rows={3}
                       maxLength={120}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none transition"
@@ -363,7 +363,7 @@ export default function SavedJobs() {
                     <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Notes <span className="font-normal text-stone-300 normal-case">(optional)</span></label>
                     <textarea
                       value={nannyNotes}
-                      onChange={e => setNannyNotes(e.target.value)}
+                      onChange={e => setNannyNotes((e.target as HTMLInputElement).value)}
                       rows={3}
                       maxLength={240}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none transition"

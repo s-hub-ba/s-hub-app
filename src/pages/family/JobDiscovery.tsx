@@ -82,7 +82,7 @@ export default function JobDiscovery() {
             type="text"
             placeholder="Search by keyword..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm((e.target as HTMLInputElement).value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
           />
         </div>
@@ -92,7 +92,7 @@ export default function JobDiscovery() {
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
             <select 
               value={selectedBorough}
-              onChange={(e) => setSelectedBorough(e.target.value)}
+              onChange={(e) => setSelectedBorough((e.target as HTMLInputElement).value)}
               className="pl-9 pr-8 py-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all appearance-none bg-white font-medium text-stone-700"
             >
               <option value="All">All Boroughs</option>
@@ -106,7 +106,7 @@ export default function JobDiscovery() {
           
           <select 
             value={selectedSchedule}
-            onChange={(e) => setSelectedSchedule(e.target.value)}
+            onChange={(e) => setSelectedSchedule((e.target as HTMLInputElement).value)}
             className="px-4 py-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-white font-medium text-stone-700"
           >
             <option value="All">All Schedules</option>

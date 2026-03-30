@@ -122,7 +122,7 @@ export default function AgencyFamilyRequestDetail() {
         <h2 className="text-lg font-bold text-stone-900">Respond to Family</h2>
         <textarea
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => setMessage((e.target as HTMLInputElement).value)}
           placeholder="Optional note to the family"
           rows={3}
           className="w-full px-4 py-3 rounded-xl border border-stone-200"

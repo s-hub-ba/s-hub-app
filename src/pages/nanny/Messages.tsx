@@ -245,7 +245,7 @@ export default function NannyMessages() {
                   <input 
                     type="text" 
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => setNewMessage((e.target as HTMLInputElement).value)}
                     placeholder="Type your message..." 
                     className="flex-1 px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
                   />

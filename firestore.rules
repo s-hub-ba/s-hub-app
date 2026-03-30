@@ -267,6 +267,57 @@ service cloud.firestore {
             && request.resource.data.agency_id == resource.data.agency_id
             && (isAgencyMemberOf(agencyId) || isLegacyAgencyOwner(agencyId)));
       allow delete: if isAdmin();
+
+    }
+
+    // ─── Scheduling Collections ───────────────────────────────────────────────
+    //
+    // DESIGN NOTE: Most business-critical scheduling writes are routed through
+    // the Express backend (/api/scheduling/*) which runs as a privileged service.
+    // Firestore rules here act as a defence-in-depth safety net for any direct
+    // client SDK reads and as a reference for what is allowed.
+    //
+    // The backend always uses Firebase Admin SDK which bypasses Firestore rules.
+    // Direct client writes to schedule_events are blocked for all roles — all
+    // mutations must go through the API so conflict detection and audit logging
+    // run server-side.
+
+    match /schedule_events/{eventId} {
+      allow read: if isAdmin()
+        || (isNanny()   && resource.data.nannyId  == request.auth.uid)
+        || (isFamily()  && resource.data.familyId == request.auth.uid)
+        || (isAgency()  && resource.data.agencyId is string && isAgencyMemberOf(resource.data.agencyId));
+
+      allow create: if false;
+      allow update: if isAdmin()
+        || (
+          isNanny()
+          && resource.data.nannyId == request.auth.uid
+          && resource.data.type in ['availability', 'blocked_time']
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'audit'])
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /schedule_audit_logs/{logId} {
+      allow read: if isAdmin()
+        || (isNanny()  && resource.data.actorId == request.auth.uid)
+        || (isAgency() && resource.data.agencyId is string && isAgencyMemberOf(resource.data.agencyId));
+      allow write: if false;
+    }
+
+    match /notification_jobs/{jobId} {
+      allow read: if isAdmin()
+        || (isAuthenticated() && resource.data.recipientUserId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /availability_templates/{nannyId} {
+      allow read: if isAdmin()
+        || isNannyProfileOwner(nannyId)
+        || isAgency();
+      allow write: if isAdmin() || isNannyProfileOwner(nannyId);
     }
 
     match /family_requests/{requestId} {
@@ -361,6 +412,13 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update: if isAdmin() || (isAuthenticated() && (isAgencyMemberOf(resource.data.agency_id) || isLegacyAgencyOwner(resource.data.agency_id)));
       allow delete: if isAdmin();
+    }
+
+    match /user_fcm_tokens/{tokenId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.user_id;
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.user_id;
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.user_id);
     }
 
     match /care_history/{historyId} {

@@ -171,7 +171,7 @@ export default function AgencyProfile() {
             src={agency.cover}
             alt="Agency Cover" 
             className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
+            referrerpolicy="no-referrer"
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-r from-stone-200 to-stone-300" />
@@ -192,7 +192,7 @@ export default function AgencyProfile() {
                     src={agency.logo}
                     alt={`${agency.company_name || 'Agency'} logo`} 
                     className="w-32 h-32 rounded-2xl object-cover border-4 border-white shadow-md bg-white -mt-16 md:-mt-20"
-                    referrerPolicy="no-referrer"
+                    referrerpolicy="no-referrer"
                   />
                 ) : (
                   <div className="w-32 h-32 rounded-2xl border-4 border-white shadow-md bg-stone-100 -mt-16 md:-mt-20 flex items-center justify-center text-4xl font-bold text-stone-600">
@@ -285,7 +285,7 @@ export default function AgencyProfile() {
                     <label className="block text-sm font-medium text-stone-700 mb-2">Care needs</label>
                     <textarea
                       value={inquiryDescription}
-                      onChange={(e) => setInquiryDescription(e.target.value)}
+                      onChange={(e) => setInquiryDescription((e.target as HTMLInputElement).value)}
                       rows={4}
                       placeholder="Share details like child age, preferred timing, and any special requirements..."
                       className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
@@ -350,7 +350,7 @@ export default function AgencyProfile() {
                         <input
                           type="date"
                           value={inquiryStartDate}
-                          onChange={(e) => setInquiryStartDate(e.target.value)}
+                          onChange={(e) => setInquiryStartDate((e.target as HTMLInputElement).value)}
                           className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                         />
                       </div>
@@ -359,7 +359,7 @@ export default function AgencyProfile() {
                         <input
                           type="date"
                           value={inquiryEndDate}
-                          onChange={(e) => setInquiryEndDate(e.target.value)}
+                          onChange={(e) => setInquiryEndDate((e.target as HTMLInputElement).value)}
                           className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                         />
                       </div>

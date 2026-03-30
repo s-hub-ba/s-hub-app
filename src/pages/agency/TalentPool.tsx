@@ -13,6 +13,8 @@ import {
   upsertAgencyNannyBgCheck,
 } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { getDisplayCvid } from '../../lib/nannyIdentity';
+import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-stone-100 text-stone-700',
@@ -58,6 +60,9 @@ export default function TalentPool() {
   const [isSavingBg, setIsSavingBg] = useState(false);
   const [bgSaveError, setBgSaveError] = useState<string | null>(null);
   const [isSavingCardActionById, setIsSavingCardActionById] = useState<Record<string, boolean>>({});
+  const [cvidCardOpen, setCvidCardOpen] = useState(false);
+  const [cvidCardNanny, setCvidCardNanny] = useState<any>(null);
+  const [cvidCardShiftScore, setCvidCardShiftScore] = useState<number | null>(null);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -256,6 +261,16 @@ export default function TalentPool() {
     await updateCardStatus(item, nextStatus);
   };
 
+  const openCvidCard = (item: any, cvid: string, shiftScore?: number) => {
+    setCvidCardNanny({
+      ...(item.nanny_profile || {}),
+      id: item.nanny_id,
+      cvid,
+    });
+    setCvidCardShiftScore(typeof shiftScore === 'number' ? shiftScore : null);
+    setCvidCardOpen(true);
+  };
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -273,7 +288,7 @@ export default function TalentPool() {
             placeholder="Search talent pool..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
           />
         </div>
       </div>
@@ -294,6 +309,12 @@ export default function TalentPool() {
             const fullName = `${profile.first_name || 'Unknown'} ${profile.last_name || ''}`.trim();
             const isSavingCardAction = !!isSavingCardActionById[item.id];
             const statusDropdownValue = status === 'top_candidate' ? 'new' : status;
+            const cvid = getDisplayCvid({
+              cvid: profile.cvid,
+              id: item.nanny_id,
+              first_name: profile.first_name,
+              last_name: profile.last_name,
+            });
 
             return (
               <motion.article
@@ -317,6 +338,11 @@ export default function TalentPool() {
                         <MapPin className="h-3.5 w-3.5" />
                         <span>{profile.location_borough || 'Unknown location'}</span>
                       </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700">
+                          CVID {cvid}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 shrink-0">
@@ -336,7 +362,7 @@ export default function TalentPool() {
                       </button>
                       <select
                         value={statusDropdownValue}
-                        onChange={(e) => updateCardStatus(item, e.target.value)}
+                        onChange={(e) => updateCardStatus(item, (e.target as HTMLInputElement).value)}
                         disabled={isSavingCardAction}
                         className="text-xs rounded-lg border border-stone-200 bg-white px-2 py-1 font-medium text-stone-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
                         aria-label="Update candidate status"
@@ -406,6 +432,13 @@ export default function TalentPool() {
                       <div className="mt-3 flex flex-wrap items-center gap-4">
                         <button
                           type="button"
+                          onClick={() => openCvidCard(item, cvid, reviewSummary?.shiftScore)}
+                          className="text-sm font-semibold text-stone-700 hover:text-stone-900"
+                        >
+                          Open CVID card
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openReviewsForNanny(item)}
                           className="text-sm font-semibold text-emerald-700 hover:text-emerald-800"
                         >
@@ -427,6 +460,17 @@ export default function TalentPool() {
           })}
         </div>
       )}
+
+      <NannyCvidCardModal
+        isOpen={cvidCardOpen}
+        nanny={cvidCardNanny}
+        shiftScore={cvidCardShiftScore}
+        onClose={() => {
+          setCvidCardOpen(false);
+          setCvidCardNanny(null);
+          setCvidCardShiftScore(null);
+        }}
+      />
 
       {reviewsOpen && selectedNanny && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -557,7 +601,7 @@ export default function TalentPool() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Status</label>
                 <select
                   value={bgStatusInput}
-                  onChange={(e) => setBgStatusInput(e.target.value as 'checked' | 'not_checked' | 'expired')}
+                  onChange={(e) => setBgStatusInput((e.target as HTMLInputElement).value as 'checked' | 'not_checked' | 'expired')}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                 >
                   <option value="checked">BG checked</option>
@@ -572,7 +616,7 @@ export default function TalentPool() {
                   <input
                     type="date"
                     value={bgCheckedAtInput}
-                    onChange={(e) => setBgCheckedAtInput(e.target.value)}
+                    onChange={(e) => setBgCheckedAtInput((e.target as HTMLInputElement).value)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                   />
                 </div>
@@ -581,7 +625,7 @@ export default function TalentPool() {
                   <input
                     type="date"
                     value={bgExpiresAtInput}
-                    onChange={(e) => setBgExpiresAtInput(e.target.value)}
+                    onChange={(e) => setBgExpiresAtInput((e.target as HTMLInputElement).value)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                   />
                 </div>
@@ -594,7 +638,7 @@ export default function TalentPool() {
                   min={0}
                   max={100}
                   value={bgConfidenceInput}
-                  onChange={(e) => setBgConfidenceInput(e.target.value)}
+                  onChange={(e) => setBgConfidenceInput((e.target as HTMLInputElement).value)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                 />
               </div>
@@ -604,7 +648,7 @@ export default function TalentPool() {
                 <input
                   type="url"
                   value={bgPrivateUrlInput}
-                  onChange={(e) => setBgPrivateUrlInput(e.target.value)}
+                  onChange={(e) => setBgPrivateUrlInput((e.target as HTMLInputElement).value)}
                   placeholder="https://…"
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                 />

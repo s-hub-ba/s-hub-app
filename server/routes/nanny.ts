@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, auth } from '../firebase.js';
+import { buildNannyCvid } from '../services/nannyIdentity.ts';
 
 const router = Router();
 const NANNY_FREE_APPLICATION_LIMIT = 5;
@@ -88,17 +89,20 @@ router.post('/register', async (req, res) => {
     });
     
     const newUserId = userRecord.uid;
+    const cvid = buildNannyCvid(newUserId, first_name, last_name);
     
     // 3. Insert into users and nanny_profiles
     await db.collection('users').doc(newUserId).set({
       email,
       role: 'nanny',
+      nanny_id: newUserId,
       created_at: new Date().toISOString()
     });
     
     await db.collection('nanny_profiles').doc(newUserId).set({
       first_name,
       last_name,
+      cvid,
       agency_id,
       premium_until,
       status: 'active',
@@ -110,7 +114,8 @@ router.post('/register', async (req, res) => {
       message: 'Nanny registered successfully',
       agency_assigned: !!agency_id,
       premium_granted: !!premium_until,
-      uid: newUserId
+      uid: newUserId,
+      cvid
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -232,6 +237,51 @@ router.post('/applications', requireNannyAuth, async (req, res) => {
     return res.json({ id: created.id, ...(created.data() || {}) });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to create application' });
+  }
+});
+
+// ── FCM Push Token Management ────────────────────────────────────────────
+router.post('/fcm-token', requireNannyAuth, async (req: any, res: any) => {
+  try {
+    const { fcm_token, device_name, os, app_version } = req.body as Record<string, string>;
+    if (!fcm_token?.trim()) return res.status(400).json({ error: 'fcm_token is required' });
+    const { registerFcmToken } = await import('../services/fcmTokenManager.js');
+    await registerFcmToken(req.userId, fcm_token.trim(), { deviceName: device_name, os, appVersion: app_version });
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to register FCM token' });
+  }
+});
+
+router.delete('/fcm-token/:fcmToken', requireNannyAuth, async (req: any, res: any) => {
+  try {
+    const fcmToken = decodeURIComponent(req.params.fcmToken || '');
+    if (!fcmToken) return res.status(400).json({ error: 'fcmToken param is required' });
+    const { unregisterFcmToken } = await import('../services/fcmTokenManager.js');
+    await unregisterFcmToken(req.userId, fcmToken);
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to unregister FCM token' });
+  }
+});
+
+router.post('/fcm-tokens/logout', requireNannyAuth, async (req: any, res: any) => {
+  try {
+    const { deactivateAllFcmTokens } = await import('../services/fcmTokenManager.js');
+    await deactivateAllFcmTokens(req.userId);
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to deactivate FCM tokens' });
+  }
+});
+
+router.get('/fcm-tokens/status', requireNannyAuth, async (req: any, res: any) => {
+  try {
+    const { getUserFcmTokenStats } = await import('../services/fcmTokenManager.js');
+    const stats = await getUserFcmTokenStats(req.userId);
+    return res.json(stats);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to get FCM token stats' });
   }
 });
 

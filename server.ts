@@ -6,6 +6,9 @@ import paypalRoutes from './server/paypal.js';
 import agencyRoutes from './server/routes/agency.js';
 import nannyRoutes from './server/routes/nanny.js';
 import familyRoutes from './server/routes/family.js';
+import schedulingRoutes from './server/routes/scheduling.js';
+import adminRoutes from './server/routes/admin.js';
+import { startNotificationWorker } from './server/services/notificationWorker.ts';
 
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -33,6 +36,7 @@ async function startServer() {
   const app = express();
   const preferredPort = Number(process.env.PORT || 3000);
   const port = await findAvailablePort(preferredPort);
+  startNotificationWorker();
 
   const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
@@ -85,6 +89,8 @@ async function startServer() {
   app.use('/api/agency', agencyRoutes);
   app.use('/api/nanny', nannyRoutes);
   app.use('/api/family', familyRoutes);
+  app.use('/api/scheduling', schedulingRoutes);
+  app.use('/api/admin', adminRoutes);
 
   // Vite middleware for development and SPA fallback
   if (process.env.NODE_ENV !== 'production') {

@@ -108,7 +108,7 @@ export default function NannyDashboard() {
         <div className="flex items-center gap-3">
           <select 
             value={availability}
-            onChange={(e) => setAvailability(e.target.value)}
+            onChange={(e) => setAvailability((e.target as HTMLInputElement).value)}
             className="bg-white border border-stone-200 text-stone-700 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 outline-none font-medium shadow-sm"
           >
             <option value="seeking">Actively Seeking</option>

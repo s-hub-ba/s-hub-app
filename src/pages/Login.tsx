@@ -118,7 +118,7 @@ export default function Login() {
                   autoComplete="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail((e.target as HTMLInputElement).value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-stone-300 rounded-xl focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm outline-none transition-colors"
                   placeholder="you@example.com"
                 />
@@ -140,7 +140,7 @@ export default function Login() {
                   autoComplete="current-password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-stone-300 rounded-xl focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm outline-none transition-colors"
                   placeholder="••••••••"
                 />

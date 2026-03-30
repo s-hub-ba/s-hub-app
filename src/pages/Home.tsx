@@ -12,7 +12,7 @@ export default function Home() {
             src="https://images.unsplash.com/photo-1544126592-807ade215a0b?auto=format&fit=crop&q=80&w=2070" 
             alt="Nanny with child" 
             className="w-full h-full object-cover opacity-30"
-            referrerPolicy="no-referrer"
+            referrerpolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-stone-900 via-stone-900/80 to-transparent"></div>
         </div>

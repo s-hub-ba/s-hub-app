@@ -384,4 +384,49 @@ router.post('/requests/submit', requireFamilyAuth, async (req: any, res: any) =>
   }
 });
 
+// ── FCM Push Token Management ────────────────────────────────────────────
+router.post('/fcm-token', requireFamilyAuth, async (req: any, res: any) => {
+  try {
+    const { fcm_token, device_name, os, app_version } = req.body as Record<string, string>;
+    if (!fcm_token?.trim()) return res.status(400).json({ error: 'fcm_token is required' });
+    const { registerFcmToken } = await import('../services/fcmTokenManager.js');
+    await registerFcmToken(req.userId, fcm_token.trim(), { deviceName: device_name, os, appVersion: app_version });
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to register FCM token' });
+  }
+});
+
+router.delete('/fcm-token/:fcmToken', requireFamilyAuth, async (req: any, res: any) => {
+  try {
+    const fcmToken = decodeURIComponent(req.params.fcmToken || '');
+    if (!fcmToken) return res.status(400).json({ error: 'fcmToken param is required' });
+    const { unregisterFcmToken } = await import('../services/fcmTokenManager.js');
+    await unregisterFcmToken(req.userId, fcmToken);
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to unregister FCM token' });
+  }
+});
+
+router.post('/fcm-tokens/logout', requireFamilyAuth, async (req: any, res: any) => {
+  try {
+    const { deactivateAllFcmTokens } = await import('../services/fcmTokenManager.js');
+    await deactivateAllFcmTokens(req.userId);
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to deactivate FCM tokens' });
+  }
+});
+
+router.get('/fcm-tokens/status', requireFamilyAuth, async (req: any, res: any) => {
+  try {
+    const { getUserFcmTokenStats } = await import('../services/fcmTokenManager.js');
+    const stats = await getUserFcmTokenStats(req.userId);
+    return res.json(stats);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to get FCM token stats' });
+  }
+});
+
 export default router;

@@ -22,6 +22,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
 
   const nannyNav = [
     { name: 'Dashboard', href: '/nanny/dashboard', icon: LayoutDashboard },
+    { name: 'Calendar', href: '/nanny/calendar', icon: Calendar },
     { name: 'Jobs', href: '/nanny/jobs', icon: Briefcase },
     { name: 'Applications', href: '/nanny/applications', icon: FileText },
     { name: 'Development', href: '/nanny/development', icon: ShieldAlert },
@@ -34,6 +35,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
       label: null,
       items: [
         { name: 'Dashboard', href: '/agency/dashboard', icon: LayoutDashboard },
+        { name: 'Calendar', href: '/agency/calendar', icon: Calendar },
       ],
     },
     {
@@ -74,6 +76,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
 
   const familyNav = [
     { name: 'Dashboard', href: '/family/dashboard', icon: LayoutDashboard },
+    { name: 'Calendar', href: '/family/calendar', icon: Calendar },
     { name: 'Request Care', href: '/family/request-care', icon: FileText },
     { name: 'Find an Agency', href: '/family/agencies', icon: Search },
     { name: 'Placements', href: '/family/placements', icon: FileText },
