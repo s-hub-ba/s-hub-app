@@ -100,6 +100,8 @@ const getTimestampMillis = (value: any): number => {
 // --- Types ---
 export type AppUserRole = 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin';
 
+type PushRole = 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter';
+
 export type AppUserStatus = 'active' | 'inactive';
 
 export interface User {
@@ -109,6 +111,81 @@ export interface User {
   status?: AppUserStatus;
   created_at: any;
   updated_at?: any;
+}
+
+export async function registerPushTokenForCurrentUser(options: {
+  role: PushRole;
+  userId: string;
+  token: string;
+  deviceName?: string;
+  os?: string;
+  appVersion?: string;
+}): Promise<boolean> {
+  const token = String(options.token || '').trim();
+  if (!token || !options.userId) return false;
+
+  let path = '';
+  const extraHeaders: Record<string, string> = {};
+
+  if (options.role === 'nanny') {
+    path = '/api/nanny/fcm-token';
+  } else if (options.role === 'family') {
+    path = '/api/family/fcm-token';
+  } else {
+    const agencyId = await resolveAgencyIdForUser(options.userId);
+    if (!agencyId) {
+      console.warn('[push] skipping agency token registration: no agencyId resolved');
+      return false;
+    }
+    path = '/api/agency/fcm-token';
+    extraHeaders['x-agency-id'] = agencyId;
+  }
+
+  const headers = await buildApiHeaders(extraHeaders);
+  const response = await fetch(buildApiUrl(path), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      fcm_token: token,
+      device_name: options.deviceName || 'Web Browser',
+      os: options.os || 'Web',
+      app_version: options.appVersion || 'web',
+    }),
+  });
+
+  return response.ok;
+}
+
+export async function deactivatePushTokensForCurrentUser(options: {
+  role: PushRole;
+  userId: string;
+}): Promise<boolean> {
+  if (!options.userId) return false;
+
+  let path = '';
+  const extraHeaders: Record<string, string> = {};
+
+  if (options.role === 'nanny') {
+    path = '/api/nanny/fcm-tokens/logout';
+  } else if (options.role === 'family') {
+    path = '/api/family/fcm-tokens/logout';
+  } else {
+    const agencyId = await resolveAgencyIdForUser(options.userId);
+    if (!agencyId) {
+      console.warn('[push] skipping agency token deactivation: no agencyId resolved');
+      return false;
+    }
+    path = '/api/agency/fcm-tokens/logout';
+    extraHeaders['x-agency-id'] = agencyId;
+  }
+
+  const headers = await buildApiHeaders(extraHeaders);
+  const response = await fetch(buildApiUrl(path), {
+    method: 'POST',
+    headers,
+  });
+
+  return response.ok;
 }
 
 export interface Job {
@@ -338,7 +415,34 @@ export interface ShiftScoreResult {
     averageCommunication: number;
     punctualityRate: number;
     rehireRate: number;
+    growthBonus?: number;
+    growthPointsEarned?: number;
+    growthPointsAvailable?: number;
+    growthWeekKey?: string;
   };
+}
+
+export interface NannyGrowthProgress {
+  weekKey: string;
+  isPremium: boolean;
+  applicationsThisWeek: number;
+  completedTaskIds: string[];
+  autoCompletedTaskIds: string[];
+  manualCompletedTaskIds: string[];
+  premiumTaskId: string;
+  quiz: {
+    courseId?: string;
+    selectedAnswer?: number;
+    passed?: boolean;
+    submitted_at?: any;
+  } | null;
+  points: {
+    earned: number;
+    available: number;
+    progressPct: number;
+  };
+  officialShiftScore: number;
+  officialShiftScoreDetails?: ShiftScoreResult['details'];
 }
 
 export interface JobCompatibilityResult {
@@ -1279,7 +1383,9 @@ export const getNannies = async (): Promise<NannyProfile[]> => {
   const path = 'nanny_profiles';
   try {
     const snapshot = await getDocs(collection(db, path));
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NannyProfile));
+    return snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() } as NannyProfile))
+      .sort((a, b) => Number((b as any).shift_score || 0) - Number((a as any).shift_score || 0));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -1712,6 +1818,87 @@ export const getNannyDevelopmentSessions = async (nannyId: string): Promise<Nann
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
   }
+};
+
+export const getNannyGrowthProgress = async (weekKey: string): Promise<NannyGrowthProgress> => {
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl(`/api/nanny/growth-progress?week=${encodeURIComponent(weekKey)}`), {
+    method: 'GET',
+    headers,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to load growth progress.');
+  }
+
+  return payload as NannyGrowthProgress;
+};
+
+export const updateNannyGrowthTask = async ({
+  weekKey,
+  taskId,
+  completed,
+}: {
+  weekKey: string;
+  taskId: string;
+  completed: boolean;
+}) => {
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl('/api/nanny/growth-progress/task'), {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ weekKey, taskId, completed }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to update growth task.');
+  }
+
+  return payload;
+};
+
+export const submitNannyWeeklyQuiz = async ({
+  weekKey,
+  courseId,
+  selectedAnswer,
+  passed,
+}: {
+  weekKey: string;
+  courseId: string;
+  selectedAnswer: number;
+  passed: boolean;
+}) => {
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl('/api/nanny/growth-progress/weekly-quiz'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ weekKey, courseId, selectedAnswer, passed }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to submit weekly quiz.');
+  }
+
+  return payload;
+};
+
+export const getNannyOfficialShiftScore = async (weekKey?: string): Promise<ShiftScoreResult & { weekKey?: string }> => {
+  const headers = await buildApiHeaders();
+  const query = weekKey ? `?week=${encodeURIComponent(weekKey)}` : '';
+  const response = await fetch(buildApiUrl(`/api/nanny/shift-score${query}`), {
+    method: 'GET',
+    headers,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to load official ShiftScore.');
+  }
+
+  return payload as ShiftScoreResult & { weekKey?: string };
 };
 
 export const createNannyDevelopmentSession = async ({

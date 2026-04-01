@@ -134,7 +134,7 @@ export default function NannyJobs() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
                 key={job.id} 
-                className={`bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md transition-shadow relative overflow-hidden ${isSponsored ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-stone-200'}`}
+                className={`bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-shadow relative overflow-hidden ${isSponsored ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-stone-200'}`}
               >
                 {isSponsored && (
                   <div className="absolute top-0 right-0 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-bl-xl shadow-sm z-10 flex items-center gap-1">
@@ -172,11 +172,11 @@ export default function NannyJobs() {
                   </div>
                 </div>
                 
-                <p className="text-stone-600 text-sm mb-6 line-clamp-2 md:line-clamp-none">
+                <p className="text-stone-600 text-sm mb-4 line-clamp-2">
                   {job.description}
                 </p>
 
-                <div className="mb-6">
+                <div className="mb-4">
                   <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-50 border border-stone-200 text-stone-600">
                     <Clock className="h-3.5 w-3.5 mr-1" />
                     {formatJobSchedule(job)}

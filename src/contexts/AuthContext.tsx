@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { deactivatePushTokensForCurrentUser } from '../lib/api';
 
 type AuthContextType = {
   user: User | null;
@@ -85,6 +86,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = async () => {
+    try {
+      if (
+        user?.uid
+        && (role === 'nanny'
+          || role === 'family'
+          || role === 'agency'
+          || role === 'agency_admin'
+          || role === 'agency_recruiter')
+      ) {
+        await deactivatePushTokensForCurrentUser({ role, userId: user.uid });
+      }
+    } catch (error) {
+      console.warn('[auth] failed to deactivate push tokens on logout', error);
+    }
     await signOut(auth);
   };
 

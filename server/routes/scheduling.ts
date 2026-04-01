@@ -11,7 +11,7 @@
 
 import { Router } from 'express';
 import { Timestamp } from 'firebase-admin/firestore';
-import { db, auth } from '../firebase.js';
+import { db, auth, normalizeFirebaseAdminError } from '../firebase.js';
 import {
   createScheduleEvent,
   transitionEventStatus,
@@ -86,6 +86,27 @@ async function resolveCallerIdentity(req: any): Promise<{
   };
 }
 
+async function resolveCallerIdentityOrRespond(req: any, res: any): Promise<{
+  userId: string;
+  role: UserRole;
+  agencyId?: string;
+  nannyId?: string;
+  familyId?: string;
+} | null> {
+  try {
+    const caller = await resolveCallerIdentity(req);
+    if (!caller) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return null;
+    }
+    return caller;
+  } catch (error) {
+    const normalized = normalizeFirebaseAdminError(error);
+    res.status(normalized.status).json({ error: normalized.message });
+    return null;
+  }
+}
+
 // ─── Input validation helpers ─────────────────────────────────────────────────
 
 function parseDate(value: unknown, fieldName: string): Date {
@@ -113,8 +134,8 @@ function resolveUpdateScope(value: unknown): UpdateScope {
 // Returns calendar events filtered for the requesting user's role.
 
 router.get('/events', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const { rangeStart, rangeEnd, types, statuses } = req.query as Record<string, string>;
@@ -179,8 +200,8 @@ router.get('/events', async (req, res) => {
 // ─── GET /api/scheduling/events/:id ──────────────────────────────────────────
 
 router.get('/events/:id', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const snap = await db.collection('schedule_events').doc(req.params.id).get();
@@ -209,8 +230,8 @@ router.get('/events/:id', async (req, res) => {
 // Nanny creates an availability window.
 
 router.post('/availability', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
   if (caller.role !== 'nanny') return res.status(403).json({ error: 'Nanny access only' });
   if (!caller.nannyId) return res.status(403).json({ error: 'Nanny profile not found' });
 
@@ -245,8 +266,8 @@ router.post('/availability', async (req, res) => {
 // Nanny or agency blocks time.
 
 router.post('/block', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
   if (!['nanny', 'agency', 'agency_admin', 'agency_recruiter'].includes(caller.role)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -281,8 +302,8 @@ router.post('/block', async (req, res) => {
 // Agency creates a shift offer addressed to a specific nanny.
 
 router.post('/shift-offer', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
   if (!['agency', 'agency_admin', 'agency_recruiter'].includes(caller.role as string)) {
     return res.status(403).json({ error: 'Agency access only' });
   }
@@ -346,8 +367,8 @@ router.post('/shift-offer', async (req, res) => {
 // Family creates a booking request.
 
 router.post('/booking-request', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
   if (caller.role !== 'family') return res.status(403).json({ error: 'Family access only' });
   if (!caller.familyId) return res.status(403).json({ error: 'Family profile not found' });
 
@@ -402,8 +423,8 @@ router.post('/booking-request', async (req, res) => {
 // Agency creates an interview event.
 
 router.post('/interview', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
   if (!['agency', 'agency_admin', 'agency_recruiter'].includes(caller.role as string)) {
     return res.status(403).json({ error: 'Agency access only' });
   }
@@ -445,8 +466,8 @@ router.post('/interview', async (req, res) => {
 // Dedicated nanny availability editor with support for single-instance vs series updates.
 
 router.patch('/availability/:id', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
   if (caller.role !== 'nanny' || !caller.nannyId) {
     return res.status(403).json({ error: 'Nanny access only' });
   }
@@ -499,8 +520,8 @@ router.patch('/availability/:id', async (req, res) => {
 // Generic body editor for schedule event content, including series updates.
 
 router.patch('/events/:id', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const snap = await db.collection('schedule_events').doc(req.params.id).get();
@@ -571,8 +592,8 @@ router.patch('/events/:id', async (req, res) => {
 // Transitions an event status: accept, decline, confirm, cancel, complete.
 
 router.patch('/events/:id/status', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const { status: nextStatus, reason } = req.body;
@@ -628,8 +649,8 @@ router.patch('/events/:id/status', async (req, res) => {
 // ─── PATCH /api/scheduling/events/:id/reschedule ─────────────────────────────
 
 router.patch('/events/:id/reschedule', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const { startAt: startStr, endAt: endStr, reason } = req.body;
@@ -661,8 +682,8 @@ router.patch('/events/:id/reschedule', async (req, res) => {
 // Returns a nanny's availability for a given date range (agency/family visible).
 
 router.get('/availability/:nannyId', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const { rangeStart, rangeEnd } = req.query as Record<string, string>;
@@ -692,8 +713,8 @@ router.get('/availability/:nannyId', async (req, res) => {
 // Returns an ordered list view of upcoming events (mobile-friendly agenda view).
 
 router.get('/agenda', async (req, res) => {
-  const caller = await resolveCallerIdentity(req);
-  if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+  const caller = await resolveCallerIdentityOrRespond(req, res);
+  if (!caller) return;
 
   try {
     const now = new Date();

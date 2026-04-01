@@ -5,6 +5,7 @@ export interface FcmTokenRecord {
   user_id: string;
   fcm_token: string;
   active: boolean;
+  agency_ids?: string[];
   device_name: string;
   os: string;
   app_version: string;
@@ -21,7 +22,7 @@ export interface FcmTokenRecord {
 export async function registerFcmToken(
   userId: string,
   fcmToken: string,
-  deviceInfo?: { deviceName?: string; os?: string; appVersion?: string }
+  deviceInfo?: { deviceName?: string; os?: string; appVersion?: string; agencyId?: string }
 ): Promise<void> {
   if (!userId || !fcmToken) {
     throw new Error('userId and fcmToken are required');
@@ -36,14 +37,27 @@ export async function registerFcmToken(
     .get();
 
   if (!existing.empty) {
-    await existing.docs[0].ref.update({ active: true, last_seen_at: now });
+    const current = existing.docs[0].data() as FcmTokenRecord;
+    const currentAgencyIds = Array.isArray(current.agency_ids) ? current.agency_ids : [];
+    const agencyId = deviceInfo?.agencyId?.trim();
+    const nextAgencyIds = agencyId
+      ? Array.from(new Set([...currentAgencyIds, agencyId]))
+      : currentAgencyIds;
+
+    await existing.docs[0].ref.update({
+      active: true,
+      last_seen_at: now,
+      ...(agencyId ? { agency_ids: nextAgencyIds } : {}),
+    });
     return;
   }
 
+  const agencyId = deviceInfo?.agencyId?.trim();
   await db.collection('user_fcm_tokens').add({
     user_id: userId,
     fcm_token: fcmToken,
     active: true,
+    agency_ids: agencyId ? [agencyId] : [],
     device_name: deviceInfo?.deviceName?.trim() || 'Unknown Device',
     os: deviceInfo?.os?.trim() || 'Unknown',
     app_version: deviceInfo?.appVersion?.trim() || 'Unknown',

@@ -1,6 +1,10 @@
 import admin from 'firebase-admin';
+import dotenv from 'dotenv';
 import { getFirestore } from 'firebase-admin/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local', override: true });
 
 function parseServiceAccountFromEnv() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -44,3 +48,22 @@ const dbId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
 export const db = getFirestore(admin.app(), dbId);
 export const auth = admin.auth();
 export const messaging = admin.messaging();
+
+export function normalizeFirebaseAdminError(error: unknown): {
+  status: number;
+  message: string;
+} {
+  const rawMessage = String((error as any)?.message || error || 'Unknown Firebase Admin error');
+
+  if (rawMessage.includes('Could not load the default credentials')) {
+    return {
+      status: 503,
+      message: 'Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_KEY in the server environment.',
+    };
+  }
+
+  return {
+    status: 500,
+    message: rawMessage,
+  };
+}

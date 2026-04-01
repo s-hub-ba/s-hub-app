@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Mail, MapPin, Briefcase, GraduationCap, Camera, Save, Star, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -34,6 +34,9 @@ export default function NannyProfile() {
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
   const [shareTargets, setShareTargets] = useState<any[]>([]);
   const [isSavingShareByDocId, setIsSavingShareByDocId] = useState<Record<string, boolean>>({});
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
+  const photoFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const nannyId = user?.uid || '';
 
@@ -88,6 +91,38 @@ export default function NannyProfile() {
     } catch (err: any) {
       console.error('Error saving profile:', err);
       alert('Failed to save profile: ' + err.message);
+    }
+  };
+
+  const handleProfilePhotoUpload = async (file: File | null) => {
+    if (!file || !nannyId || !isEditing) return;
+
+    if (!file.type.startsWith('image/')) {
+      setPhotoUploadError('Please select an image file.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoUploadError('Please choose an image smaller than 5MB.');
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setPhotoUploadError(null);
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const safeExt = ext.replace(/[^a-z0-9]/g, '') || 'jpg';
+      const storagePath = `nanny-profile-photos/${nannyId}/${Date.now()}.${safeExt}`;
+      const fileRef = ref(storage, storagePath);
+      await uploadBytes(fileRef, file);
+      const photoUrl = await getDownloadURL(fileRef);
+
+      setFormData((prev: any) => ({ ...prev, photo_url: photoUrl }));
+    } catch (uploadErr) {
+      console.error('Failed to upload profile photo:', uploadErr);
+      setPhotoUploadError('Unable to upload profile photo right now. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -211,12 +246,12 @@ export default function NannyProfile() {
         {/* Header/Photo Section */}
         <div className="p-6 md:p-8 border-b border-stone-100 flex flex-col md:flex-row items-center md:items-start gap-6">
           <div className="relative group">
-            {profile?.photo_url ? (
+            {(isEditing ? formData?.photo_url : profile?.photo_url) ? (
               <img 
-                src={profile.photo_url}
+                src={isEditing ? formData.photo_url : profile.photo_url}
                 alt="Profile" 
                 className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
-                referrerpolicy="no-referrer"
+               
               />
             ) : (
               <div className="w-32 h-32 rounded-full border-4 border-white shadow-md bg-stone-100 flex items-center justify-center text-4xl font-bold text-stone-600">
@@ -224,9 +259,36 @@ export default function NannyProfile() {
               </div>
             )}
             {isEditing && (
-              <button className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera className="h-6 w-6" />
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => photoFileInputRef.current?.click()}
+                  disabled={isUploadingPhoto}
+                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                >
+                  {isUploadingPhoto ? 'Uploading...' : <Camera className="h-6 w-6" />}
+                </button>
+                <input
+                  ref={photoFileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/jpg"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    void handleProfilePhotoUpload(file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </>
+            )}
+            {isEditing && (
+              <p className="mt-2 text-center text-xs text-stone-500">Click the photo to upload</p>
+            )}
+            {photoUploadError && (
+              <p className="mt-2 text-center text-xs text-red-600">{photoUploadError}</p>
+            )}
+            {isEditing && formData?.photo_url && !photoUploadError && (
+              <p className="mt-2 text-center text-xs text-emerald-700">Photo ready. Save changes to publish.</p>
             )}
           </div>
           
@@ -320,6 +382,26 @@ export default function NannyProfile() {
                     </div>
                   ) : (
                     <div className="text-stone-900 font-medium">${profile.expected_pay_min} - ${profile.expected_pay_max} / hr</div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Travel Radius ({Number(formData.travel_radius_miles ?? profile.travel_radius_miles ?? 10)} miles)</label>
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <input
+                        type="range"
+                        name="travel_radius_miles"
+                        min={1}
+                        max={50}
+                        step={1}
+                        value={Number(formData.travel_radius_miles ?? 10)}
+                        onChange={handleChange}
+                        className="w-full accent-emerald-600"
+                      />
+                      <div className="text-sm text-stone-600">Willing to commute up to {Number(formData.travel_radius_miles ?? 10)} miles.</div>
+                    </div>
+                  ) : (
+                    <div className="text-stone-900 font-medium">Up to {Number(profile.travel_radius_miles ?? 10)} miles</div>
                   )}
                 </div>
               </div>

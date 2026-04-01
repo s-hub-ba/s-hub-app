@@ -171,7 +171,7 @@ export default function AgencyProfile() {
             src={agency.cover}
             alt="Agency Cover" 
             className="w-full h-full object-cover"
-            referrerpolicy="no-referrer"
+           
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-r from-stone-200 to-stone-300" />
@@ -192,7 +192,7 @@ export default function AgencyProfile() {
                     src={agency.logo}
                     alt={`${agency.company_name || 'Agency'} logo`} 
                     className="w-32 h-32 rounded-2xl object-cover border-4 border-white shadow-md bg-white -mt-16 md:-mt-20"
-                    referrerpolicy="no-referrer"
+                   
                   />
                 ) : (
                   <div className="w-32 h-32 rounded-2xl border-4 border-white shadow-md bg-stone-100 -mt-16 md:-mt-20 flex items-center justify-center text-4xl font-bold text-stone-600">

@@ -61,7 +61,15 @@ async function validateRecipientExists(recipientId: string, role: string): Promi
   if (!profileCollection) return false;
   try {
     const snap = await db.doc(`${profileCollection}/${recipientId}`).get();
-    return snap.exists;
+    if (snap.exists) return true;
+
+    // Some agency notifications may use member UID while still scoped to agency role.
+    if (role === 'agency' || role === 'agency_admin' || role === 'agency_recruiter') {
+      const userSnap = await db.doc(`users/${recipientId}`).get();
+      return userSnap.exists;
+    }
+
+    return false;
   } catch {
     // Assume valid if Firestore access fails — let the write attempt surface the real issue.
     return true;
@@ -83,6 +91,48 @@ async function getUserFcmTokens(userId: string): Promise<string[]> {
     console.error(`[notification-worker] Error fetching FCM tokens for ${userId}:`, error);
     return [];
   }
+}
+
+async function getFcmTokensForRecipient(recipientId: string, role: string): Promise<string[]> {
+  if (!recipientId) return [];
+
+  // Agency notifications are addressed to agency profile IDs in scheduling jobs.
+  // For push delivery, tokens are user-scoped and may also be mapped to agency_ids.
+  if (role === 'agency' || role === 'agency_admin' || role === 'agency_recruiter') {
+    try {
+      const [byAgencySnap, byUserSnap] = await Promise.all([
+        db
+          .collection('user_fcm_tokens')
+          .where('agency_ids', 'array-contains', recipientId)
+          .where('active', '==', true)
+          .get(),
+        db
+          .collection('user_fcm_tokens')
+          .where('user_id', '==', recipientId)
+          .where('active', '==', true)
+          .get(),
+      ]);
+
+      const tokens = new Set<string>();
+      for (const snap of [byAgencySnap, byUserSnap]) {
+        snap.docs.forEach((d) => {
+          const token = d.data().fcm_token;
+          if (typeof token === 'string' && token.length > 0) {
+            tokens.add(token);
+          }
+        });
+      }
+      return Array.from(tokens);
+    } catch (error) {
+      console.error(
+        `[notification-worker] Error fetching agency FCM tokens for ${recipientId}:`,
+        error
+      );
+      return [];
+    }
+  }
+
+  return getUserFcmTokens(recipientId);
 }
 
 async function sendFcmPush(
@@ -210,7 +260,7 @@ async function deliverJob(doc: FirebaseFirestore.QueryDocumentSnapshot): Promise
     );
 
     // 2. FCM push (best-effort — never blocks in-app delivery)
-    const fcmTokens = await getUserFcmTokens(recipientId);
+    const fcmTokens = await getFcmTokensForRecipient(recipientId, role);
     if (fcmTokens.length > 0) {
       await sendFcmPush(fcmTokens, title, message, {
         link,

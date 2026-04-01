@@ -26,7 +26,6 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
     { name: 'Jobs', href: '/nanny/jobs', icon: Briefcase },
     { name: 'Applications', href: '/nanny/applications', icon: FileText },
     { name: 'Development', href: '/nanny/development', icon: ShieldAlert },
-    { name: 'Availability', href: '/nanny/availability', icon: Calendar },
     { name: 'Profile', href: '/nanny/profile', icon: User },
   ];
 
