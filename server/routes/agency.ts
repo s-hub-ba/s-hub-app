@@ -470,7 +470,12 @@ router.post('/fcm-token', requireAgencyOwner, async (req: any, res: any) => {
     const { fcm_token, device_name, os, app_version } = req.body as Record<string, string>;
     if (!fcm_token?.trim()) return res.status(400).json({ error: 'fcm_token is required' });
     const { registerFcmToken } = await import('../services/fcmTokenManager.js');
-    await registerFcmToken(req.userId, fcm_token.trim(), { deviceName: device_name, os, appVersion: app_version });
+    await registerFcmToken(req.user_id, fcm_token.trim(), {
+      deviceName: device_name,
+      os,
+      appVersion: app_version,
+      agencyId: req.agency_id,
+    });
     return res.json({ success: true });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to register FCM token' });
@@ -482,7 +487,7 @@ router.delete('/fcm-token/:fcmToken', requireAgencyOwner, async (req: any, res: 
     const fcmToken = decodeURIComponent(req.params.fcmToken || '');
     if (!fcmToken) return res.status(400).json({ error: 'fcmToken param is required' });
     const { unregisterFcmToken } = await import('../services/fcmTokenManager.js');
-    await unregisterFcmToken(req.userId, fcmToken);
+    await unregisterFcmToken(req.user_id, fcmToken);
     return res.json({ success: true });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to unregister FCM token' });
@@ -492,7 +497,7 @@ router.delete('/fcm-token/:fcmToken', requireAgencyOwner, async (req: any, res: 
 router.post('/fcm-tokens/logout', requireAgencyOwner, async (req: any, res: any) => {
   try {
     const { deactivateAllFcmTokens } = await import('../services/fcmTokenManager.js');
-    await deactivateAllFcmTokens(req.userId);
+    await deactivateAllFcmTokens(req.user_id);
     return res.json({ success: true });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to deactivate FCM tokens' });
@@ -502,7 +507,7 @@ router.post('/fcm-tokens/logout', requireAgencyOwner, async (req: any, res: any)
 router.get('/fcm-tokens/status', requireAgencyOwner, async (req: any, res: any) => {
   try {
     const { getUserFcmTokenStats } = await import('../services/fcmTokenManager.js');
-    const stats = await getUserFcmTokenStats(req.userId);
+    const stats = await getUserFcmTokenStats(req.user_id);
     return res.json(stats);
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to get FCM token stats' });

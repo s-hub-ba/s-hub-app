@@ -144,7 +144,7 @@ export default function AgencyDirectory() {
                       src={agency.logo}
                       alt={agency.company_name || agency.name || 'Agency'} 
                       className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm"
-                      referrerpolicy="no-referrer"
+                     
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-2xl border-2 border-white shadow-sm bg-stone-100 flex items-center justify-center text-stone-600 font-bold">
@@ -225,7 +225,7 @@ export default function AgencyDirectory() {
                       src={agency.logo}
                       alt={`${agency.company_name || agency.name || 'Agency'} logo`} 
                       className="w-16 h-16 rounded-xl object-cover border border-stone-100"
-                      referrerpolicy="no-referrer"
+                     
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-xl border border-stone-100 bg-stone-100 flex items-center justify-center text-stone-600 font-bold">

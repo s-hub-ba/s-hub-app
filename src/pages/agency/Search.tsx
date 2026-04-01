@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search as SearchIcon, Filter, MapPin, Star, ShieldCheck, BookmarkPlus, Check } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, getNannyBgStatusMap, getNannyReviewSummary } from '../../lib/api';
+import { getNannies, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, getNannyBgStatusMap } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { getDisplayCvid } from '../../lib/nannyIdentity';
 import NannyCvidCardModal from '../../components/NannyCvidCardModal';
@@ -98,14 +98,8 @@ export default function GlobalSearch() {
     setSelectedShiftScore(null);
     setLoadingShiftScore(true);
     setCvidCardOpen(true);
-    try {
-      const summary = await getNannyReviewSummary(nanny.id);
-      setSelectedShiftScore(summary?.shiftScore ?? null);
-    } catch {
-      setSelectedShiftScore(null);
-    } finally {
-      setLoadingShiftScore(false);
-    }
+    setSelectedShiftScore(Number((nanny as any)?.shift_score || 0));
+    setLoadingShiftScore(false);
   };
 
   return (

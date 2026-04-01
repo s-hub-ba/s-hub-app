@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import net from 'net';
 import paypalRoutes from './server/paypal.js';
@@ -9,6 +10,9 @@ import familyRoutes from './server/routes/family.js';
 import schedulingRoutes from './server/routes/scheduling.js';
 import adminRoutes from './server/routes/admin.js';
 import { startNotificationWorker } from './server/services/notificationWorker.ts';
+
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local', override: true });
 
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {

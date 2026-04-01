@@ -1,328 +1,365 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Star, ShieldCheck, Calendar, MapPin, CheckCircle2, Coins, TrendingUp } from 'lucide-react';
-import { getJobs, getApplicationsForNanny, getNannyById, getNannyDocuments, getNannyReviews, getNannyReviewSummary, computeShiftScore, getNannyPremiumAnalytics, getNannyCreditWallet } from '../../lib/api';
+import { getAuth } from 'firebase/auth';
+import { Trophy, Star, Briefcase, CalendarClock, Clock3, IdCard } from 'lucide-react';
+import {
+  getApplicationsForNanny,
+  getJobs,
+  getNannyById,
+  getNannyOfficialShiftScore,
+} from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import NannyCvidCardModal from '../../components/NannyCvidCardModal';
+
+type ScheduleEventLite = {
+  id: string;
+  type: string;
+  status: string;
+  start: string;
+  title: string;
+};
+
+type ShiftScoreTier = {
+  index: number;
+  label: string;
+  className: string;
+};
+
+const SHIFT_SCORE_TIERS: ShiftScoreTier[] = [
+  { index: 0, label: 'Beginner', className: 'bg-stone-100 text-stone-700' },
+  { index: 1, label: 'Momentum Maven', className: 'bg-sky-100 text-sky-700' },
+  { index: 2, label: 'Care Catalyst', className: 'bg-indigo-100 text-indigo-700' },
+  { index: 3, label: 'Rising Star', className: 'bg-amber-100 text-amber-700' },
+  { index: 4, label: 'Top Notch', className: 'bg-emerald-100 text-emerald-700' },
+];
+
+const getShiftScoreTierIndex = (score: number): number => {
+  if (score >= 5) return 4;
+  if (score >= 4) return 3;
+  if (score >= 3) return 2;
+  if (score >= 2) return 1;
+  return 0;
+};
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+async function getSchedulingEvents(): Promise<ScheduleEventLite[]> {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (user) {
+    const token = await user.getIdToken();
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  } else if (import.meta.env.DEV) {
+    (headers as Record<string, string>)['x-user-id'] = localStorage.getItem('dev_user_id') ?? '';
+  }
+
+  const now = new Date();
+  const rangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const rangeEnd = new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000).toISOString();
+
+  const response = await fetch(`${API_BASE}/api/scheduling/events?rangeStart=${encodeURIComponent(rangeStart)}&rangeEnd=${encodeURIComponent(rangeEnd)}`, {
+    headers,
+  });
+
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({}));
+  return Array.isArray(payload?.events) ? payload.events : [];
+}
+
+function toMillis(value: any): number {
+  if (!value) return 0;
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 export default function NannyDashboard() {
   const { user } = useAuth();
-  const [availability, setAvailability] = useState('seeking');
-  const [stats, setStats] = useState({
-    activeApps: 0,
-    shiftScore: 0,
-    profileCompletion: 0,
-    verifiedDocumentCount: 0,
-    documentBonus: 0,
-    reviewCount: 0,
-    averageReliability: 0,
-    averageCommunication: 0,
-    punctualityRate: 0,
-    rehireRate: 0,
-    reviewSignal: 0,
-  });
-  const [recommendedJobs, setRecommendedJobs] = useState<any[]>([]);
-  const [recentReviews, setRecentReviews] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
-  const [premiumAnalytics, setPremiumAnalytics] = useState<any>(null);
-  const [creditWallet, setCreditWallet] = useState<any>(null);
-
   const nannyId = user?.uid || '';
 
-  if (!nannyId) {
-    return (
-      <div className="p-8 text-center text-stone-500">Please sign in to view your dashboard.</div>
-    );
-  }
+  const [profile, setProfile] = useState<any>(null);
+  const [recommendedJobs, setRecommendedJobs] = useState<any[]>([]);
+  const [applications, setApplications] = useState<any[]>([]);
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEventLite[]>([]);
+  const [shiftScore, setShiftScore] = useState(0);
+  const [profileCompletion, setProfileCompletion] = useState(0);
+  const [verifiedDocCount, setVerifiedDocCount] = useState(0);
+  const [docBonus, setDocBonus] = useState(0);
+  const [showCvidModal, setShowCvidModal] = useState(false);
+  const [levelUpTier, setLevelUpTier] = useState<ShiftScoreTier | null>(null);
+
+  const currentTier = useMemo(() => {
+    const tierIndex = getShiftScoreTierIndex(shiftScore);
+    return SHIFT_SCORE_TIERS[tierIndex];
+  }, [shiftScore]);
 
   useEffect(() => {
     const loadData = async () => {
+      if (!nannyId) return;
+
       try {
-        const [apps, fetchedProfile] = await Promise.all([
+        const [apps, fetchedProfile, scoreData, jobs, events] = await Promise.all([
           getApplicationsForNanny(nannyId),
-          getNannyById(nannyId)
+          getNannyById(nannyId),
+          getNannyOfficialShiftScore(),
+          getJobs(),
+          getSchedulingEvents(),
         ]);
 
-        const [analytics, wallet] = await Promise.all([
-          getNannyPremiumAnalytics(nannyId),
-          getNannyCreditWallet(nannyId)
-        ]);
-        setPremiumAnalytics(analytics);
-        setCreditWallet(wallet);
-
-        const documents = await getNannyDocuments(nannyId);
-        const approvedDocumentCount = documents.filter((doc) => doc.status === 'approved').length;
+        const completion = Math.round((Number(scoreData?.details?.completedFields || 0) / Math.max(1, Number(scoreData?.details?.totalFields || 1))) * 100);
 
         setProfile(fetchedProfile);
-
-        const activeApps = apps.filter(a => ['applied', 'reviewing', 'interviewing', 'interview_invited', 'accepted', 'hired', 'active', 'pending_family_approval'].includes(a.status));
-        const [reviews, reviewSummary] = await Promise.all([
-          getNannyReviews(nannyId),
-          getNannyReviewSummary(nannyId),
-        ]);
-
-        const shiftScoreData = computeShiftScore(
-          fetchedProfile,
-          apps.length,
-          approvedDocumentCount,
-          reviewSummary
-        );
-        const profileCompletion = Math.round((shiftScoreData.details.completedFields / shiftScoreData.details.totalFields) * 100);
-
-        setStats(prev => ({
-          ...prev,
-          activeApps: activeApps.length,
-          shiftScore: shiftScoreData.score,
-          profileCompletion,
-          verifiedDocumentCount: shiftScoreData.details.verifiedDocumentCount,
-          documentBonus: shiftScoreData.details.documentBonus,
-          reviewCount: reviewSummary.reviewCount,
-          averageReliability: reviewSummary.averageReliability,
-          averageCommunication: reviewSummary.averageCommunication,
-          punctualityRate: reviewSummary.punctualityRate,
-          rehireRate: reviewSummary.rehireRate,
-          reviewSignal: reviewSummary.shiftScore,
-        }));
-
-        setRecentReviews(reviews);
-
-        const jobs = await getJobs();
+        setApplications(apps);
         setRecommendedJobs(jobs.slice(0, 2));
+        setScheduleEvents(events);
+        setShiftScore(Number(scoreData?.score || 0));
+        setProfileCompletion(completion);
+        setVerifiedDocCount(Number(scoreData?.details?.verifiedDocumentCount || 0));
+        setDocBonus(Number(scoreData?.details?.documentBonus || 0));
       } catch (error) {
-        console.error('Error loading dashboard data:', error);
+        console.error('Error loading nanny dashboard:', error);
       }
     };
-    if (nannyId) loadData();
+
+    void loadData();
   }, [nannyId]);
+
+  useEffect(() => {
+    if (!nannyId) return;
+
+    const currentTierIndex = getShiftScoreTierIndex(shiftScore);
+    const storageKey = `nanny-shiftscore-tier:${nannyId}`;
+    const storedRaw = window.localStorage.getItem(storageKey);
+
+    if (storedRaw === null) {
+      window.localStorage.setItem(storageKey, String(currentTierIndex));
+      return;
+    }
+
+    const previousTierIndex = Number(storedRaw);
+    if (Number.isNaN(previousTierIndex)) {
+      window.localStorage.setItem(storageKey, String(currentTierIndex));
+      return;
+    }
+
+    if (currentTierIndex > previousTierIndex) {
+      setLevelUpTier(SHIFT_SCORE_TIERS[currentTierIndex]);
+      window.localStorage.setItem(storageKey, String(currentTierIndex));
+      return;
+    }
+
+    if (currentTierIndex !== previousTierIndex) {
+      window.localStorage.setItem(storageKey, String(currentTierIndex));
+    }
+  }, [nannyId, shiftScore]);
+
+  useEffect(() => {
+    if (!levelUpTier) return;
+    const timer = window.setTimeout(() => setLevelUpTier(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [levelUpTier]);
+
+  const pendingOffers = useMemo(() => {
+    return scheduleEvents
+      .filter((event) => event.type === 'shift_offer' && event.status === 'offered')
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+      .slice(0, 2);
+  }, [scheduleEvents]);
+
+  const upcomingShifts = useMemo(() => {
+    const now = Date.now();
+    return scheduleEvents
+      .filter((event) => {
+        const start = new Date(event.start).getTime();
+        return start > now
+          && ['accepted', 'confirmed'].includes(event.status)
+          && ['shift_offer', 'booking_confirmed'].includes(event.type);
+      })
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+      .slice(0, 2);
+  }, [scheduleEvents]);
+
+  const recentApplications = useMemo(() => {
+    return [...applications]
+      .sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at))
+      .slice(0, 2);
+  }, [applications]);
+
+  if (!nannyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to view your dashboard.</div>;
+  }
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">
             Welcome back, {profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ''}` : user?.email ?? 'Nanny'}
           </h1>
-          <p className="text-stone-500 mt-1">Here's what's happening with your profile today.</p>
+          <p className="text-stone-500 mt-1">Your growth and shift activity at a glance.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <select 
-            value={availability}
-            onChange={(e) => setAvailability((e.target as HTMLInputElement).value)}
-            className="bg-white border border-stone-200 text-stone-700 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 outline-none font-medium shadow-sm"
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCvidModal(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
-            <option value="seeking">Actively Seeking</option>
-            <option value="open">Open to Offers</option>
-            <option value="not_seeking">Not Seeking</option>
-          </select>
-          <Link to="/nanny/profile" className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors">
+            <IdCard className="h-4 w-4" />
+            CVID Card
+          </button>
+          <Link to="/nanny/profile" className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">
             Update Profile
           </Link>
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600">
-            <Star className="h-7 w-7" />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium uppercase tracking-wider text-stone-500">ShiftScore</p>
+          <div className="mt-2 flex items-end gap-2">
+            <h2 className="text-4xl font-bold text-stone-900">{shiftScore}</h2>
+            <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${currentTier.className}`}>{currentTier.label}</span>
           </div>
-          <div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">ShiftScore</p>
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-bold text-stone-900">{stats.shiftScore}</h2>
-              <span className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">Professional</span>
-            </div>
-            <p className="text-xs text-stone-500 mt-1">
-              {stats.verifiedDocumentCount} approved docs • +{stats.documentBonus} score bonus
-            </p>
-          </div>
+          <p className="mt-2 text-xs text-stone-500">{verifiedDocCount} approved docs • +{docBonus} score bonus • Tier {currentTier.index + 1}/5</p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600">
-            <CheckCircle2 className="h-7 w-7" />
+        {profileCompletion < 100 ? (
+          <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-medium uppercase tracking-wider text-stone-500">Profile Completion</p>
+            <h2 className="mt-2 text-4xl font-bold text-stone-900">{profileCompletion}%</h2>
+            <p className="mt-2 text-xs text-stone-500">Complete your profile milestones to boost visibility.</p>
           </div>
-          <div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Profile Completion</p>
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-bold text-stone-900">{stats.profileCompletion}%</h2>
-            </div>
+        ) : (
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+            <p className="text-sm font-medium uppercase tracking-wider text-amber-700">Milestone Unlocked</p>
+            <h2 className="mt-2 flex items-center gap-2 text-2xl font-bold text-stone-900">
+              Profile Completed
+              <Trophy className="h-6 w-6 text-amber-600" />
+            </h2>
+            <p className="mt-2 text-sm text-stone-700">Your ShiftScore is increasing with every completed action.</p>
           </div>
-        </div>
+        )}
 
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-purple-100 flex items-center justify-center text-purple-600">
-            <Calendar className="h-7 w-7" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Active Apps</p>
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-bold text-stone-900">{stats.activeApps}</h2>
-            </div>
-          </div>
+        <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium uppercase tracking-wider text-stone-500">Recommended Jobs</p>
+          <h2 className="mt-2 text-4xl font-bold text-stone-900">{recommendedJobs.length}</h2>
+          <Link to="/nanny/jobs" className="mt-2 inline-flex text-xs font-semibold text-emerald-700 hover:text-emerald-800">Explore jobs</Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm">
-          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Reliability</p>
-          <div className="flex items-end gap-2 mt-1">
-            <h3 className="text-3xl font-bold text-stone-900">{stats.averageReliability.toFixed(1)}</h3>
-            <span className="text-sm text-stone-500">({stats.reviewCount} reviews)</span>
-          </div>
-          <div className="h-2 bg-stone-100 rounded-full mt-3 overflow-hidden">
-            <div style={{ width: `${Math.min(100, (stats.averageReliability / 5) * 100)}%` }} className="h-full bg-emerald-500" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm">
-          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Review Signal</p>
-          <div className="flex items-end gap-2 mt-1">
-            <h3 className="text-3xl font-bold text-stone-900">{stats.reviewSignal.toFixed(1)}</h3>
-            <span className="text-sm text-stone-500">ShiftScore review component</span>
-          </div>
-          <div className="h-2 bg-stone-100 rounded-full mt-3 overflow-hidden">
-            <div style={{ width: `${Math.min(100, (stats.reviewSignal / 5) * 100)}%` }} className="h-full bg-blue-500" />
-          </div>
-          <p className="text-xs text-stone-500 mt-3">
-            {Math.round(stats.punctualityRate * 100)}% punctual • {Math.round(stats.rehireRate * 100)}% would rehire
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Premium Analytics</p>
-              <h3 className="text-xl font-bold text-stone-900 mt-1">
-                {premiumAnalytics?.is_premium ? 'Premium Active' : 'Premium Inactive'}
-              </h3>
-            </div>
-            <Link to="/nanny/development" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800">
-              Open Development Agent
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-            <div className="rounded-2xl border border-stone-200 p-4 bg-stone-50">
-              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Acceptance Rate</p>
-              <p className="mt-2 text-2xl font-bold text-stone-900">{premiumAnalytics?.acceptance_rate_pct || 0}%</p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 p-4 bg-stone-50">
-              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Completion Rate</p>
-              <p className="mt-2 text-2xl font-bold text-stone-900">{premiumAnalytics?.completion_rate_pct || 0}%</p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 p-4 bg-stone-50">
-              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">30d Application Velocity</p>
-              <p className="mt-2 text-2xl font-bold text-stone-900 inline-flex items-center gap-1">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
-                {premiumAnalytics?.application_velocity_30d || 0}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Development Credits</p>
-          <p className="mt-3 text-3xl font-bold text-stone-900 inline-flex items-center gap-2">
-            <Coins className="h-7 w-7 text-amber-500" />
-            {Number(creditWallet?.balance_credits || 0)}
-          </p>
-          <p className="text-xs text-stone-500 mt-2">Each development-agent run uses 1 credit.</p>
-          <Link to="/nanny/development" className="mt-4 inline-flex text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-            Manage credits and sessions
-          </Link>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recommended Jobs */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-stone-900">Recommended Jobs</h2>
-            <Link to="/nanny/jobs" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
-          </div>
-
-          <div className="space-y-4">
-            {recommendedJobs.length === 0 ? (
-              <div className="bg-white p-8 rounded-3xl border border-stone-200 text-center text-stone-500">
-                No recommended jobs at the moment.
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <h3 className="flex items-center gap-2 text-lg font-bold text-stone-900"><CalendarClock className="h-5 w-5 text-emerald-600" />Upcoming Shifts</h3>
+          <div className="mt-4 space-y-3">
+            {upcomingShifts.length === 0 ? (
+              <p className="text-sm text-stone-500">No upcoming confirmed shifts.</p>
+            ) : upcomingShifts.map((shift) => (
+              <div key={shift.id} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                <p className="text-sm font-semibold text-stone-900">{shift.title || 'Upcoming shift'}</p>
+                <p className="text-xs text-stone-500">{new Date(shift.start).toLocaleString()}</p>
               </div>
-            ) : (
-              recommendedJobs.map((job, i) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  key={job.id} 
-                  className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-stone-900">{job.title}</h3>
-                      <div className="flex items-center gap-2 text-sm text-stone-500 mt-1">
-                        <span className="font-medium text-stone-700">{job.agency_profiles?.company_name || 'Agency'}</span>
-                        <span>•</span>
-                        <div className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {job.location_neighborhood}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-emerald-600">${job.pay_min} - ${job.pay_max}/hr</div>
-                      <div className="text-xs font-medium text-stone-400 uppercase tracking-wider mt-1">{job.job_type}</div>
-                    </div>
-                  </div>
-                  
-                  <p className="text-stone-600 text-sm mb-4 line-clamp-2">
-                    {job.description}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
-                      {job.special_requirements?.split(',').slice(0, 2).map((req: string) => (
-                        <span key={req} className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-100 text-stone-600">
-                          {req.trim()}
-                        </span>
-                      ))}
-                    </div>
-                    <Link to="/nanny/jobs" className="px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors">
-                      Apply Now
-                    </Link>
-                  </div>
-                </motion.div>
-              ))
-            )}
+            ))}
           </div>
-        </div>
+        </section>
 
-        {/* Sidebar */}
-        <div className="space-y-8">
-          {/* Recent Reviews */}
-          <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm">
-            <h2 className="text-lg font-bold text-stone-900 mb-4">Recent Reviews</h2>
-            <div className="space-y-4">
-              {recentReviews.length === 0 ? (
-                <div className="text-stone-500 text-sm">No reviews yet. Keep working and earn more reviews to boost your score.</div>
-              ) : (
-                recentReviews.slice(0, 3).map((review) => (
-                  <div key={review.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                    <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                      <span className="font-semibold text-stone-700">Reliability {review.reliability_rating}/5</span>
-                      <span className="font-semibold text-stone-700">Communication {review.communication_rating}/5</span>
-                    </div>
-                    <p className="text-sm text-stone-600 italic line-clamp-2">"{review.strengths || review.notes || 'No additional details provided.'}"</p>
-                    <p className="text-xs text-stone-400 mt-2">— {review.reviewer_type === 'family' ? 'Family' : 'Agency'} reviewer</p>
-                  </div>
-                ))
-              )}
-            </div>
+        <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <h3 className="flex items-center gap-2 text-lg font-bold text-stone-900"><Clock3 className="h-5 w-5 text-orange-600" />Pending Offers</h3>
+          <div className="mt-4 space-y-3">
+            {pendingOffers.length === 0 ? (
+              <p className="text-sm text-stone-500">No pending shift offers right now.</p>
+            ) : pendingOffers.map((offer) => (
+              <div key={offer.id} className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2">
+                <p className="text-sm font-semibold text-stone-900">{offer.title || 'Shift offer'}</p>
+                <p className="text-xs text-stone-500">Starts {new Date(offer.start).toLocaleString()}</p>
+              </div>
+            ))}
           </div>
-        </div>
+        </section>
+
+        <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <h3 className="flex items-center gap-2 text-lg font-bold text-stone-900"><Briefcase className="h-5 w-5 text-blue-600" />Recent Applications</h3>
+          <div className="mt-4 space-y-3">
+            {recentApplications.length === 0 ? (
+              <p className="text-sm text-stone-500">No recent applications yet.</p>
+            ) : recentApplications.map((app) => (
+              <div key={app.id} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                <p className="text-sm font-semibold text-stone-900">{app.jobs?.title || 'Application'}</p>
+                <p className="text-xs text-stone-500">Status: {String(app.status || 'applied').replaceAll('_', ' ')}</p>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
+
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-stone-900">Recommended Jobs</h2>
+          <Link to="/nanny/jobs" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {recommendedJobs.length === 0 ? (
+            <div className="rounded-3xl border border-stone-200 bg-white p-8 text-center text-stone-500">No recommended jobs at the moment.</div>
+          ) : recommendedJobs.map((job) => (
+            <div key={job.id} className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">{job.title}</h3>
+                  <p className="mt-1 text-sm text-stone-500">{job.agency_profiles?.company_name || 'Agency'}</p>
+                </div>
+                <span className="text-sm font-bold text-emerald-600">${job.pay_min ?? '--'}-${job.pay_max ?? '--'}/hr</span>
+              </div>
+              <p className="mt-3 line-clamp-2 text-sm text-stone-600">{job.description}</p>
+              <Link to="/nanny/jobs" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-stone-900 hover:text-emerald-700">
+                <Star className="h-4 w-4" />
+                Apply from marketplace
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <NannyCvidCardModal
+        isOpen={showCvidModal}
+        nanny={{
+          id: profile?.id || nannyId,
+          first_name: profile?.first_name,
+          last_name: profile?.last_name,
+          photo_url: profile?.photo_url,
+          location_borough: profile?.location_borough,
+          years_experience: profile?.years_experience,
+          expected_pay_min: profile?.expected_pay_min,
+          expected_pay_max: profile?.expected_pay_max,
+          certifications: profile?.certifications,
+          preferred_job_types: profile?.preferred_job_types,
+          bio: profile?.bio,
+          cvid: profile?.cvid || 'Pending',
+        }}
+        shiftScore={shiftScore}
+        onClose={() => setShowCvidModal(false)}
+      />
+
+      {levelUpTier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/50 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white p-6 text-center shadow-2xl animate-[fadeIn_220ms_ease-out]">
+            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-700 animate-bounce">
+              <Trophy className="h-8 w-8" />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Level Up</p>
+            <h3 className="mt-2 text-2xl font-bold text-stone-900">{levelUpTier.label}</h3>
+            <p className="mt-2 text-sm text-stone-600">You reached a new ShiftScore tier. Keep building momentum to unlock the next level.</p>
+            <button
+              type="button"
+              onClick={() => setLevelUpTier(null)}
+              className="mt-5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800"
+            >
+              Awesome
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

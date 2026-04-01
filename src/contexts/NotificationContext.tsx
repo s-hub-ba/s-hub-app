@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Bell, MessageSquare, Briefcase, Star } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { getFamilyNotifications, getAgencyNotifications, getNannyNotifications, resolveAgencyIdsForUser } from '../lib/api';
+import {
+  getFamilyNotifications,
+  getAgencyNotifications,
+  getNannyNotifications,
+  resolveAgencyIdsForUser,
+  registerPushTokenForCurrentUser,
+} from '../lib/api';
+import { getBrowserFcmToken } from '../lib/push';
 
 export type NotificationType = 'application' | 'message' | 'review' | 'system';
 
@@ -64,9 +71,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               read: notif.read ?? false,
               link: notif.link
             })));
+          } else {
+            setNotifications([]);
           }
         } catch (error) {
           console.error('Error loading family notifications:', error);
+          setNotifications([]);
         }
       } else if (role === 'agency_admin' || role === 'agency_recruiter') {
         try {
@@ -132,6 +142,44 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
     loadNotifications();
   }, [role, user]);
+
+  useEffect(() => {
+    const shouldRegisterPush =
+      !!user?.uid
+      && (role === 'nanny'
+      || role === 'family'
+      || role === 'agency'
+      || role === 'agency_admin'
+      || role === 'agency_recruiter');
+
+    if (!shouldRegisterPush) return;
+
+    let cancelled = false;
+
+    const registerPushToken = async () => {
+      try {
+        const token = await getBrowserFcmToken();
+        if (!token || cancelled || !user?.uid || !role) return;
+
+        await registerPushTokenForCurrentUser({
+          role,
+          userId: user.uid,
+          token,
+          deviceName: navigator.platform || 'Web Browser',
+          os: navigator.userAgent || 'Web',
+          appVersion: 'web',
+        });
+      } catch (error) {
+        console.warn('[push] registration skipped:', error);
+      }
+    };
+
+    void registerPushToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role, user?.uid]);
 
   const removeNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));

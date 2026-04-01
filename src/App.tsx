@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -26,7 +26,6 @@ import NannyJobs from './pages/nanny/Jobs';
 import NannyApplications from './pages/nanny/Applications';
 import NannyDevelopment from './pages/nanny/Development';
 import NannyProfile from './pages/nanny/Profile';
-import NannyAvailability from './pages/nanny/Availability';
 import NannyCalendar from './pages/nanny/Calendar';
 import NannyOnboarding from './pages/nanny/Onboarding';
 
@@ -121,7 +120,7 @@ export default function App() {
               <Route path="development" element={<NannyDevelopment />} />
               <Route path="messages" element={<NannyMessages />} />
               <Route path="notifications" element={<Notifications />} />
-              <Route path="availability" element={<NannyAvailability />} />
+              <Route path="availability" element={<Navigate to="/nanny/calendar" replace />} />
               <Route path="calendar" element={<NannyCalendar />} />
               <Route path="profile" element={<NannyProfile />} />
             </Route>

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import { getAuth } from 'firebase/auth';
 import { Briefcase, Calendar, CheckCircle2, Clock, FileText, MapPin, Phone, ShieldCheck, UserRound, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { addAgencyNotification, addFamilyNotification, getApplicationsForNanny, getFamilyProfile, getJobById, respondToApplicationCall, updateApplicationStatus } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 const STATUS_CONFIG = {
   applied: { color: 'bg-stone-100 text-stone-700', icon: Clock, label: 'Applied' },
@@ -36,6 +39,8 @@ const STATUS_TIMELINE_LABELS: Record<string, string> = {
 export default function NannyApplications() {
   const { user } = useAuth();
   const [applications, setApplications] = useState<any[]>([]);
+  const [shiftOffers, setShiftOffers] = useState<any[]>([]);
+  const [commitments, setCommitments] = useState<Record<string, { confirm24h?: boolean; confirm3h?: boolean }>>({});
 
   const nannyId = user?.uid || '';
 
@@ -69,6 +74,27 @@ export default function NannyApplications() {
       );
 
       setApplications(enrichedApps);
+
+      const auth = getAuth();
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken();
+        (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+      } else if (import.meta.env.DEV) {
+        (headers as Record<string, string>)['x-user-id'] = localStorage.getItem('dev_user_id') ?? '';
+      }
+
+      const now = new Date();
+      const rangeStart = new Date(now.getTime() - (2 * 24 * 60 * 60 * 1000)).toISOString();
+      const rangeEnd = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)).toISOString();
+
+      const eventRes = await fetch(`${API_BASE}/api/scheduling/events?rangeStart=${encodeURIComponent(rangeStart)}&rangeEnd=${encodeURIComponent(rangeEnd)}`, {
+        headers,
+      });
+      const payload = await eventRes.json().catch(() => ({}));
+      const events = Array.isArray(payload?.events) ? payload.events : [];
+      const offers = events.filter((event: any) => event.type === 'shift_offer' && ['offered', 'accepted', 'confirmed'].includes(event.status));
+      setShiftOffers(offers);
     } catch (error) {
       console.error('Error loading applications:', error);
     }
@@ -226,6 +252,48 @@ export default function NannyApplications() {
     }
   };
 
+  const updateShiftOfferStatus = async (eventId: string, status: 'accepted' | 'declined' | 'cancelled') => {
+    try {
+      const auth = getAuth();
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken();
+        (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+      } else if (import.meta.env.DEV) {
+        (headers as Record<string, string>)['x-user-id'] = localStorage.getItem('dev_user_id') ?? '';
+      }
+
+      await fetch(`${API_BASE}/api/scheduling/events/${eventId}/status`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status, reason: status === 'declined' || status === 'cancelled' ? 'Nanny cancelled commitment' : 'Nanny accepted offer' }),
+      });
+
+      await loadData();
+    } catch (error) {
+      console.error('Error updating shift offer status:', error);
+    }
+  };
+
+  const markPreShiftConfirmation = (eventId: string, checkpoint: 'confirm24h' | 'confirm3h') => {
+    const storageKey = `nanny-shift-checkpoints-${nannyId}`;
+    const existing = JSON.parse(localStorage.getItem(storageKey) || '{}');
+    const next = {
+      ...existing,
+      [eventId]: {
+        ...(existing[eventId] || {}),
+        [checkpoint]: true,
+      },
+    };
+    localStorage.setItem(storageKey, JSON.stringify(next));
+    setCommitments(next);
+  };
+
+  useEffect(() => {
+    const storageKey = `nanny-shift-checkpoints-${nannyId}`;
+    setCommitments(JSON.parse(localStorage.getItem(storageKey) || '{}'));
+  }, [nannyId]);
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -251,6 +319,80 @@ export default function NannyApplications() {
         <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-stone-500">Completed</p>
           <p className="mt-3 text-3xl font-bold text-stone-900">{applications.filter((app) => app.status === 'completed').length}</p>
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-bold text-stone-900">Shift Offers</h2>
+        <p className="mt-1 text-sm text-stone-500">Accepting and confirming offers impacts your reliability score.</p>
+
+        <div className="mt-4 space-y-3">
+          {shiftOffers.length === 0 ? (
+            <p className="text-sm text-stone-500">No active shift offers right now.</p>
+          ) : (
+            shiftOffers.map((offer) => {
+              const startsAt = new Date(offer.start || Date.now());
+              const hoursUntilShift = (startsAt.getTime() - Date.now()) / (1000 * 60 * 60);
+              const checkpoints = commitments[offer.id] || {};
+
+              return (
+                <div key={offer.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-stone-900">{offer.title || 'Shift Offer'}</p>
+                      <p className="text-xs text-stone-500">{startsAt.toLocaleString()} • Status: {offer.status}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {offer.status === 'offered' && (
+                        <>
+                          <button
+                            onClick={() => updateShiftOfferStatus(offer.id, 'accepted')}
+                            className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                          >
+                            Accept Offer
+                          </button>
+                          <button
+                            onClick={() => updateShiftOfferStatus(offer.id, 'declined')}
+                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+                          >
+                            Decline (Penalty Risk)
+                          </button>
+                        </>
+                      )}
+
+                      {['accepted', 'confirmed'].includes(offer.status) && (
+                        <>
+                          {hoursUntilShift <= 24 && hoursUntilShift > 2 && (
+                            <button
+                              onClick={() => markPreShiftConfirmation(offer.id, 'confirm24h')}
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                            >
+                              {checkpoints.confirm24h ? '24h Confirmed' : 'Confirm 24h Prior'}
+                            </button>
+                          )}
+                          {hoursUntilShift <= 3 && hoursUntilShift > 0 && (
+                            <button
+                              onClick={() => markPreShiftConfirmation(offer.id, 'confirm3h')}
+                              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                            >
+                              {checkpoints.confirm3h ? '3h Confirmed' : 'Confirm 3h Prior'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => updateShiftOfferStatus(offer.id, 'cancelled')}
+                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+                          >
+                            Cancel Commitment
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-amber-700">Warning: last-minute cancellations can reduce reliability score.</p>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

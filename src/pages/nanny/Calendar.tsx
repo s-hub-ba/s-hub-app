@@ -9,7 +9,10 @@
 
 import React, { useState, useCallback } from 'react';
 import { getAuth } from 'firebase/auth';
+import { CheckCircle2, Save } from 'lucide-react';
 import CalendarShell from '../../features/scheduling/components/CalendarShell';
+import { getNannyById, updateNannyProfile } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -38,12 +41,16 @@ interface QuickForm {
   title: string;
 }
 
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const TIME_SLOTS = ['Morning (6am-12pm)', 'Afternoon (12pm-6pm)', 'Evening (6pm-12am)', 'Overnight (12am-6am)'];
+
 const toLocalValue = (d: Date): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
 const NannyCalendar: React.FC = () => {
+  const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<QuickForm>({
     type: 'availability',
@@ -54,6 +61,50 @@ const NannyCalendar: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [availability, setAvailability] = useState<Record<string, string[]>>({
+    Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], Sunday: []
+  });
+  const [savingAvailability, setSavingAvailability] = useState(false);
+
+  const nannyId = user?.uid || '';
+
+  React.useEffect(() => {
+    const loadAvailability = async () => {
+      if (!nannyId) return;
+      try {
+        const profile = await getNannyById(nannyId);
+        setAvailability(profile?.availability || {
+          Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], Sunday: []
+        });
+      } catch (error) {
+        console.error('Error loading availability:', error);
+      }
+    };
+
+    void loadAvailability();
+  }, [nannyId]);
+
+  const handleAvailabilityToggle = (day: string, slot: string) => {
+    setAvailability((prev) => {
+      const daySlots = prev[day] || [];
+      if (daySlots.includes(slot)) {
+        return { ...prev, [day]: daySlots.filter((value) => value !== slot) };
+      }
+      return { ...prev, [day]: [...daySlots, slot] };
+    });
+  };
+
+  const handleSaveAvailability = async () => {
+    if (!nannyId) return;
+    setSavingAvailability(true);
+    try {
+      await updateNannyProfile(nannyId, { availability });
+    } catch (error) {
+      console.error('Error saving availability:', error);
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
 
   const handleSlotSelect = useCallback((start: Date, end: Date) => {
     setForm({
@@ -118,6 +169,48 @@ const NannyCalendar: React.FC = () => {
         onSlotSelect={handleSlotSelect}
         onEventMutated={() => setRefreshKey((k) => k + 1)}
       />
+
+      <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-stone-900">General Availability</h2>
+            <p className="text-sm text-stone-500">Set your recurring weekly availability directly from calendar.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAvailability}
+            disabled={savingAvailability}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" />
+            {savingAvailability ? 'Saving...' : 'Save Availability'}
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {DAYS.map((day) => (
+            <div key={day} className="rounded-2xl border border-stone-100 p-3">
+              <p className="mb-2 text-sm font-bold text-stone-900">{day}</p>
+              <div className="flex flex-wrap gap-2">
+                {TIME_SLOTS.map((slot) => {
+                  const selected = (availability[day] || []).includes(slot);
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => handleAvailabilityToggle(day, slot)}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'}`}
+                    >
+                      {selected && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      {slot.split(' ')[0]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Quick form overlay */}
       {showForm && (

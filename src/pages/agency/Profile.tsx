@@ -332,7 +332,7 @@ export default function AgencyProfilePage() {
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   {logo && (
-                    <img src={logo} alt="Logo preview" className="mt-3 h-16 w-16 rounded-xl object-cover border border-stone-200" referrerpolicy="no-referrer" />
+                    <img src={logo} alt="Logo preview" className="mt-3 h-16 w-16 rounded-xl object-cover border border-stone-200" />
                   )}
                 </div>
                 <div>
@@ -345,7 +345,7 @@ export default function AgencyProfilePage() {
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   {cover && (
-                    <img src={cover} alt="Cover preview" className="mt-3 h-16 w-full rounded-xl object-cover border border-stone-200" referrerpolicy="no-referrer" />
+                    <img src={cover} alt="Cover preview" className="mt-3 h-16 w-full rounded-xl object-cover border border-stone-200" />
                   )}
                 </div>
               </div>
