@@ -90,6 +90,7 @@ export default function NannyDashboard() {
   const [docBonus, setDocBonus] = useState(0);
   const [showCvidModal, setShowCvidModal] = useState(false);
   const [levelUpTier, setLevelUpTier] = useState<ShiftScoreTier | null>(null);
+  const [shiftScoreLoaded, setShiftScoreLoaded] = useState(false);
 
   const currentTier = useMemo(() => {
     const tierIndex = getShiftScoreTierIndex(shiftScore);
@@ -119,8 +120,10 @@ export default function NannyDashboard() {
         setProfileCompletion(completion);
         setVerifiedDocCount(Number(scoreData?.details?.verifiedDocumentCount || 0));
         setDocBonus(Number(scoreData?.details?.documentBonus || 0));
+        setShiftScoreLoaded(true);
       } catch (error) {
         console.error('Error loading nanny dashboard:', error);
+        setShiftScoreLoaded(true);
       }
     };
 
@@ -128,7 +131,7 @@ export default function NannyDashboard() {
   }, [nannyId]);
 
   useEffect(() => {
-    if (!nannyId) return;
+    if (!nannyId || !shiftScoreLoaded) return;
 
     const currentTierIndex = getShiftScoreTierIndex(shiftScore);
     const storageKey = `nanny-shiftscore-tier:${nannyId}`;
@@ -145,16 +148,12 @@ export default function NannyDashboard() {
       return;
     }
 
-    if (currentTierIndex > previousTierIndex) {
+    if (currentTierIndex !== previousTierIndex) {
       setLevelUpTier(SHIFT_SCORE_TIERS[currentTierIndex]);
       window.localStorage.setItem(storageKey, String(currentTierIndex));
       return;
     }
-
-    if (currentTierIndex !== previousTierIndex) {
-      window.localStorage.setItem(storageKey, String(currentTierIndex));
-    }
-  }, [nannyId, shiftScore]);
+  }, [nannyId, shiftScore, shiftScoreLoaded]);
 
   useEffect(() => {
     if (!levelUpTier) return;
@@ -187,6 +186,24 @@ export default function NannyDashboard() {
       .sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at))
       .slice(0, 2);
   }, [applications]);
+
+  const missingForHundred = useMemo(() => {
+    const missing: string[] = [];
+    if (!profile) return missing;
+
+    if (!profile.first_name) missing.push('First name');
+    if (!profile.last_name) missing.push('Last name');
+    if (!profile.phone_number) missing.push('Phone number');
+    if (!profile.bio) missing.push('Professional bio');
+    if (!profile.location_borough) missing.push('Borough/location');
+    if (!profile.years_experience) missing.push('Years of experience');
+    if (!Array.isArray(profile.certifications) || profile.certifications.length === 0) missing.push('At least one certification');
+    if (!profile.availability || Object.keys(profile.availability).length === 0) missing.push('Availability schedule');
+    if (profile.expected_pay_min == null) missing.push('Expected pay minimum');
+    if (profile.expected_pay_max == null) missing.push('Expected pay maximum');
+
+    return missing;
+  }, [profile]);
 
   if (!nannyId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to view your dashboard.</div>;
@@ -231,6 +248,16 @@ export default function NannyDashboard() {
             <p className="text-sm font-medium uppercase tracking-wider text-stone-500">Profile Completion</p>
             <h2 className="mt-2 text-4xl font-bold text-stone-900">{profileCompletion}%</h2>
             <p className="mt-2 text-xs text-stone-500">Complete your profile milestones to boost visibility.</p>
+            {missingForHundred.length > 0 && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">Missing For 100%</p>
+                <ul className="mt-2 space-y-1">
+                  {missingForHundred.map((item) => (
+                    <li key={item} className="text-xs text-stone-700">• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
@@ -244,9 +271,17 @@ export default function NannyDashboard() {
         )}
 
         <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium uppercase tracking-wider text-stone-500">Recommended Jobs</p>
-          <h2 className="mt-2 text-4xl font-bold text-stone-900">{recommendedJobs.length}</h2>
-          <Link to="/nanny/jobs" className="mt-2 inline-flex text-xs font-semibold text-emerald-700 hover:text-emerald-800">Explore jobs</Link>
+          <p className="text-sm font-medium uppercase tracking-wider text-stone-500">CVID</p>
+          <h2 className="mt-2 text-2xl font-bold text-stone-900">{profile?.cvid || 'Pending'}</h2>
+          <p className="mt-2 text-xs text-stone-500">{verifiedDocCount} approved verification docs</p>
+          <button
+            type="button"
+            onClick={() => setShowCvidModal(true)}
+            className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+          >
+            <IdCard className="h-3.5 w-3.5" />
+            View CVID card
+          </button>
         </div>
       </div>
 
@@ -332,7 +367,7 @@ export default function NannyDashboard() {
           years_experience: profile?.years_experience,
           expected_pay_min: profile?.expected_pay_min,
           expected_pay_max: profile?.expected_pay_max,
-          certifications: profile?.certifications,
+          approved_certifications: profile?.approved_certifications,
           preferred_job_types: profile?.preferred_job_types,
           bio: profile?.bio,
           cvid: profile?.cvid || 'Pending',
@@ -347,9 +382,9 @@ export default function NannyDashboard() {
             <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-700 animate-bounce">
               <Trophy className="h-8 w-8" />
             </div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Level Up</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Tier Updated</p>
             <h3 className="mt-2 text-2xl font-bold text-stone-900">{levelUpTier.label}</h3>
-            <p className="mt-2 text-sm text-stone-600">You reached a new ShiftScore tier. Keep building momentum to unlock the next level.</p>
+            <p className="mt-2 text-sm text-stone-600">Your ShiftScore tier changed. Keep improving your profile and verified signals to move higher.</p>
             <button
               type="button"
               onClick={() => setLevelUpTier(null)}

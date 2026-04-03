@@ -72,7 +72,7 @@ export const DEFAULT_SHIFT_SCORE_BLEND_WEIGHTS: ShiftScoreBlendWeights = {
 };
 
 export const DEFAULT_SHIFT_SCORE_PROFILE_WEIGHTS: ShiftScoreProfileWeights = {
-  completenessBase: 2.6,
+  completenessBase: 2.5,
   experienceBonus: 0.4,
   certificationBonus: 0.3,
   documentBonusPerVerifiedDoc: 0.15,

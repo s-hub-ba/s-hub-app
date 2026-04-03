@@ -272,6 +272,7 @@ export interface NannyProfile {
   first_name: string;
   last_name: string;
   cvid?: string;
+  approved_certifications?: string[];
   agency_id?: string | null;
   premium_until?: string | null;
   status: string;
@@ -293,6 +294,7 @@ export interface NannyDocument {
   nanny_id: string;
   uploader_user_id: string;
   type: 'cv' | 'certification' | 'id' | 'reference' | 'other';
+  certification_name?: string | null;
   file_name: string;
   file_url: string;
   status: 'uploaded' | 'under_review' | 'approved' | 'rejected';
@@ -1978,12 +1980,14 @@ export const createNannyDocument = async (input: Omit<NannyDocument, 'id' | 'sta
   try {
     const fileName = input.file_name?.trim();
     const fileUrl = input.file_url?.trim();
+    const certificationName = input.type === 'certification' ? String(input.certification_name || '').trim() : '';
     if (!fileName || !fileUrl) return null;
 
     const docRef = await addDoc(collection(db, path), {
       nanny_id: input.nanny_id,
       uploader_user_id: input.uploader_user_id,
       type: input.type,
+      certification_name: certificationName || null,
       file_name: fileName,
       file_url: fileUrl,
       status: 'uploaded',
@@ -2656,6 +2660,10 @@ export const updateNannyDocumentStatus = async ({
   const path = `nanny_documents/${documentId}`;
   try {
     const docRef = doc(db, 'nanny_documents', documentId);
+    const existingDoc = await getDoc(docRef);
+    if (!existingDoc.exists()) return null;
+
+    const existingData = existingDoc.data() as NannyDocument;
     await updateDoc(docRef, {
       status,
       rejection_reason: status === 'rejected' ? (rejectionReason?.trim() || 'Not provided') : null,
@@ -2665,7 +2673,57 @@ export const updateNannyDocumentStatus = async ({
     });
 
     const updated = await getDoc(docRef);
-    return updated.exists() ? ({ id: updated.id, ...updated.data() } as NannyDocument) : null;
+    const updatedDoc = updated.exists() ? ({ id: updated.id, ...updated.data() } as NannyDocument) : null;
+
+    if (existingData?.nanny_id) {
+      const [profileDoc, certDocsSnap] = await Promise.all([
+        getDoc(doc(db, 'nanny_profiles', existingData.nanny_id)),
+        getDocs(query(
+          collection(db, 'nanny_documents'),
+          where('nanny_id', '==', existingData.nanny_id),
+          where('type', '==', 'certification'),
+          where('status', '==', 'approved')
+        )),
+      ]);
+
+      const profileCerts = profileDoc.exists() && Array.isArray(profileDoc.data()?.certifications)
+        ? (profileDoc.data()?.certifications as string[])
+        : [];
+
+      const approvedDocNames = certDocsSnap.docs
+        .map((snap) => String(snap.data()?.file_name || '').trim())
+        .filter(Boolean);
+      const approvedDocCertifications = certDocsSnap.docs
+        .map((snap) => String(snap.data()?.certification_name || '').trim())
+        .filter(Boolean);
+
+      const normalize = (value: string) => value.toLowerCase().replace(/certificate|certification/gi, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+      const approvedCertifications = profileCerts.filter((cert) => {
+        const normalizedCert = normalize(String(cert || ''));
+        if (approvedDocCertifications.some((docCert) => normalize(docCert) === normalizedCert)) {
+          return true;
+        }
+        return approvedDocNames.some((docName) => {
+          const normalizedDoc = normalize(docName);
+          return normalizedDoc.includes(normalizedCert) || normalizedCert.includes(normalizedDoc);
+        });
+      });
+
+      const fallbackDocNames = approvedDocNames.filter((docName) => {
+        const normalizedDoc = normalize(docName);
+        return !approvedCertifications.some((cert) => {
+          const normalizedCert = normalize(cert);
+          return normalizedDoc.includes(normalizedCert) || normalizedCert.includes(normalizedDoc);
+        });
+      });
+
+      await setDoc(doc(db, 'nanny_profiles', existingData.nanny_id), {
+        approved_certifications: Array.from(new Set([...approvedCertifications, ...fallbackDocNames])),
+        updated_at: serverTimestamp(),
+      }, { merge: true });
+    }
+    return updatedDoc;
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
     return null;
