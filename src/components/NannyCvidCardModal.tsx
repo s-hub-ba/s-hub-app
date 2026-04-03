@@ -12,7 +12,7 @@ interface NannyCvidCardModalProps {
     years_experience?: number;
     expected_pay_min?: number;
     expected_pay_max?: number;
-    certifications?: string[];
+    approved_certifications?: string[];
     preferred_job_types?: string[];
     bio?: string;
     cvid: string;
@@ -33,6 +33,7 @@ export default function NannyCvidCardModal({
 
   const fullName = `${nanny.first_name || ''} ${nanny.last_name || ''}`.trim() || 'Nanny Profile';
   const initials = `${nanny.first_name?.[0] || 'N'}${nanny.last_name?.[0] || ''}`.toUpperCase();
+  const verifiedCertifications = Array.isArray(nanny.approved_certifications) ? nanny.approved_certifications.filter(Boolean) : [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -89,17 +90,17 @@ export default function NannyCvidCardModal({
               <MetricTile label="Pay Range" value={nanny.expected_pay_min != null && nanny.expected_pay_max != null ? `$${nanny.expected_pay_min}-$${nanny.expected_pay_max}/hr` : 'Not specified'} />
             </div>
 
-            <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Certifications</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Verified Certifications</p>
             <div className="flex flex-wrap gap-2">
-              {nanny.certifications?.length ? (
-                nanny.certifications.map((cert) => (
-                  <span key={cert} className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-700">
+              {verifiedCertifications.length ? (
+                verifiedCertifications.map((cert) => (
+                  <span key={cert} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
                     <span aria-hidden="true">●</span>
                     {cert}
                   </span>
                 ))
               ) : (
-                <span className="text-sm text-stone-500">No certifications listed.</span>
+                <span className="text-sm text-stone-500">No approved certifications yet.</span>
               )}
             </div>
           </div>

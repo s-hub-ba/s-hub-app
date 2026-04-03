@@ -26,6 +26,8 @@ export default function NannyProfile() {
   const [docName, setDocName] = useState('');
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docUrl, setDocUrl] = useState('');
+  const [selectedCertificationName, setSelectedCertificationName] = useState('');
+  const [newCertificationName, setNewCertificationName] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,8 +39,88 @@ export default function NannyProfile() {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
   const photoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const docFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const nannyId = user?.uid || '';
+  const normalizeCertificationLabel = (value: string) => value.toLowerCase().replace(/certificate|certification/gi, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const profileCertifications = Array.isArray(formData?.certifications)
+    ? formData.certifications
+    : Array.isArray(profile?.certifications)
+      ? profile.certifications
+      : [];
+  const certificationUploadOptions: string[] = Array.from(new Set(profileCertifications.map((item: string) => String(item || '').trim()).filter(Boolean)));
+
+  const approvedCertificationNames = Array.isArray(profile?.approved_certifications)
+    ? profile.approved_certifications.map((item: string) => String(item || '').trim()).filter(Boolean)
+    : [];
+
+  const certificationDocuments = documents.filter((doc) => doc.type === 'certification');
+
+  const getCertificationState = (cert: string) => {
+    const normalizedCert = normalizeCertificationLabel(cert);
+    const matchingDocs = certificationDocuments.filter((doc) => {
+      const normalizedDocCertification = normalizeCertificationLabel(String(doc.certification_name || ''));
+      if (normalizedDocCertification && (normalizedDocCertification.includes(normalizedCert) || normalizedCert.includes(normalizedDocCertification))) {
+        return true;
+      }
+      const normalizedDocName = normalizeCertificationLabel(String(doc.file_name || ''));
+      return normalizedDocName.includes(normalizedCert) || normalizedCert.includes(normalizedDocName);
+    });
+
+    if (approvedCertificationNames.some((item: string) => {
+      const normalizedApproved = normalizeCertificationLabel(item);
+      return normalizedApproved.includes(normalizedCert) || normalizedCert.includes(normalizedApproved);
+    })) {
+      return { label: 'Approved', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    }
+
+    if (matchingDocs.some((doc) => doc.status === 'uploaded' || doc.status === 'under_review')) {
+      return { label: 'Pending Approval', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+    }
+
+    if (matchingDocs.some((doc) => doc.status === 'rejected')) {
+      return { label: 'Needs Resubmission', className: 'bg-red-100 text-red-700 border-red-200' };
+    }
+
+    return { label: 'Not Verified', className: 'bg-stone-100 text-stone-700 border-stone-200' };
+  };
+
+  const startCertificationDocumentUpload = (cert: string) => {
+    setDocType('certification');
+    setSelectedCertificationName(cert);
+    setNewCertificationName('');
+    setDocName(`${cert} Certificate`);
+    setDocFile(null);
+    setDocUrl('');
+    if (docFileInputRef.current) {
+      docFileInputRef.current.value = '';
+    }
+    setUploadError(null);
+  };
+
+  const syncCertificationSelection = (nextSelection: string) => {
+    setSelectedCertificationName(nextSelection);
+
+    if (nextSelection === '__other__') {
+      setDocName('');
+    } else if (nextSelection) {
+      setDocName(`${nextSelection} Certificate`);
+    }
+
+    setDocFile(null);
+    setDocUrl('');
+    if (docFileInputRef.current) {
+      docFileInputRef.current.value = '';
+    }
+    setUploadError(null);
+  };
+
+  const getResolvedCertificationName = () => {
+    if (selectedCertificationName === '__other__') {
+      return newCertificationName.trim();
+    }
+    return selectedCertificationName.trim();
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -112,15 +194,24 @@ export default function NannyProfile() {
     try {
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const safeExt = ext.replace(/[^a-z0-9]/g, '') || 'jpg';
-      const storagePath = `nanny-profile-photos/${nannyId}/${Date.now()}.${safeExt}`;
+      const storagePath = `nanny-documents/${nannyId}/profile-photo-${Date.now()}.${safeExt}`;
       const fileRef = ref(storage, storagePath);
       await uploadBytes(fileRef, file);
       const photoUrl = await getDownloadURL(fileRef);
 
       setFormData((prev: any) => ({ ...prev, photo_url: photoUrl }));
-    } catch (uploadErr) {
+    } catch (uploadErr: any) {
       console.error('Failed to upload profile photo:', uploadErr);
-      setPhotoUploadError('Unable to upload profile photo right now. Please try again.');
+      const errorCode = String(uploadErr?.code || '');
+      if (errorCode.includes('storage/unauthorized')) {
+        setPhotoUploadError('Storage permissions blocked this upload. The image path has been corrected, so please try again.');
+      } else if (errorCode.includes('storage/unauthenticated')) {
+        setPhotoUploadError('Please sign in again before uploading a profile photo.');
+      } else if (errorCode.includes('storage/quota-exceeded')) {
+        setPhotoUploadError('Storage quota was exceeded. Please try again later.');
+      } else {
+        setPhotoUploadError(uploadErr?.message || 'Unable to upload profile photo right now. Please try again.');
+      }
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -163,6 +254,11 @@ export default function NannyProfile() {
 
   const handleUploadDocument = async () => {
     if (!nannyId || !user?.uid || !docName.trim() || (!docFile && !docUrl.trim()) || isUploadingDoc) return;
+    const resolvedCertificationName = getResolvedCertificationName();
+    if (docType === 'certification' && !resolvedCertificationName) {
+      setUploadError('Select which certification this document supports before uploading.');
+      return;
+    }
     setIsUploadingDoc(true);
     setUploadError(null);
     try {
@@ -178,15 +274,33 @@ export default function NannyProfile() {
         nanny_id: nannyId,
         uploader_user_id: user.uid,
         type: docType,
+        certification_name: docType === 'certification' ? resolvedCertificationName : null,
         file_name: docName.trim(),
         file_url: fileUrl
       });
 
       if (created?.id) {
+        if (docType === 'certification' && resolvedCertificationName) {
+          const existingCerts = Array.isArray(formData?.certifications) ? formData.certifications : [];
+          if (!existingCerts.includes(resolvedCertificationName)) {
+            const nextCerts = [...existingCerts, resolvedCertificationName];
+            const updatedProfile = await updateNannyProfile(nannyId, {
+              certifications: nextCerts,
+            });
+            if (updatedProfile) {
+              setProfile(updatedProfile);
+              setFormData(updatedProfile);
+            } else {
+              setFormData((prev: any) => ({ ...prev, certifications: nextCerts }));
+            }
+          }
+        }
         setDocName('');
         setDocFile(null);
         setDocUrl('');
         setDocType('cv');
+        setSelectedCertificationName('');
+        setNewCertificationName('');
         await refreshDocuments();
       } else {
         setUploadError('Upload succeeded but metadata save failed. Please try again.');
@@ -414,8 +528,18 @@ export default function NannyProfile() {
               </h3>
               <div className="flex flex-wrap gap-2">
                 {profile.certifications?.map((cert: string) => (
-                  <span key={cert} className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-stone-100 text-stone-700 border border-stone-200">
-                    {cert}
+                  <span key={cert} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border ${getCertificationState(cert).className}`}>
+                    <span>{cert}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-[0.08em]">{getCertificationState(cert).label}</span>
+                    {isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => startCertificationDocumentUpload(cert)}
+                        className="ml-1 rounded-md bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-current hover:bg-white"
+                      >
+                        Add Doc
+                      </button>
+                    )}
                     {isEditing && <button className="ml-2 text-stone-400 hover:text-red-500">&times;</button>}
                   </span>
                 ))}
@@ -442,7 +566,23 @@ export default function NannyProfile() {
             <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Document Type</label>
             <select
               value={docType}
-              onChange={(e) => setDocType((e.target as HTMLInputElement).value as any)}
+              onChange={(e) => {
+                const nextType = (e.target as HTMLInputElement).value as any;
+                setDocType(nextType);
+                if (nextType === 'certification') {
+                  if (!selectedCertificationName && certificationUploadOptions.length > 0) {
+                    syncCertificationSelection(certificationUploadOptions[0]);
+                  }
+                } else {
+                  setSelectedCertificationName('');
+                  setNewCertificationName('');
+                  setDocFile(null);
+                  setDocUrl('');
+                  if (docFileInputRef.current) {
+                    docFileInputRef.current.value = '';
+                  }
+                }
+              }}
               className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
             >
               <option value="cv">CV / Resume</option>
@@ -451,6 +591,9 @@ export default function NannyProfile() {
               <option value="reference">Reference Letter</option>
               <option value="other">Other</option>
             </select>
+            {docType === 'certification' && (
+              <p className="mt-1 text-xs font-medium text-blue-700">Certification selected. Choose the exact cert below before uploading.</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Document Name</label>
@@ -465,6 +608,7 @@ export default function NannyProfile() {
           <div>
             <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">File Upload</label>
             <input
+              ref={docFileInputRef}
               type="file"
               accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
               onChange={(e) => setDocFile(e.target.files?.[0] || null)}
@@ -473,6 +617,37 @@ export default function NannyProfile() {
             <p className="text-xs text-stone-500 mt-1">Accepted: PDF, Word, PNG, JPG.</p>
           </div>
         </div>
+
+        {docType === 'certification' && (
+          <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Certification This Document Supports</label>
+            <select
+              value={selectedCertificationName}
+              onChange={(e) => syncCertificationSelection((e.target as HTMLInputElement).value)}
+              className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">Select certification</option>
+              {certificationUploadOptions.map((cert: string) => (
+                <option key={cert} value={cert}>{cert}</option>
+              ))}
+              <option value="__other__">Add another certification...</option>
+            </select>
+            <p className="mt-1 text-xs text-stone-600">Choose one of the certifications selected on the nanny account, or add a new one here before upload.</p>
+            {selectedCertificationName === '__other__' && (
+              <div className="mt-3">
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">New Certification Name</label>
+                <input
+                  type="text"
+                  value={newCertificationName}
+                  onChange={(e) => setNewCertificationName((e.target as HTMLInputElement).value)}
+                  placeholder="e.g. Newborn Care Specialist"
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <p className="mt-1 text-xs text-stone-500">This will be added to the nanny profile and sent to superadmin for verification with the uploaded document.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mb-6">
           <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Or Document URL</label>
@@ -509,6 +684,9 @@ export default function NannyProfile() {
                 <div className="flex-1">
                   <div className="font-semibold text-stone-900">{doc.file_name}</div>
                   <div className="text-xs text-stone-500 mt-1">Type: {doc.type}</div>
+                  {doc.type === 'certification' && doc.certification_name && (
+                    <div className="text-xs text-stone-500 mt-1">Certification: {doc.certification_name}</div>
+                  )}
                   <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-700 mt-1 inline-block">Open document</a>
                   {doc.status === 'rejected' && doc.rejection_reason && (
                     <div className="text-xs text-red-600 mt-1">Reason: {doc.rejection_reason}</div>
