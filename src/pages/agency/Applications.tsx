@@ -47,6 +47,7 @@ export default function AgencyApplications() {
   const [selectedApp, setSelectedApp] = useState<any>(null);
   const [callDateTime, setCallDateTime] = useState('');
   const [callNote, setCallNote] = useState('');
+  const [callScheduleError, setCallScheduleError] = useState<string | null>(null);
   const [reviewReliability, setReviewReliability] = useState(5);
   const [reviewCommunication, setReviewCommunication] = useState(5);
   const [reviewPunctuality, setReviewPunctuality] = useState(true);
@@ -158,6 +159,7 @@ export default function AgencyApplications() {
     setSelectedApp(app);
     setCallDateTime(app.call_scheduled_for ? new Date(app.call_scheduled_for).toISOString().slice(0, 16) : '');
     setCallNote(app.call_note || '');
+    setCallScheduleError(null);
     setScheduleModalOpen(true);
     setOpenDropdownId(null);
   };
@@ -167,27 +169,49 @@ export default function AgencyApplications() {
     setSelectedApp(null);
     setCallDateTime('');
     setCallNote('');
+    setCallScheduleError(null);
   };
 
   const handleScheduleCall = async () => {
-    if (!selectedApp?.id || !selectedApp?.nanny_id || !agencyId || !callDateTime) return;
+    const targetNannyId = selectedApp?.nanny_id || selectedApp?.nannyId;
+    if (!selectedApp?.id || !agencyId) {
+      setCallScheduleError('Missing application or agency details. Refresh and try again.');
+      return;
+    }
+    if (!callDateTime) {
+      setCallScheduleError('Please choose a date and time.');
+      return;
+    }
+
+    const scheduledAt = new Date(callDateTime);
+    if (Number.isNaN(scheduledAt.getTime())) {
+      setCallScheduleError('Please enter a valid date and time.');
+      return;
+    }
 
     setIsCallSubmitting(true);
+    setCallScheduleError(null);
     try {
-      await scheduleApplicationCall({
+      const result = await scheduleApplicationCall({
         applicationId: selectedApp.id,
-        nannyId: selectedApp.nanny_id,
+        nannyId: targetNannyId || undefined,
         agencyId,
         agencyName: selectedApp.agency_name || user?.displayName || 'Agency',
         jobTitle: selectedApp.job_title,
-        scheduledFor: new Date(callDateTime).toISOString(),
+        scheduledFor: scheduledAt.toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         note: callNote
       });
+
+      if (!result) {
+        throw new Error('Unable to schedule call right now. Please try again.');
+      }
+
       await loadData();
       closeScheduleModal();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error scheduling call:', error);
+      setCallScheduleError(error?.message || 'Unable to schedule call right now.');
     } finally {
       setIsCallSubmitting(false);
     }
@@ -434,7 +458,7 @@ export default function AgencyApplications() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-stone-200 shadow-sm overflow-hidden bg-gradient-to-br from-white via-stone-50/70 to-emerald-50/30">
+      <div className="rounded-3xl border border-stone-200 shadow-sm overflow-visible bg-gradient-to-br from-white via-stone-50/70 to-emerald-50/30">
         <div className="px-6 py-4 border-b border-stone-200/70 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-stone-900">Candidate Pipeline</h2>
@@ -722,6 +746,11 @@ export default function AgencyApplications() {
                   placeholder="e.g. 15-minute intro call to discuss availability and role fit."
                 />
               </div>
+              {callScheduleError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {callScheduleError}
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-4 border-t border-stone-100 flex items-center gap-3">

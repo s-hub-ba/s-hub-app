@@ -38,6 +38,7 @@ import TalentPool from './pages/agency/TalentPool';
 import Billing from './pages/agency/Billing';
 import Subscription from './pages/agency/Subscription';
 import AgencyCalendar from './pages/agency/Calendar';
+import AgencyEmergencyReplacement from './pages/agency/EmergencyReplacement';
 
 import AgencyMessages from './pages/agency/Messages';
 import NannyMessages from './pages/nanny/Messages';
@@ -141,6 +142,7 @@ export default function App() {
               <Route path="search" element={<GlobalSearch />} />
               <Route path="talent" element={<TalentPool />} />
               <Route path="calendar" element={<AgencyCalendar />} />
+              <Route path="emergency" element={<AgencyEmergencyReplacement />} />
               <Route path="billing" element={<Billing />} />
               <Route path="subscription" element={<Subscription />} />
               <Route path="profile" element={<AgencyProfilePage />} />
