@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Baby, Briefcase, Calendar, User, Bell, LogOut, Search, Users, FileText, CreditCard, LayoutDashboard, Heart, MessageSquare, ShieldAlert, ChevronRight, ChevronDown } from 'lucide-react';
+import { Baby, Briefcase, Calendar, User, Bell, LogOut, Search, Users, FileText, CreditCard, LayoutDashboard, Heart, MessageSquare, ShieldAlert, ChevronRight, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,7 +33,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
     {
       label: null,
       items: [
-        { name: 'Dashboard', href: '/agency/dashboard', icon: LayoutDashboard },
+        { name: 'Home', href: '/agency/dashboard', icon: LayoutDashboard },
         { name: 'Calendar', href: '/agency/calendar', icon: Calendar },
       ],
     },
@@ -42,6 +42,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
       items: [
         { name: 'Jobs', href: '/agency/jobs', icon: Briefcase },
         { name: 'Applications', href: '/agency/applications', icon: FileText },
+        { name: 'Emergency Mode', href: '/agency/emergency', icon: AlertTriangle },
         { name: 'Family Requests', href: '/agency/family-requests', icon: MessageSquare },
       ],
     },

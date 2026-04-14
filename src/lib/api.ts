@@ -1148,7 +1148,7 @@ export const updateApplicationStatus = async (
     const historyEntry: ApplicationStatusHistoryEntry = {
       status,
       actor_role: options?.actorRole || 'system',
-      note: options?.note,
+      ...(options?.note !== undefined ? { note: options.note } : {}),
       at: Timestamp.now()
     };
     const milestoneFieldByStatus: Partial<Record<ApplicationStatus, string>> = {
@@ -1201,8 +1201,11 @@ export const updateApplicationCareSession = async (
   const path = `applications/${id}`;
   try {
     const docRef = doc(db, 'applications', id);
+    const cleanedUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, v]) => v !== undefined)
+    );
     await updateDoc(docRef, {
-      ...updates,
+      ...cleanedUpdates,
       updated_at: serverTimestamp(),
     });
     const updatedDoc = await getDoc(docRef);
@@ -1261,6 +1264,44 @@ export const notifyApplicationCareMilestone = async ({
   }
 };
 
+async function createInterviewCalendarEvent(input: {
+  nannyId: string;
+  familyId?: string | null;
+  scheduledFor: string;
+  timezone?: string;
+  jobTitle?: string;
+  note?: string;
+}): Promise<string | null> {
+  const startAt = new Date(input.scheduledFor);
+  if (Number.isNaN(startAt.getTime())) return null;
+
+  const endAt = new Date(startAt.getTime() + 30 * 60 * 1000);
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl('/api/scheduling/interview'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      nannyId: input.nannyId,
+      familyId: input.familyId || undefined,
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
+      timezone: input.timezone || 'America/New_York',
+      title: input.jobTitle ? `Interview: ${input.jobTitle}` : 'Interview Call',
+      notesVisible: input.note?.trim() || 'Application intro call',
+      locationGeneral: 'Phone/Video Call',
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to create interview event');
+  }
+
+  return typeof payload?.primaryId === 'string' && payload.primaryId
+    ? payload.primaryId
+    : null;
+}
+
 export const scheduleApplicationCall = async ({
   applicationId,
   nannyId,
@@ -1272,7 +1313,7 @@ export const scheduleApplicationCall = async ({
   note
 }: {
   applicationId: string;
-  nannyId: string;
+  nannyId?: string;
   agencyId: string;
   agencyName?: string;
   jobTitle?: string;
@@ -1283,6 +1324,10 @@ export const scheduleApplicationCall = async ({
   const path = `applications/${applicationId}`;
   try {
     const docRef = doc(db, 'applications', applicationId);
+    const appSnap = await getDoc(docRef);
+    const appData = appSnap.exists() ? (appSnap.data() as any) : null;
+    const resolvedNannyId = nannyId || appData?.nanny_id || appData?.nannyId || null;
+
     await updateDoc(docRef, {
       status: 'interview_invited',
       call_status: 'pending_nanny',
@@ -1296,18 +1341,42 @@ export const scheduleApplicationCall = async ({
       updated_at: serverTimestamp()
     });
 
-    await addNannyNotification(
-      nannyId,
-      'Call proposed',
-      `${agencyName || 'An agency'} proposed a call for ${new Date(scheduledFor).toLocaleString()}.`,
-      '/nanny/applications'
-    );
+    if (resolvedNannyId) {
+      try {
+        const eventId = await createInterviewCalendarEvent({
+          nannyId: resolvedNannyId,
+          familyId: appData?.family_id || null,
+          scheduledFor,
+          timezone,
+          jobTitle,
+          note,
+        });
+
+        if (eventId) {
+          await updateDoc(docRef, {
+            call_calendar_event_id: eventId,
+            updated_at: serverTimestamp(),
+          });
+        }
+      } catch (calendarError) {
+        console.warn('[scheduleApplicationCall] Calendar event creation failed:', calendarError);
+      }
+    }
+
+    if (resolvedNannyId) {
+      await addNannyNotification(
+        resolvedNannyId,
+        'Call proposed',
+        `${agencyName || 'An agency'} proposed a call for ${new Date(scheduledFor).toLocaleString()}.`,
+        '/nanny/applications'
+      );
+    }
 
     const updatedDoc = await getDoc(docRef);
     return { id: updatedDoc.id, ...updatedDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
-    return null;
+    throw error;
   }
 };
 
@@ -2769,8 +2838,45 @@ export const getAgencyById = async (id: string): Promise<AgencyProfile | null> =
   }
 };
 
+const AGENCY_RESOLUTION_CACHE_TTL_MS = 30_000;
+const agencyResolutionCache = new Map<string, { ids: string[]; expiresAt: number }>();
+const agencyResolutionInFlight = new Map<string, Promise<string[]>>();
+
+function isAgencyResolutionDebugEnabled(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return typeof window !== 'undefined' && window.localStorage?.getItem('debug_agency_resolution') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function agencyResolutionDebugLog(...args: any[]) {
+  if (isAgencyResolutionDebugEnabled()) {
+    console.log(...args);
+  }
+}
+
+function agencyResolutionDebugError(...args: any[]) {
+  if (isAgencyResolutionDebugEnabled()) {
+    console.error(...args);
+  }
+}
+
 export const resolveAgencyIdsForUser = async (userId: string): Promise<string[]> => {
   if (!userId) return [];
+
+  const cached = agencyResolutionCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.ids;
+  }
+
+  const inFlight = agencyResolutionInFlight.get(userId);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const resolver = (async () => {
 
   const ids = new Set<string>();
   const addId = (value: any) => {
@@ -2805,7 +2911,7 @@ export const resolveAgencyIdsForUser = async (userId: string): Promise<string[]>
     const recruiterSnap = await getDocs(recruiterQuery);
     if (!recruiterSnap.empty) {
       recruiterSnap.docs.forEach((seatDoc) => addId(seatDoc.data().agency_id));
-      console.log(`[DEBUG] resolveAgencyIdsForUser(${userId}): recruiter at ${recruiterSnap.size} agencies`);
+      agencyResolutionDebugLog(`[DEBUG] resolveAgencyIdsForUser(${userId}): recruiter at ${recruiterSnap.size} agencies`);
     }
   } catch {
     // Continue with other resolution strategies.
@@ -2817,10 +2923,10 @@ export const resolveAgencyIdsForUser = async (userId: string): Promise<string[]>
     const adminSnap = await getDocs(adminQuery);
     if (!adminSnap.empty) {
       adminSnap.docs.forEach((agencyDoc) => addId(agencyDoc.id));
-      console.log(`[DEBUG] resolveAgencyIdsForUser(${userId}): admin of ${adminSnap.size} agencies`);
+      agencyResolutionDebugLog(`[DEBUG] resolveAgencyIdsForUser(${userId}): admin of ${adminSnap.size} agencies`);
     }
   } catch (err) {
-    console.error(`[DEBUG] resolveAgencyIdsForUser(${userId}): owner_uid query failed:`, err);
+    agencyResolutionDebugError(`[DEBUG] resolveAgencyIdsForUser(${userId}): owner_uid query failed:`, err);
   }
 
   // Candidate 5: other admin-id fields in agency profile docs (fallback)
@@ -2836,8 +2942,20 @@ export const resolveAgencyIdsForUser = async (userId: string): Promise<string[]>
   }
 
   const result = Array.from(ids);
-  console.log(`[DEBUG] resolveAgencyIdsForUser(${userId}): resolved agency IDs:`, result);
+  agencyResolutionDebugLog(`[DEBUG] resolveAgencyIdsForUser(${userId}): resolved agency IDs:`, result);
+  agencyResolutionCache.set(userId, {
+    ids: result,
+    expiresAt: Date.now() + AGENCY_RESOLUTION_CACHE_TTL_MS,
+  });
   return result;
+  })();
+
+  agencyResolutionInFlight.set(userId, resolver);
+  try {
+    return await resolver;
+  } finally {
+    agencyResolutionInFlight.delete(userId);
+  }
 };
 
 export const resolveAgencyIdForUser = async (userId: string): Promise<string | null> => {
@@ -4135,8 +4253,11 @@ export const updateAgencyTalentPoolItem = async (
   const path = `agency_talent_pool/${itemId}`;
   try {
     const docRef = doc(db, 'agency_talent_pool', itemId);
+    const cleanedUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, v]) => v !== undefined)
+    );
     await updateDoc(docRef, {
-      ...updates,
+      ...cleanedUpdates,
       updated_at: serverTimestamp(),
     });
     const updatedDoc = await getDoc(docRef);

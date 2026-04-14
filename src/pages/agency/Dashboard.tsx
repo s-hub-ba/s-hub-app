@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Briefcase, Users, MessageSquare, Star, Search, Plus } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { AlertTriangle, ArrowRight, Briefcase, CalendarClock, Search, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getAuth } from 'firebase/auth';
 import {
   getJobs,
   getApplicationsForAgency,
@@ -22,6 +23,52 @@ const INQUIRY_STAGE_LABELS: Record<InquiryStage, string> = {
   done: 'Done'
 };
 
+const INQUIRY_STAGE_STYLES: Record<InquiryStage, string> = {
+  new: 'bg-amber-50 text-amber-700 border-amber-200',
+  communicated: 'bg-sky-50 text-sky-700 border-sky-200',
+  done: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+};
+
+type ScheduleEventLite = {
+  id: string;
+  type: string;
+  status: string;
+  start: string;
+  end?: string;
+  title?: string;
+  locationLabel?: string;
+  familyId?: string;
+  nannyId?: string;
+  nannyName?: string;
+};
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+async function getSchedulingEvents(): Promise<ScheduleEventLite[]> {
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (currentUser) {
+    const token = await currentUser.getIdToken();
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  } else if (import.meta.env.DEV) {
+    (headers as Record<string, string>)['x-user-id'] = localStorage.getItem('dev_user_id') ?? '';
+  }
+
+  const now = new Date();
+  const rangeStart = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const rangeEnd = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000).toISOString();
+
+  const response = await fetch(`${API_BASE}/api/scheduling/events?rangeStart=${encodeURIComponent(rangeStart)}&rangeEnd=${encodeURIComponent(rangeEnd)}`, {
+    headers,
+  });
+
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({}));
+  return Array.isArray(payload?.events) ? payload.events : [];
+}
+
 export default function AgencyDashboard() {
   const { user, role } = useAuth();
   const [agencyId, setAgencyId] = useState('');
@@ -29,12 +76,15 @@ export default function AgencyDashboard() {
   const [agency, setAgency] = useState<any>(null);
   const [inquiries, setInquiries] = useState<any[]>([]);
   const [seatCount, setSeatCount] = useState(0);
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEventLite[]>([]);
+  const [applications, setApplications] = useState<any[]>([]);
   const { entitlements } = useAgencyEntitlements(agencyId);
   const [stats, setStats] = useState({
     activeJobs: 0,
-    newApps: 0,
+    pendingConfirmations: 0,
+    shiftsAtRisk: 0,
     talentPool: 0,
-    inquiries: 0
+    unassignedToday: 0
   });
 
   const toDate = (value: any): Date | null => {
@@ -49,6 +99,26 @@ export default function AgencyDashboard() {
     const date = toDate(value);
     if (!date) return 'Unknown date';
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const formatTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Time TBD';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getTodayShiftStatus = (event: ScheduleEventLite): 'confirmed' | 'pending' | 'risk' => {
+    const hasAssignedNanny = Boolean(event.nannyId || event.nannyName);
+    const eventTime = new Date(event.start).getTime();
+    const withinNextHours = !Number.isNaN(eventTime) && (eventTime - Date.now()) <= 3 * 60 * 60 * 1000;
+
+    if (!hasAssignedNanny) return 'risk';
+    if (['cancelled', 'declined'].includes(event.status)) return 'risk';
+    if (['confirmed', 'accepted', 'completed'].includes(event.status)) return 'confirmed';
+    if (['pending', 'offered', 'draft', 'available'].includes(event.status)) {
+      return withinNextHours ? 'risk' : 'pending';
+    }
+    return 'pending';
   };
 
   useEffect(() => {
@@ -85,27 +155,56 @@ export default function AgencyDashboard() {
     const loadData = async () => {
       if (!agencyId) return;
       try {
-        const [agencyData, jobs, apps, conversations, talentPoolItems, seats] = await Promise.all([
+        const [agencyData, jobs, apps, conversations, talentPoolItems, seats, events] = await Promise.all([
           getAgencyById(agencyId),
           getJobs(agencyId),
           getApplicationsForAgency(agencyId),
           getAgencyConversations(agencyId),
           getAgencyTalentPool(agencyId),
           getRecruiterSeatCount(agencyId),
+          getSchedulingEvents(),
         ]);
 
         setAgency(agencyData);
 
-        const newApps = apps.filter(a => a.status === 'applied');
-        const inquiryThreads = (conversations || []).filter((c: any) => c.inquiry_type === 'agency_intro');
-        setSeatCount(seats);
+        const pendingConfirmationEvents = (events || []).filter((event: ScheduleEventLite) => ['pending', 'offered'].includes(event.status));
+        const now = new Date();
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
 
-        setInquiries(inquiryThreads.slice(0, 5));
+        const weeklyEnd = new Date(now);
+        weeklyEnd.setDate(weeklyEnd.getDate() + 7);
+
+        const todayShiftEvents = (events || []).filter((event: ScheduleEventLite) => {
+          const start = new Date(event.start).getTime();
+          return !Number.isNaN(start)
+            && start >= todayStart.getTime()
+            && start <= todayEnd.getTime()
+            && ['shift_offer', 'booking_request', 'booking_confirmed'].includes(event.type);
+        });
+
+        const weekShiftEvents = (events || []).filter((event: ScheduleEventLite) => {
+          const start = new Date(event.start).getTime();
+          return !Number.isNaN(start)
+            && start >= todayStart.getTime()
+            && start <= weeklyEnd.getTime()
+            && ['shift_offer', 'booking_request', 'booking_confirmed'].includes(event.type);
+        });
+
+        const unassignedToday = todayShiftEvents.filter((event: ScheduleEventLite) => !event.nannyId && !event.nannyName).length;
+        const shiftsAtRisk = weekShiftEvents.filter((event: ScheduleEventLite) => getTodayShiftStatus(event) === 'risk').length;
+        setSeatCount(seats);
+        setScheduleEvents(events || []);
+        setApplications(apps || []);
+        setInquiries(((conversations || []).filter((c: any) => c.inquiry_type === 'agency_intro')).slice(0, 5));
         setStats({
           activeJobs: jobs.length,
-          newApps: newApps.length,
+          pendingConfirmations: pendingConfirmationEvents.length,
+          shiftsAtRisk,
           talentPool: talentPoolItems.length,
-          inquiries: inquiryThreads.length
+          unassignedToday
         });
       } catch (error) {
         console.error('Error loading dashboard stats:', error);
@@ -113,14 +212,6 @@ export default function AgencyDashboard() {
     };
     loadData();
   }, [agencyId]);
-
-  if (isResolvingAgency) {
-    return <div className="p-8 text-center text-stone-500">Loading agency dashboard...</div>;
-  }
-
-  if (!agencyId) {
-    return <div className="p-8 text-center text-stone-500">Please sign in to view agency dashboard.</div>;
-  }
 
   const handleInquiryStageChange = async (conversationId: string, nextStage: InquiryStage) => {
     const ok = await updateInquiryStage(conversationId, nextStage);
@@ -131,151 +222,251 @@ export default function AgencyDashboard() {
     )));
   };
 
+  const todayShiftStripe = useMemo(() => {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return scheduleEvents
+      .filter((event) => {
+        const start = new Date(event.start).getTime();
+        return !Number.isNaN(start)
+          && start >= startOfDay.getTime()
+          && start <= endOfDay.getTime()
+          && ['shift_offer', 'booking_request', 'booking_confirmed'].includes(event.type);
+      })
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+      .slice(0, 8);
+  }, [scheduleEvents]);
+
+  const firstUnassignedShift = useMemo(() => (
+    todayShiftStripe.find((event) => !event.nannyId && !event.nannyName)
+  ), [todayShiftStripe]);
+
+  const decliningReliabilityNannies = useMemo(() => {
+    const recentNoShow = applications.filter((app) => app.call_outcome === 'no_show');
+    return new Set(recentNoShow.map((app) => app.nanny_id).filter(Boolean)).size;
+  }, [applications]);
+
+  const highRiskThisWeek = stats.shiftsAtRisk;
+
+  const statusPillStyles: Record<'confirmed' | 'pending' | 'risk', string> = {
+    confirmed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    risk: 'bg-rose-100 text-rose-700 border-rose-200'
+  };
+
+  if (isResolvingAgency) {
+    return <div className="p-8 text-center text-stone-500">Loading agency dashboard...</div>;
+  }
+
+  if (!agencyId) {
+    return <div className="p-8 text-center text-stone-500">Please sign in to view agency dashboard.</div>;
+  }
+
   return (
     <div className="space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{agency?.company_name || 'Agency Dashboard'}</h1>
-          <p className="text-stone-500 mt-1">Here's an overview of your agency's activity.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link to="/agency/jobs/new" className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Post Job
-          </Link>
-        </div>
-      </div>
+      <section className="relative overflow-hidden rounded-3xl border border-stone-200 bg-gradient-to-br from-stone-900 via-stone-800 to-emerald-900 p-6 text-white shadow-lg md:p-8">
+        <div className="pointer-events-none absolute -right-10 -top-14 h-44 w-44 rounded-full bg-emerald-400/20 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-14 left-0 h-40 w-40 rounded-full bg-sky-300/20 blur-2xl" />
 
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-            <Star className="h-5 w-5" />
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">Agency Home</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Today Operations</h1>
+            <p className="mt-2 text-sm text-stone-200 md:text-base">Your operational heartbeat for urgent shift action. Use Calendar for full planning and weekly overview.</p>
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-blue-900">{entitlements?.plan?.name || 'Free'} Plan Active</h3>
-            <p className="text-xs text-blue-700">
-              Recruiter Seats: {seatCount}/{formatLimit(entitlements?.recruiterSeatLimit ?? 0)}
-            </p>
-          </div>
-        </div>
-        <Link to="/agency/billing" className="text-sm font-medium text-blue-700 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-sm">
-          Manage
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600">
-              <Briefcase className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Active Jobs</p>
-          </div>
-          <h2 className="text-3xl font-bold text-stone-900">{stats.activeJobs}</h2>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600">
-              <Users className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">New Apps</p>
-          </div>
-          <h2 className="text-3xl font-bold text-stone-900">{stats.newApps}</h2>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600">
-              <Star className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Talent Pool</p>
-          </div>
-          <h2 className="text-3xl font-bold text-stone-900">{stats.talentPool}</h2>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
-              <MessageSquare className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Inquiries</p>
-          </div>
-          <h2 className="text-3xl font-bold text-stone-900">{stats.inquiries}</h2>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <h2 className="text-xl font-bold text-stone-900">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Link to="/agency/search" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all group">
-              <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-emerald-100 group-hover:text-emerald-600 mb-3 transition-colors">
-                <Search className="h-5 w-5" />
-              </div>
-              <h3 className="font-bold text-stone-900 mb-1">Search Nannies</h3>
-              <p className="text-xs text-stone-500">Find talent in the global NYC pool.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link to="/agency/calendar" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-stone-900 shadow-md transition hover:bg-stone-100">
+              <CalendarClock className="h-4 w-4" />
+              Open Calendar
             </Link>
-            <Link to="/agency/talent" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">
-              <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-blue-100 group-hover:text-blue-600 mb-3 transition-colors">
+            <Link to="/agency/messages" className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">
+              <ArrowRight className="h-4 w-4" />
+              Team Inbox
+            </Link>
+          </div>
+        </div>
+
+      </section>
+
+      <section>
+        <div className="rounded-3xl border border-rose-200 bg-rose-50/70 p-5 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">Urgent Block</p>
+              <h2 className="mt-1 flex items-center gap-2 text-2xl font-black text-rose-900">
+                <AlertTriangle className="h-6 w-6" />
+                {stats.shiftsAtRisk} shifts at risk
+              </h2>
+            </div>
+            <Link to="/agency/calendar" className="inline-flex items-center gap-2 self-start rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
+              Resolve in Calendar
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <Link
+              to={firstUnassignedShift
+                ? `/agency/emergency?startAt=${encodeURIComponent(firstUnassignedShift.start)}&endAt=${encodeURIComponent(firstUnassignedShift.end || new Date(new Date(firstUnassignedShift.start).getTime() + 4 * 60 * 60 * 1000).toISOString())}&area=${encodeURIComponent(firstUnassignedShift.locationLabel || '')}&title=${encodeURIComponent(firstUnassignedShift.title || 'Emergency Childcare Coverage')}`
+                : '/agency/emergency'
+              }
+              className="rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm text-stone-700 hover:border-rose-300"
+            >
+              <p className="font-bold text-rose-700">🔴 No nanny assigned</p>
+              <p className="mt-1 text-xs text-stone-500">{firstUnassignedShift ? `Today ${formatTime(firstUnassignedShift.start)}` : 'No unassigned shifts today'}</p>
+              <p className="mt-1 text-xs font-semibold text-rose-600">→ Find replacement</p>
+            </Link>
+            <Link to="/agency/calendar" className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-stone-700 hover:border-amber-300">
+              <p className="font-bold text-amber-700">🟡 Pending confirmations</p>
+              <p className="mt-1 text-xs text-stone-500">{stats.pendingConfirmations} needing action</p>
+            </Link>
+            <Link to="/agency/messages" className="rounded-xl border border-sky-200 bg-white px-4 py-3 text-sm text-stone-700 hover:border-sky-300">
+              <p className="font-bold text-sky-700">🔵 Family inquiry follow-ups</p>
+              <p className="mt-1 text-xs text-stone-500">{inquiries.length} recent conversations</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-stone-900">Today's Shifts</h2>
+            <p className="text-sm text-stone-500">Operational strip for current-day execution.</p>
+          </div>
+          <Link to="/agency/calendar" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">Open full calendar</Link>
+        </div>
+
+        {todayShiftStripe.length === 0 ? (
+          <div className="rounded-3xl border border-stone-200 bg-white p-8 text-sm text-stone-500 shadow-sm">No shifts on today's timeline yet.</div>
+        ) : (
+          <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
+            {todayShiftStripe.map((event) => {
+              const status = getTodayShiftStatus(event);
+              const area = event.locationLabel || 'Area TBD';
+              const defaultEnd = new Date(new Date(event.start).getTime() + 4 * 60 * 60 * 1000).toISOString();
+              const shiftLinkTo = status === 'risk'
+                ? `/agency/emergency?startAt=${encodeURIComponent(event.start)}&endAt=${encodeURIComponent(event.end || defaultEnd)}&area=${encodeURIComponent(area)}&title=${encodeURIComponent(event.title || 'Emergency Childcare Coverage')}`
+                : '/agency/calendar';
+              return (
+                <Link key={event.id} to={shiftLinkTo} className={`min-w-[260px] max-w-[300px] rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${status === 'risk' ? 'border-rose-200 hover:border-rose-400' : 'border-stone-200'}`}>
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-stone-400">{formatTime(event.start)}</p>
+                  <p className="mt-2 text-sm font-bold text-stone-900">Family · {area}</p>
+                  <p className="mt-1 text-xs text-stone-500">Assigned: {event.nannyName || 'Unassigned'}</p>
+                  <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusPillStyles[status]}`}>
+                    {status === 'confirmed' ? '✅ confirmed' : status === 'pending' ? '⏳ pending' : '⚠️ risk'}
+                  </span>
+                  {status === 'risk' && (
+                    <p className="mt-2 text-xs font-semibold text-rose-600">→ Find replacement</p>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="flex items-end justify-between">
+            <h2 className="text-xl font-bold text-stone-900">Quick Actions</h2>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-stone-400">Do now</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Link to="/agency/jobs/new" className="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md">
+              <div className="mb-3 h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-stone-900">Post Job</h3>
+            </Link>
+            <Link to="/agency/emergency" className="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-rose-200 hover:shadow-md">
+              <div className="mb-3 h-10 w-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-stone-900">Emergency Replacement</h3>
+            </Link>
+            <Link to="/agency/search" className="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md">
+              <div className="mb-3 h-10 w-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
                 <Users className="h-5 w-5" />
               </div>
-              <h3 className="font-bold text-stone-900 mb-1">Talent Pool</h3>
-              <p className="text-xs text-stone-500">Invite nannies from search into your private pool.</p>
-            </Link>
-            <Link to="/agency/family-requests" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group">
-              <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-orange-100 group-hover:text-orange-600 mb-3 transition-colors">
-                <MessageSquare className="h-5 w-5" />
-              </div>
-              <h3 className="font-bold text-stone-900 mb-1">Family Request Inbox</h3>
-              <p className="text-xs text-stone-500">Review matched family leads and respond quickly.</p>
-            </Link>
-            <Link to="/agency/request-settings" className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group">
-              <div className="h-10 w-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 group-hover:bg-purple-100 group-hover:text-purple-600 mb-3 transition-colors">
-                <Star className="h-5 w-5" />
-              </div>
-              <h3 className="font-bold text-stone-900 mb-1">Matching Settings</h3>
-              <p className="text-xs text-stone-500">Tune service areas, care types, and budget fit signals.</p>
+              <h3 className="font-bold text-stone-900">View Available Nannies</h3>
             </Link>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-stone-900">Recent Inquiries</h2>
-            <Link to="/agency/messages" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">View all</Link>
+        <div className="space-y-4">
+          <div className="flex items-end justify-between">
+            <h2 className="text-xl font-bold text-stone-900">Smart Insights</h2>
+            <Sparkles className="h-5 w-5 text-amber-500" />
           </div>
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
-            {inquiries.length === 0 ? (
-              <div className="p-6 text-sm text-stone-500">No recent inquiries yet. New family messages will appear here.</div>
-            ) : (
-              <div className="divide-y divide-stone-100">
-                {inquiries.map((inq) => {
-                  const stage = (inq.inquiry_stage || 'new') as InquiryStage;
-                  return (
-                    <div key={inq.id} className="p-4 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-stone-900 truncate">{inq.family_name || 'Family'} inquiry</p>
-                        <p className="text-xs text-stone-500 mt-0.5 truncate">{inq.inquiry_description_preview || inq.last_message || 'No details'}</p>
-                        <p className="text-[11px] text-stone-400 mt-1">{formatDate(inq.updated_at || inq.created_at)}</p>
+          <div className="space-y-3 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+            <Link to="/agency/talent" className="block rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 hover:border-amber-200 hover:bg-amber-50">
+              <p className="text-sm font-bold text-stone-900">{decliningReliabilityNannies} nannies with declining reliability</p>
+              <p className="mt-1 text-xs text-stone-500">Based on recent call no-show outcomes.</p>
+            </Link>
+            <Link to="/agency/calendar" className="block rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 hover:border-rose-200 hover:bg-rose-50">
+              <p className="text-sm font-bold text-stone-900">{highRiskThisWeek} high-risk shifts this week</p>
+              <p className="mt-1 text-xs text-stone-500">Includes unassigned and near-term pending shifts.</p>
+            </Link>
+            <Link to="/agency/request-settings" className="block rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 hover:border-teal-200 hover:bg-teal-50">
+              <p className="text-sm font-bold text-stone-900">Improve match quality</p>
+              <p className="mt-1 text-xs text-stone-500">Adjust matching rules to reduce emergency replacements.</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-stone-900">Recent Inquiries</h2>
+            <p className="text-sm text-stone-500">Update stage inline and hand off fast.</p>
+          </div>
+          <Link to="/agency/messages" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">View all</Link>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
+          {inquiries.length === 0 ? (
+            <div className="p-6 text-sm text-stone-500">No recent inquiries yet. New family messages will appear here.</div>
+          ) : (
+            <div className="divide-y divide-stone-100">
+              {inquiries.map((inq) => {
+                const stage = (inq.inquiry_stage || 'new') as InquiryStage;
+                return (
+                  <article key={inq.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${INQUIRY_STAGE_STYLES[stage] || 'bg-stone-50 text-stone-600 border-stone-200'}`}>
+                          {INQUIRY_STAGE_LABELS[stage]}
+                        </span>
+                        <p className="truncate text-sm font-semibold text-stone-900">{inq.family_name || 'Family'} inquiry</p>
                       </div>
+                      <p className="mt-1 truncate text-xs text-stone-500">{inq.inquiry_description_preview || inq.last_message || 'No details'}</p>
+                      <p className="mt-1 text-[11px] text-stone-400">Updated {formatDate(inq.updated_at || inq.created_at)}</p>
+                    </div>
+                    <label className="flex shrink-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                      Stage
                       <select
                         value={stage}
                         onChange={(e) => handleInquiryStageChange(inq.id, (e.target as HTMLInputElement).value as InquiryStage)}
-                        className="text-xs font-semibold rounded-lg px-2 py-1 border border-stone-200 bg-white text-stone-700"
+                        className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs font-semibold text-stone-700"
                       >
                         {Object.entries(INQUIRY_STAGE_LABELS).map(([value, label]) => (
                           <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    </label>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
