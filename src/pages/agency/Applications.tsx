@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, BookmarkPlus, Check, Phone } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
 import { addFamilyNotification, addNannyNotification, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -33,6 +34,7 @@ const STATUS_LABELS = {
 };
 
 export default function AgencyApplications() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [agencyId, setAgencyId] = useState('');
@@ -63,6 +65,7 @@ export default function AgencyApplications() {
   const [callOutcomeNotes, setCallOutcomeNotes] = useState('');
   const [isSavingCallOutcome, setIsSavingCallOutcome] = useState(false);
   const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState(false);
+  const [talentPoolActionError, setTalentPoolActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -97,7 +100,11 @@ export default function AgencyApplications() {
         };
       }));
       setApplications(enrichedApps);
-      setTalentPoolIds(new Set(poolItems.map((p: any) => p.nanny_id)));
+      setTalentPoolIds(new Set(
+        poolItems
+          .filter((p: any) => (p.invitation_status || 'accepted') === 'pending' || (p.invitation_status || 'accepted') === 'accepted')
+          .map((p: any) => p.nanny_id)
+      ));
     } catch (error) {
       console.error('Error loading applications:', error);
     }
@@ -150,8 +157,13 @@ export default function AgencyApplications() {
 
   const handleAddToPool = async (nannyId: string) => {
     if (!agencyId || !nannyId || talentPoolIds.has(nannyId)) return;
-    await addNannyToAgencyTalentPool(agencyId, nannyId);
-    setTalentPoolIds(prev => new Set([...prev, nannyId]));
+    setTalentPoolActionError(null);
+    try {
+      await addNannyToAgencyTalentPool(agencyId, nannyId);
+      setTalentPoolIds(prev => new Set([...prev, nannyId]));
+    } catch (error) {
+      setTalentPoolActionError(error instanceof Error ? error.message : 'Unable to invite nanny to the talent pool.');
+    }
     setOpenDropdownId(null);
   };
 
@@ -387,6 +399,35 @@ export default function AgencyApplications() {
 
   const overdueFollowupsCount = applications.filter((app) => isOverdueCallPendingFollowup(app)).length;
 
+  const placementFilterParam = (searchParams.get('placementType') || '').toLowerCase();
+  const placementFilter: 'all' | 'full-time' | 'part-time' | 'recurring' =
+    placementFilterParam === 'full-time' || placementFilterParam === 'part-time' || placementFilterParam === 'recurring'
+      ? placementFilterParam
+      : 'all';
+
+  const isApplicationInPlacementBucket = (
+    app: any,
+    bucket: 'all' | 'full-time' | 'part-time' | 'recurring'
+  ): boolean => {
+    if (bucket === 'all') return true;
+
+    const activePlacementStatuses = new Set(['accepted', 'hired', 'active', 'pending_family_approval']);
+    if (!activePlacementStatuses.has(String(app?.status || ''))) return false;
+
+    const scheduleType = String(app?.jobs?.schedule_type || '').toLowerCase();
+    const content = `${scheduleType} ${String(app?.job_title || '')} ${String(app?.jobs?.title || '')} ${String(app?.jobs?.description || '')}`.toLowerCase();
+
+    const includesAny = (tokens: string[]) => tokens.some((token) => content.includes(token));
+
+    const hasFullTime = includesAny(['full-time', 'full time', 'fulltime']);
+    const hasPartTime = includesAny(['part-time', 'part time', 'parttime']);
+    const hasRecurring = includesAny(['weekly_days', 'recurring', 'recurrence', 'weekly', 'repeating', 'repeat']);
+
+    if (bucket === 'full-time') return hasFullTime;
+    if (bucket === 'part-time') return hasPartTime;
+    return hasRecurring && !hasFullTime && !hasPartTime;
+  };
+
   const filteredApps = applications.filter((app) => {
     const searchMatches =
       app.nanny_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -394,8 +435,23 @@ export default function AgencyApplications() {
 
     if (!searchMatches) return false;
     if (queueFilter === 'followups') return isOverdueCallPendingFollowup(app);
-    return true;
+    return isApplicationInPlacementBucket(app, placementFilter);
   });
+
+  const placementFilterLabel =
+    placementFilter === 'full-time'
+      ? 'Full-Time placements'
+      : placementFilter === 'part-time'
+        ? 'Part-Time placements'
+        : placementFilter === 'recurring'
+          ? 'Other Recurring placements'
+          : null;
+
+  const clearPlacementFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('placementType');
+    setSearchParams(next);
+  };
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -422,6 +478,20 @@ export default function AgencyApplications() {
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Applications</h1>
           <p className="text-stone-500 mt-1">Review and manage candidates for your open jobs.</p>
+          {placementFilterLabel && (
+            <div className="mt-2 flex items-center gap-2">
+              <p className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Filter: {placementFilterLabel}
+              </p>
+              <button
+                type="button"
+                onClick={clearPlacementFilter}
+                className="text-xs font-semibold text-stone-600 underline underline-offset-2 hover:text-stone-900"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -462,6 +532,12 @@ export default function AgencyApplications() {
         <div className="px-6 py-4 border-b border-stone-200/70 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-stone-900">Candidate Pipeline</h2>
+
+        {talentPoolActionError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {talentPoolActionError}
+          </div>
+        ) : null}
             <p className="text-xs text-stone-500 mt-0.5">Prioritized view with status, call signal, and next actions.</p>
           </div>
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-white/90 border border-stone-200 text-stone-700">

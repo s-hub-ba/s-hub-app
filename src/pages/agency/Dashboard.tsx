@@ -252,6 +252,47 @@ export default function AgencyDashboard() {
 
   const highRiskThisWeek = stats.shiftsAtRisk;
 
+  const longTermPlacementSummary = useMemo(() => {
+    const activePlacementStatuses = new Set(['accepted', 'hired', 'active', 'pending_family_approval']);
+
+    const includesAny = (value: string, tokens: string[]) => tokens.some((token) => value.includes(token));
+
+    const classifyPlacement = (app: any): 'fullTime' | 'partTime' | 'recurring' | null => {
+      const scheduleType = String(app?.jobs?.schedule_type || '').toLowerCase();
+      const content = `${scheduleType} ${String(app?.jobs?.title || '')} ${String(app?.jobs?.description || '')}`.toLowerCase();
+
+      const hasFullTime = includesAny(content, ['full-time', 'full time', 'fulltime']);
+      const hasPartTime = includesAny(content, ['part-time', 'part time', 'parttime']);
+      const hasRecurring = includesAny(content, ['weekly_days', 'recurring', 'recurrence', 'weekly', 'repeating', 'repeat']);
+      const isTemporaryOnly = includesAny(content, ['temporary', 'one-time', 'one time', 'temp']) && !hasRecurring && !hasFullTime && !hasPartTime;
+
+      if (isTemporaryOnly) return null;
+      if (hasFullTime) return 'fullTime';
+      if (hasPartTime) return 'partTime';
+      if (hasRecurring) return 'recurring';
+      return null;
+    };
+
+    const summary = {
+      total: 0,
+      fullTime: 0,
+      partTime: 0,
+      recurring: 0,
+    };
+
+    (applications || []).forEach((app) => {
+      if (!activePlacementStatuses.has(String(app?.status || ''))) return;
+
+      const bucket = classifyPlacement(app);
+      if (!bucket) return;
+
+      summary.total += 1;
+      summary[bucket] += 1;
+    });
+
+    return summary;
+  }, [applications]);
+
   const statusPillStyles: Record<'confirmed' | 'pending' | 'risk', string> = {
     confirmed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     pending: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -417,6 +458,43 @@ export default function AgencyDashboard() {
               <p className="mt-1 text-xs text-stone-500">Adjust matching rules to reduce emergency replacements.</p>
             </Link>
           </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-stone-900">Long-Term Placements</h2>
+            <p className="text-sm text-stone-500">Live breakdown of active placements by schedule type.</p>
+          </div>
+          <Link to="/agency/applications" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">Open applications</Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Link to="/agency/applications?placementType=full-time" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Full-Time</p>
+            <p className="mt-2 text-3xl font-black text-emerald-900">{longTermPlacementSummary.fullTime}</p>
+            <p className="mt-1 text-xs text-emerald-800/80">Core full-time family placements</p>
+            <p className="mt-2 text-xs font-semibold text-emerald-700">View in Applications</p>
+          </Link>
+
+          <Link to="/agency/applications?placementType=part-time" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Part-Time</p>
+            <p className="mt-2 text-3xl font-black text-sky-900">{longTermPlacementSummary.partTime}</p>
+            <p className="mt-1 text-xs text-sky-800/80">Ongoing part-time placements</p>
+            <p className="mt-2 text-xs font-semibold text-sky-700">View in Applications</p>
+          </Link>
+
+          <Link to="/agency/applications?placementType=recurring" className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">Other Recurring</p>
+            <p className="mt-2 text-3xl font-black text-violet-900">{longTermPlacementSummary.recurring}</p>
+            <p className="mt-1 text-xs text-violet-800/80">Recurring weekly and repeating placements</p>
+            <p className="mt-2 text-xs font-semibold text-violet-700">View in Applications</p>
+          </Link>
+        </div>
+
+        <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600 shadow-sm">
+          <span className="font-semibold text-stone-800">{longTermPlacementSummary.total}</span> active long-term placements are currently in progress.
         </div>
       </section>
 

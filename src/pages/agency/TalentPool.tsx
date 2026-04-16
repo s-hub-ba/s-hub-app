@@ -34,6 +34,13 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_OPTIONS = ['new', 'invited', 'communicated', 'done'] as const;
 
+const INVITATION_STATUS_META: Record<string, { label: string; className: string }> = {
+  pending: { label: 'Invite Pending', className: 'bg-orange-100 text-orange-700 border-orange-200' },
+  accepted: { label: 'Joined Pool', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  declined: { label: 'Invite Declined', className: 'bg-stone-100 text-stone-700 border-stone-200' },
+  left: { label: 'Left Pool', className: 'bg-red-100 text-red-700 border-red-200' },
+};
+
 export default function TalentPool() {
   const { user } = useAuth();
   const [agencyId, setAgencyId] = useState('');
@@ -315,6 +322,8 @@ export default function TalentPool() {
               first_name: profile.first_name,
               last_name: profile.last_name,
             });
+            const invitationStatus = item.invitation_status || 'accepted';
+            const invitationMeta = INVITATION_STATUS_META[invitationStatus] || INVITATION_STATUS_META.accepted;
 
             return (
               <motion.article
@@ -341,6 +350,9 @@ export default function TalentPool() {
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-700">
                           CVID {cvid}
+                        </span>
+                        <span className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${invitationMeta.className}`}>
+                          {invitationMeta.label}
                         </span>
                       </div>
                     </div>
@@ -455,6 +467,13 @@ export default function TalentPool() {
                     </div>
                   </div>
                 </div>
+
+                {item.exclusion_note ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-red-700">Exit note</p>
+                    <p className="mt-2 text-sm text-stone-700">{item.exclusion_note}</p>
+                  </div>
+                ) : null}
               </motion.article>
             );
           })}

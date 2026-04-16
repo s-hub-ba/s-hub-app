@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 type ProtectedRouteProps = {
-  allowedRoles?: ('nanny' | 'agency_admin' | 'agency_recruiter' | 'superadmin' | 'family')[];
+  allowedRoles?: ('nanny' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin' | 'family')[];
 };
 
 export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {

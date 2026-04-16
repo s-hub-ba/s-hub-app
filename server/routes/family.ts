@@ -370,6 +370,29 @@ router.post('/requests/submit', requireFamilyAuth, async (req: any, res: any) =>
         created_at: nowIso,
         updated_at: nowIso,
       });
+
+      await db.collection('notification_jobs').add({
+        eventId: `family-request-${assignmentId}`,
+        trigger: 'direct_notification',
+        recipientUserId: match.agencyId,
+        recipientRole: 'agency',
+        channel: 'in_app',
+        status: 'pending',
+        scheduledAt: new Date(),
+        sentAt: null,
+        payload: {
+          title: `New family request in ${sanitized.borough}`,
+          body: `${sanitized.parent_name} requested ${sanitized.care_type} care`,
+          data: {
+            link: `/agency/family-requests/${assignmentId}`,
+            skipInApp: '1',
+          },
+        },
+        audit: {
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
     }));
 
     await requestRef.update({

@@ -197,6 +197,7 @@ async function deliverJob(doc: FirebaseFirestore.QueryDocumentSnapshot): Promise
   const title = String(data.payload?.title || 'Schedule update');
   const message = String(data.payload?.body || 'You have a scheduling update.');
   const link = resolveLink(data.payload, role);
+  const skipInApp = String(data.payload?.data?.skipInApp || '') === '1';
   const attemptCount = Number(data.attempt_count || 0) + 1;
 
   // ── Validation ──────────────────────────────────────────────────────────────
@@ -244,20 +245,22 @@ async function deliverJob(doc: FirebaseFirestore.QueryDocumentSnapshot): Promise
   // ── Delivery ────────────────────────────────────────────────────────────────
 
   try {
-    // 1. In-app notification (always)
-    await db.collection(notificationCollection).add({
-      [recipientField]: recipientId,
-      type: 'system',
-      title,
-      message,
-      link,
-      read: false,
-      created_at: now,
-      updated_at: now,
-    });
-    console.log(
-      `[notification-worker] Job ${jobId}: In-app delivered → ${notificationCollection}/${recipientId}`
-    );
+    // 1. In-app notification (unless explicitly skipped by producer)
+    if (!skipInApp) {
+      await db.collection(notificationCollection).add({
+        [recipientField]: recipientId,
+        type: 'system',
+        title,
+        message,
+        link,
+        read: false,
+        created_at: now,
+        updated_at: now,
+      });
+      console.log(
+        `[notification-worker] Job ${jobId}: In-app delivered → ${notificationCollection}/${recipientId}`
+      );
+    }
 
     // 2. FCM push (best-effort — never blocks in-app delivery)
     const fcmTokens = await getFcmTokensForRecipient(recipientId, role);

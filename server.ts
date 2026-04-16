@@ -9,6 +9,7 @@ import nannyRoutes from './server/routes/nanny.js';
 import familyRoutes from './server/routes/family.js';
 import schedulingRoutes from './server/routes/scheduling.js';
 import adminRoutes from './server/routes/admin.js';
+import notificationsRoutes from './server/routes/notifications.js';
 import { startNotificationWorker } from './server/services/notificationWorker.ts';
 
 dotenv.config({ path: '.env' });
@@ -95,6 +96,7 @@ async function startServer() {
   app.use('/api/family', familyRoutes);
   app.use('/api/scheduling', schedulingRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/notifications', notificationsRoutes);
 
   // Vite middleware for development and SPA fallback
   if (process.env.NODE_ENV !== 'production') {

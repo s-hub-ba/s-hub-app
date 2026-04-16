@@ -311,6 +311,210 @@ const computeAndPersistOfficialShiftScore = async (nannyId: string, weekKeyInput
   };
 };
 
+const normalizeTalentPoolInvitationStatus = (value: unknown): 'pending' | 'accepted' | 'declined' | 'left' => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'pending' || normalized === 'accepted' || normalized === 'declined' || normalized === 'left') {
+    return normalized;
+  }
+  return 'accepted';
+};
+
+const getAgencyDisplayName = async (agencyId: string) => {
+  if (!agencyId) return 'Agency';
+  const snap = await db.collection('agency_profiles').doc(agencyId).get();
+  if (!snap.exists) return 'Agency';
+  const data = snap.data() || {};
+  return String(data.company_name || data.name || 'Agency');
+};
+
+// GET /api/nanny/talent-pools - List current and past talent-pool memberships for the signed-in nanny
+router.get('/talent-pools', requireNannyAuth, async (req: any, res: any) => {
+  const nannyId = String(req.userId || '');
+
+  try {
+    const snap = await db.collection('agency_talent_pool')
+      .where('nanny_id', '==', nannyId)
+      .get();
+
+    const items = await Promise.all(snap.docs.map(async (docSnap) => {
+      const data = docSnap.data() || {};
+      const agencyId = String(data.agency_id || '');
+      return {
+        id: docSnap.id,
+        ...data,
+        invitation_status: normalizeTalentPoolInvitationStatus(data.invitation_status),
+        agency_name: await getAgencyDisplayName(agencyId),
+      };
+    }));
+
+    items.sort((a, b) => {
+      const aTime = new Date(String(a.updated_at || a.created_at || 0)).getTime();
+      const bTime = new Date(String(b.updated_at || b.created_at || 0)).getTime();
+      return bTime - aTime;
+    });
+
+    return res.json({ items });
+  } catch (error: any) {
+    const normalized = normalizeFirebaseAdminError(error);
+    return res.status(normalized.status).json({ error: normalized.message });
+  }
+});
+
+// POST /api/nanny/talent-pools/:id/respond - Accept or decline a pending talent-pool invite
+router.post('/talent-pools/:id/respond', requireNannyAuth, async (req: any, res: any) => {
+  const nannyId = String(req.userId || '');
+  const itemId = String(req.params?.id || '');
+  const responseStatus = String(req.body?.response || '').trim().toLowerCase();
+
+  if (!itemId || !['accepted', 'declined'].includes(responseStatus)) {
+    return res.status(400).json({ error: 'Valid talent-pool item id and response are required' });
+  }
+
+  try {
+    const itemRef = db.collection('agency_talent_pool').doc(itemId);
+    const itemSnap = await itemRef.get();
+    if (!itemSnap.exists) return res.status(404).json({ error: 'Talent-pool invitation not found' });
+
+    const data = itemSnap.data() || {};
+    if (String(data.nanny_id || '') !== nannyId) {
+      return res.status(403).json({ error: 'Forbidden: invitation does not belong to this nanny' });
+    }
+
+    const currentStatus = normalizeTalentPoolInvitationStatus(data.invitation_status);
+    if (currentStatus !== 'pending') {
+      return res.status(400).json({ error: 'Only pending talent-pool invites can be responded to' });
+    }
+
+    const nowIso = new Date().toISOString();
+    await itemRef.set({
+      invitation_status: responseStatus,
+      status: responseStatus === 'accepted' ? (String(data.status || '').trim() || 'new') : 'invited',
+      responded_at: nowIso,
+      updated_at: nowIso,
+    }, { merge: true });
+
+    const agencyId = String(data.agency_id || '');
+    await db.collection('agency_notifications').add({
+      agency_id: agencyId,
+      type: 'message',
+      title: responseStatus === 'accepted' ? 'Talent pool invite accepted' : 'Talent pool invite declined',
+      message: responseStatus === 'accepted'
+        ? 'A nanny accepted your talent-pool invitation.'
+        : 'A nanny declined your talent-pool invitation.',
+      link: '/agency/talent',
+      read: false,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    await db.collection('notification_jobs').add({
+      eventId: `talent-pool-respond-${itemId}`,
+      trigger: 'direct_notification',
+      recipientUserId: agencyId,
+      recipientRole: 'agency',
+      channel: 'in_app',
+      status: 'pending',
+      scheduledAt: new Date(),
+      sentAt: null,
+      payload: {
+        title: responseStatus === 'accepted' ? 'Talent pool invite accepted' : 'Talent pool invite declined',
+        body: responseStatus === 'accepted'
+          ? 'A nanny accepted your talent-pool invitation.'
+          : 'A nanny declined your talent-pool invitation.',
+        data: {
+          link: '/agency/talent',
+          skipInApp: '1',
+        },
+      },
+      audit: {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    return res.json({ success: true, invitation_status: responseStatus });
+  } catch (error: any) {
+    const normalized = normalizeFirebaseAdminError(error);
+    return res.status(normalized.status).json({ error: normalized.message });
+  }
+});
+
+// POST /api/nanny/talent-pools/:id/leave - Leave an accepted talent pool with a required exclusion note
+router.post('/talent-pools/:id/leave', requireNannyAuth, async (req: any, res: any) => {
+  const nannyId = String(req.userId || '');
+  const itemId = String(req.params?.id || '');
+  const exclusionNote = String(req.body?.exclusionNote || '').trim();
+
+  if (!itemId || !exclusionNote) {
+    return res.status(400).json({ error: 'Talent-pool item id and exclusionNote are required' });
+  }
+
+  try {
+    const itemRef = db.collection('agency_talent_pool').doc(itemId);
+    const itemSnap = await itemRef.get();
+    if (!itemSnap.exists) return res.status(404).json({ error: 'Talent-pool membership not found' });
+
+    const data = itemSnap.data() || {};
+    if (String(data.nanny_id || '') !== nannyId) {
+      return res.status(403).json({ error: 'Forbidden: talent-pool membership does not belong to this nanny' });
+    }
+
+    const currentStatus = normalizeTalentPoolInvitationStatus(data.invitation_status);
+    if (currentStatus !== 'accepted') {
+      return res.status(400).json({ error: 'Only accepted talent-pool memberships can be left' });
+    }
+
+    const nowIso = new Date().toISOString();
+    await itemRef.set({
+      invitation_status: 'left',
+      left_at: nowIso,
+      exclusion_note: exclusionNote,
+      latest_note: exclusionNote,
+      updated_at: nowIso,
+    }, { merge: true });
+
+    const agencyId = String(data.agency_id || '');
+    await db.collection('agency_notifications').add({
+      agency_id: agencyId,
+      type: 'message',
+      title: 'Nanny left talent pool',
+      message: `A nanny left your talent pool. Reason: ${exclusionNote}`,
+      link: '/agency/talent',
+      read: false,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    await db.collection('notification_jobs').add({
+      eventId: `talent-pool-left-${itemId}`,
+      trigger: 'direct_notification',
+      recipientUserId: agencyId,
+      recipientRole: 'agency',
+      channel: 'in_app',
+      status: 'pending',
+      scheduledAt: new Date(),
+      sentAt: null,
+      payload: {
+        title: 'Nanny left talent pool',
+        body: `A nanny left your talent pool. Reason: ${exclusionNote}`,
+        data: {
+          link: '/agency/talent',
+          skipInApp: '1',
+        },
+      },
+      audit: {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    return res.json({ success: true, invitation_status: 'left' });
+  } catch (error: any) {
+    const normalized = normalizeFirebaseAdminError(error);
+    return res.status(normalized.status).json({ error: normalized.message });
+  }
+});
+
 // POST /api/nanny/register - Register a nanny (handles invite links)
 router.post('/register', async (req, res) => {
   const { email, password, first_name, last_name, invite_code } = req.body;
