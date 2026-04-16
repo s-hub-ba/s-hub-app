@@ -278,7 +278,7 @@ export default function FamilyApplications() {
                     <label className="block text-sm font-bold text-stone-700 mb-2">Your Review</label>
                     <textarea
                       value={reviewText}
-                      onChange={(e) => setReviewText((e.target as HTMLInputElement).value)}
+                      onChange={(e) => setReviewText(e.currentTarget.value)}
                       placeholder="Tell us about your experience..."
                       rows={4}
                       className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"

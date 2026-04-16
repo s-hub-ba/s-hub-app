@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, BookmarkPlus, Check, Phone } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
 import { addFamilyNotification, addNannyNotification, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -33,6 +34,7 @@ const STATUS_LABELS = {
 };
 
 export default function AgencyApplications() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [agencyId, setAgencyId] = useState('');
@@ -63,6 +65,7 @@ export default function AgencyApplications() {
   const [callOutcomeNotes, setCallOutcomeNotes] = useState('');
   const [isSavingCallOutcome, setIsSavingCallOutcome] = useState(false);
   const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState(false);
+  const [talentPoolActionError, setTalentPoolActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -97,7 +100,11 @@ export default function AgencyApplications() {
         };
       }));
       setApplications(enrichedApps);
-      setTalentPoolIds(new Set(poolItems.map((p: any) => p.nanny_id)));
+      setTalentPoolIds(new Set(
+        poolItems
+          .filter((p: any) => (p.invitation_status || 'accepted') === 'pending' || (p.invitation_status || 'accepted') === 'accepted')
+          .map((p: any) => p.nanny_id)
+      ));
     } catch (error) {
       console.error('Error loading applications:', error);
     }
@@ -150,8 +157,13 @@ export default function AgencyApplications() {
 
   const handleAddToPool = async (nannyId: string) => {
     if (!agencyId || !nannyId || talentPoolIds.has(nannyId)) return;
-    await addNannyToAgencyTalentPool(agencyId, nannyId);
-    setTalentPoolIds(prev => new Set([...prev, nannyId]));
+    setTalentPoolActionError(null);
+    try {
+      await addNannyToAgencyTalentPool(agencyId, nannyId);
+      setTalentPoolIds(prev => new Set([...prev, nannyId]));
+    } catch (error) {
+      setTalentPoolActionError(error instanceof Error ? error.message : 'Unable to invite nanny to the talent pool.');
+    }
     setOpenDropdownId(null);
   };
 
@@ -387,6 +399,35 @@ export default function AgencyApplications() {
 
   const overdueFollowupsCount = applications.filter((app) => isOverdueCallPendingFollowup(app)).length;
 
+  const placementFilterParam = (searchParams.get('placementType') || '').toLowerCase();
+  const placementFilter: 'all' | 'full-time' | 'part-time' | 'recurring' =
+    placementFilterParam === 'full-time' || placementFilterParam === 'part-time' || placementFilterParam === 'recurring'
+      ? placementFilterParam
+      : 'all';
+
+  const isApplicationInPlacementBucket = (
+    app: any,
+    bucket: 'all' | 'full-time' | 'part-time' | 'recurring'
+  ): boolean => {
+    if (bucket === 'all') return true;
+
+    const activePlacementStatuses = new Set(['accepted', 'hired', 'active', 'pending_family_approval']);
+    if (!activePlacementStatuses.has(String(app?.status || ''))) return false;
+
+    const scheduleType = String(app?.jobs?.schedule_type || '').toLowerCase();
+    const content = `${scheduleType} ${String(app?.job_title || '')} ${String(app?.jobs?.title || '')} ${String(app?.jobs?.description || '')}`.toLowerCase();
+
+    const includesAny = (tokens: string[]) => tokens.some((token) => content.includes(token));
+
+    const hasFullTime = includesAny(['full-time', 'full time', 'fulltime']);
+    const hasPartTime = includesAny(['part-time', 'part time', 'parttime']);
+    const hasRecurring = includesAny(['weekly_days', 'recurring', 'recurrence', 'weekly', 'repeating', 'repeat']);
+
+    if (bucket === 'full-time') return hasFullTime;
+    if (bucket === 'part-time') return hasPartTime;
+    return hasRecurring && !hasFullTime && !hasPartTime;
+  };
+
   const filteredApps = applications.filter((app) => {
     const searchMatches =
       app.nanny_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -394,8 +435,23 @@ export default function AgencyApplications() {
 
     if (!searchMatches) return false;
     if (queueFilter === 'followups') return isOverdueCallPendingFollowup(app);
-    return true;
+    return isApplicationInPlacementBucket(app, placementFilter);
   });
+
+  const placementFilterLabel =
+    placementFilter === 'full-time'
+      ? 'Full-Time placements'
+      : placementFilter === 'part-time'
+        ? 'Part-Time placements'
+        : placementFilter === 'recurring'
+          ? 'Other Recurring placements'
+          : null;
+
+  const clearPlacementFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('placementType');
+    setSearchParams(next);
+  };
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -422,6 +478,20 @@ export default function AgencyApplications() {
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Applications</h1>
           <p className="text-stone-500 mt-1">Review and manage candidates for your open jobs.</p>
+          {placementFilterLabel && (
+            <div className="mt-2 flex items-center gap-2">
+              <p className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Filter: {placementFilterLabel}
+              </p>
+              <button
+                type="button"
+                onClick={clearPlacementFilter}
+                className="text-xs font-semibold text-stone-600 underline underline-offset-2 hover:text-stone-900"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -433,7 +503,7 @@ export default function AgencyApplications() {
             placeholder="Search applicants or jobs..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -462,6 +532,12 @@ export default function AgencyApplications() {
         <div className="px-6 py-4 border-b border-stone-200/70 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-stone-900">Candidate Pipeline</h2>
+
+        {talentPoolActionError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {talentPoolActionError}
+          </div>
+        ) : null}
             <p className="text-xs text-stone-500 mt-0.5">Prioritized view with status, call signal, and next actions.</p>
           </div>
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-white/90 border border-stone-200 text-stone-700">
@@ -528,7 +604,7 @@ export default function AgencyApplications() {
                       <select
                         className={`text-xs font-bold rounded-lg px-2.5 py-1.5 border border-transparent hover:border-stone-200 outline-none cursor-pointer appearance-none ${STATUS_COLORS[app.status as keyof typeof STATUS_COLORS]}`}
                         value={app.status}
-                        onChange={(e) => handleStatusChange(app.id, (e.target as HTMLInputElement).value)}
+                        onChange={(e) => handleStatusChange(app.id, e.currentTarget.value)}
                       >
                         {Object.entries(STATUS_LABELS).map(([key, label]) => (
                           <option key={key} value={key} className="bg-white text-stone-900">{label}</option>
@@ -732,7 +808,7 @@ export default function AgencyApplications() {
                 <input
                   type="datetime-local"
                   value={callDateTime}
-                  onChange={(e) => setCallDateTime((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setCallDateTime(e.currentTarget.value)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
                 />
               </div>
@@ -740,7 +816,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Call Note</label>
                 <textarea
                   value={callNote}
-                  onChange={(e) => setCallNote((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setCallNote(e.currentTarget.value)}
                   rows={4}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none transition"
                   placeholder="e.g. 15-minute intro call to discuss availability and role fit."
@@ -834,7 +910,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Relationship Context</label>
                 <select
                   value={reviewRelationshipContext}
-                  onChange={(e) => setReviewRelationshipContext((e.target as HTMLInputElement).value as any)}
+                  onChange={(e) => setReviewRelationshipContext(e.currentTarget.value as any)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 transition"
                 >
                   <option value="applied">Applied</option>
@@ -876,7 +952,7 @@ export default function AgencyApplications() {
                 <div className="relative">
                   <textarea
                     value={reviewStrengths}
-                    onChange={(e) => setReviewStrengths((e.target as HTMLInputElement).value)}
+                    onChange={(e) => setReviewStrengths(e.currentTarget.value)}
                     rows={3}
                     maxLength={120}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none transition"
@@ -894,7 +970,7 @@ export default function AgencyApplications() {
                 <div className="relative">
                   <textarea
                     value={reviewNotes}
-                    onChange={(e) => setReviewNotes((e.target as HTMLInputElement).value)}
+                    onChange={(e) => setReviewNotes(e.currentTarget.value)}
                     rows={3}
                     maxLength={240}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none transition"
@@ -952,7 +1028,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Outcome</label>
                 <select
                   value={callOutcome}
-                  onChange={(e) => setCallOutcome((e.target as HTMLInputElement).value as 'happened' | 'no_show' | 'cancelled')}
+                  onChange={(e) => setCallOutcome(e.currentTarget.value as 'happened' | 'no_show' | 'cancelled')}
                   className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="happened">Call happened</option>
@@ -965,7 +1041,7 @@ export default function AgencyApplications() {
                 <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Notes about nanny (optional)</label>
                 <textarea
                   value={callOutcomeNotes}
-                  onChange={(e) => setCallOutcomeNotes((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setCallOutcomeNotes(e.currentTarget.value)}
                   rows={4}
                   maxLength={400}
                   className="w-full border border-stone-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500"

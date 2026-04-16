@@ -285,7 +285,7 @@ export default function AgencyProfile() {
                     <label className="block text-sm font-medium text-stone-700 mb-2">Care needs</label>
                     <textarea
                       value={inquiryDescription}
-                      onChange={(e) => setInquiryDescription((e.target as HTMLInputElement).value)}
+                      onChange={(e) => setInquiryDescription(e.currentTarget.value)}
                       rows={4}
                       placeholder="Share details like child age, preferred timing, and any special requirements..."
                       className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
@@ -350,7 +350,7 @@ export default function AgencyProfile() {
                         <input
                           type="date"
                           value={inquiryStartDate}
-                          onChange={(e) => setInquiryStartDate((e.target as HTMLInputElement).value)}
+                          onChange={(e) => setInquiryStartDate(e.currentTarget.value)}
                           className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                         />
                       </div>
@@ -359,7 +359,7 @@ export default function AgencyProfile() {
                         <input
                           type="date"
                           value={inquiryEndDate}
-                          onChange={(e) => setInquiryEndDate((e.target as HTMLInputElement).value)}
+                          onChange={(e) => setInquiryEndDate(e.currentTarget.value)}
                           className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                         />
                       </div>

@@ -108,6 +108,8 @@ export interface User {
   id: string;
   email: string;
   role: AppUserRole;
+  agency_id?: string | null;
+  agency_profile_id?: string | null;
   status?: AppUserStatus;
   created_at: any;
   updated_at?: any;
@@ -1512,6 +1514,9 @@ export const getNannyReferenceShareTargets = async (nannyId: string): Promise<Na
     ]);
 
     talentPoolSnap.docs.forEach((entry) => {
+      const invitationStatus = String(entry.data()?.invitation_status || '').trim().toLowerCase();
+      if (invitationStatus === 'declined' || invitationStatus === 'left') return;
+
       const agencyId = String(entry.data().agency_id || '');
       if (agencyId) targetIds.add(agencyId);
     });
@@ -3920,6 +3925,12 @@ export interface AgencyTalentPoolItem {
   agency_id: string;
   nanny_id: string;
   status?: string;
+  invitation_status?: 'pending' | 'accepted' | 'declined' | 'left';
+  agency_name?: string;
+  invited_at?: any;
+  responded_at?: any;
+  left_at?: any;
+  exclusion_note?: string;
   tags?: string[];
   latest_note?: string;
   created_at?: any;
@@ -3939,6 +3950,13 @@ export const addFamilyNotification = async (familyId: string, title: string, mes
       read: false,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
+    });
+    await queuePushNotification({
+      recipientRole: 'family',
+      recipientUserId: familyId,
+      title,
+      message,
+      link: link || '/family/notifications',
     });
     return { id: docRef.id };
   } catch (error) {
@@ -3970,6 +3988,13 @@ export const addNannyNotification = async (nannyId: string, title: string, messa
       read: false,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
+    });
+    await queuePushNotification({
+      recipientRole: 'nanny',
+      recipientUserId: nannyId,
+      title,
+      message,
+      link: link || '/nanny/notifications',
     });
     return { id: docRef.id };
   } catch (error) {
@@ -4039,11 +4064,41 @@ export const addAgencyNotification = async (agencyId: string, title: string, mes
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
     });
+    await queuePushNotification({
+      recipientRole: 'agency',
+      recipientUserId: agencyId,
+      title,
+      message,
+      link: link || '/agency/messages',
+    });
     return { id: docRef.id };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
 };
+
+async function queuePushNotification(input: {
+  recipientRole: 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter';
+  recipientUserId: string;
+  title: string;
+  message: string;
+  link?: string;
+}) {
+  try {
+    const headers = await buildApiHeaders();
+    const response = await fetch(buildApiUrl('/api/notifications/queue'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      console.warn('[notifications] failed to queue push job', payload?.error || response.statusText);
+    }
+  } catch (error) {
+    console.warn('[notifications] failed to queue push job', error);
+  }
+}
 
 export const markAgencyNotificationRead = async (notificationId: string) => {
   const path = `agency_notifications/${notificationId}`;
@@ -4099,11 +4154,21 @@ export const getUsers = async () => {
 
 export const updateAdminUser = async (
   userId: string,
-  updates: Partial<Pick<User, 'role' | 'status'>>
+  updates: Partial<Pick<User, 'role' | 'status' | 'agency_id'>>
 ): Promise<User | null> => {
   const path = `users/${userId}`;
   try {
     if (!userId) return null;
+
+    const userRef = doc(db, 'users', userId);
+    const existingUserSnap = await getDoc(userRef);
+    const existingUserData = existingUserSnap.exists() ? existingUserSnap.data() : {};
+
+    const nextRole = (updates.role || existingUserData?.role || 'family') as AppUserRole;
+    const requestedAgencyId = typeof updates.agency_id === 'string' ? updates.agency_id.trim() : undefined;
+    const nextAgencyId = requestedAgencyId !== undefined
+      ? (requestedAgencyId || null)
+      : (typeof existingUserData?.agency_id === 'string' ? existingUserData.agency_id : null);
 
     const payload: Record<string, any> = {
       updated_at: serverTimestamp(),
@@ -4111,9 +4176,55 @@ export const updateAdminUser = async (
 
     if (updates.role) payload.role = updates.role;
     if (updates.status) payload.status = updates.status;
+    if (requestedAgencyId !== undefined) {
+      payload.agency_id = nextAgencyId;
+      payload.agency_profile_id = nextAgencyId;
+    }
 
-    await updateDoc(doc(db, 'users', userId), payload);
-    const updated = await getDoc(doc(db, 'users', userId));
+    await updateDoc(userRef, payload);
+
+    const recruiterSeatsQuery = query(collection(db, 'agency_recruiters'), where('user_id', '==', userId));
+    const recruiterSeatsSnap = await getDocs(recruiterSeatsQuery);
+    const recruiterSeats = recruiterSeatsSnap.docs;
+
+    if (nextRole === 'agency_recruiter' && nextAgencyId) {
+      const matchingSeat = recruiterSeats.find((seat) => seat.data()?.agency_id === nextAgencyId);
+      const email = String(existingUserData?.email || '');
+      const firstName = String(existingUserData?.first_name || '').trim() || 'Recruiter';
+      const lastName = String(existingUserData?.last_name || '').trim() || 'User';
+
+      if (matchingSeat) {
+        await updateDoc(matchingSeat.ref, {
+          agency_id: nextAgencyId,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          status: 'active',
+          updated_at: serverTimestamp(),
+        });
+      } else {
+        await addDoc(collection(db, 'agency_recruiters'), {
+          agency_id: nextAgencyId,
+          user_id: userId,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          status: 'active',
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
+      }
+
+      await Promise.all(
+        recruiterSeats
+          .filter((seat) => seat.id !== matchingSeat?.id)
+          .map((seat) => deleteDoc(seat.ref))
+      );
+    } else if (!recruiterSeatsSnap.empty) {
+      await Promise.all(recruiterSeats.map((seat) => deleteDoc(seat.ref)));
+    }
+
+    const updated = await getDoc(userRef);
     return updated.exists() ? ({ id: updated.id, status: 'active', ...updated.data() } as User) : null;
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -4203,6 +4314,9 @@ export const getAgencyTalentPool = async (agencyId: string): Promise<AgencyTalen
       return {
         id: d.id,
         ...data,
+        invitation_status: (['pending', 'accepted', 'declined', 'left'].includes(String(data.invitation_status || '').trim().toLowerCase())
+          ? String(data.invitation_status || '').trim().toLowerCase()
+          : 'accepted') as 'pending' | 'accepted' | 'declined' | 'left',
         nanny_profile: nannyDoc.exists() ? ({ id: nannyDoc.id, ...nannyDoc.data() } as NannyProfile) : null
       } as AgencyTalentPoolItem;
     }));
@@ -4215,31 +4329,88 @@ export const getAgencyTalentPool = async (agencyId: string): Promise<AgencyTalen
 };
 
 export const addNannyToAgencyTalentPool = async (agencyId: string, nannyId: string) => {
-  const path = 'agency_talent_pool';
-  try {
-    const existingQ = query(
-      collection(db, path),
-      where('agency_id', '==', agencyId),
-      where('nanny_id', '==', nannyId)
-    );
-    const existingSnap = await getDocs(existingQ);
-    if (!existingSnap.empty) {
-      return { id: existingSnap.docs[0].id };
-    }
+  const headers = await buildApiHeaders({ 'x-agency-id': agencyId });
+  const response = await fetch(buildApiUrl('/api/agency/talent-pool/invite'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ nannyId }),
+  });
 
-    const docRef = await addDoc(collection(db, path), {
-      agency_id: agencyId,
-      nanny_id: nannyId,
-      status: 'new',
-      tags: [],
-      latest_note: '',
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    });
-    return { id: docRef.id };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to invite nanny to talent pool');
   }
+
+  return {
+    id: String(payload?.id || ''),
+    invitation_status: (payload?.invitation_status || 'pending') as 'pending' | 'accepted' | 'declined' | 'left',
+    alreadyExists: !!payload?.alreadyExists,
+  };
+};
+
+export const getNannyTalentPools = async (): Promise<AgencyTalentPoolItem[]> => {
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl('/api/nanny/talent-pools'), {
+    method: 'GET',
+    headers,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to load talent-pool memberships');
+  }
+
+  return Array.isArray(payload?.items)
+    ? payload.items.map((item: any) => ({
+      id: String(item.id || ''),
+      agency_id: String(item.agency_id || ''),
+      agency_name: String(item.agency_name || 'Agency'),
+      nanny_id: String(item.nanny_id || ''),
+      status: String(item.status || 'new'),
+      invitation_status: (['pending', 'accepted', 'declined', 'left'].includes(String(item.invitation_status || '').trim().toLowerCase())
+        ? String(item.invitation_status || '').trim().toLowerCase()
+        : 'accepted') as 'pending' | 'accepted' | 'declined' | 'left',
+      invited_at: item.invited_at,
+      responded_at: item.responded_at,
+      left_at: item.left_at,
+      exclusion_note: typeof item.exclusion_note === 'string' ? item.exclusion_note : '',
+      latest_note: typeof item.latest_note === 'string' ? item.latest_note : '',
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    }))
+    : [];
+};
+
+export const respondToTalentPoolInvite = async (itemId: string, responseStatus: 'accepted' | 'declined') => {
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl(`/api/nanny/talent-pools/${encodeURIComponent(itemId)}/respond`), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ response: responseStatus }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to respond to talent-pool invite');
+  }
+
+  return payload;
+};
+
+export const leaveTalentPool = async (itemId: string, exclusionNote: string) => {
+  const headers = await buildApiHeaders();
+  const response = await fetch(buildApiUrl(`/api/nanny/talent-pools/${encodeURIComponent(itemId)}/leave`), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ exclusionNote }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to leave talent pool');
+  }
+
+  return payload;
 };
 
 export const updateAgencyTalentPoolItem = async (
@@ -4596,6 +4767,98 @@ export const getRecruiterSeatCount = async (agencyId: string): Promise<number> =
     handleFirestoreError(error, OperationType.LIST, path);
     return 0;
   }
+};
+
+export interface AgencyRecruiterSeat {
+  id: string;
+  agency_id: string;
+  user_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  status: 'active' | 'inactive';
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface AgencyRecruiterSeatSummary {
+  plan_code: string;
+  seat_limit: number | null;
+  active_seat_count: number;
+  recruiters: AgencyRecruiterSeat[];
+}
+
+export const getAgencyRecruiterSeats = async (agencyId: string): Promise<AgencyRecruiterSeatSummary> => {
+  const headers = await buildApiHeaders({ 'x-agency-id': agencyId });
+  const response = await fetch(buildApiUrl('/api/agency/recruiters'), {
+    method: 'GET',
+    headers,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to load recruiter seats');
+  }
+
+  return {
+    plan_code: String(payload?.plan_code || ''),
+    seat_limit: payload?.seat_limit === null ? null : Number(payload?.seat_limit ?? 0),
+    active_seat_count: Number(payload?.active_seat_count ?? 0),
+    recruiters: Array.isArray(payload?.recruiters)
+      ? payload.recruiters.map((item: any) => ({
+        id: String(item.id || ''),
+        agency_id: String(item.agency_id || ''),
+        user_id: String(item.user_id || ''),
+        email: String(item.email || ''),
+        first_name: String(item.first_name || ''),
+        last_name: String(item.last_name || ''),
+        status: item.status === 'inactive' ? 'inactive' : 'active',
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+      }))
+      : [],
+  };
+};
+
+export const addAgencyRecruiterSeat = async (agencyId: string, input: {
+  email: string;
+  first_name: string;
+  last_name: string;
+}): Promise<{ success: boolean; message?: string }> => {
+  const headers = await buildApiHeaders({ 'x-agency-id': agencyId });
+  const response = await fetch(buildApiUrl('/api/agency/recruiter'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to add recruiter');
+  }
+
+  return {
+    success: !!payload?.success,
+    message: typeof payload?.message === 'string' ? payload.message : undefined,
+  };
+};
+
+export const removeAgencyRecruiterSeat = async (agencyId: string, recruiterId: string): Promise<{ success: boolean; message?: string }> => {
+  const headers = await buildApiHeaders({ 'x-agency-id': agencyId });
+  const response = await fetch(buildApiUrl(`/api/agency/recruiter/${encodeURIComponent(recruiterId)}`), {
+    method: 'DELETE',
+    headers,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to remove recruiter');
+  }
+
+  return {
+    success: !!payload?.success,
+    message: typeof payload?.message === 'string' ? payload.message : undefined,
+  };
 };
 
 // Start or resume a direct conversation between a family and an agency.

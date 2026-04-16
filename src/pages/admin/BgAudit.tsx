@@ -162,14 +162,14 @@ export default function AdminBgAudit() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
             placeholder="Search nanny, agency, actor, or status..."
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none"
           />
         </div>
         <select
           value={actionFilter}
-          onChange={(e) => setActionFilter((e.target as HTMLInputElement).value as 'all' | 'created' | 'updated' | 'override_set' | 'override_cleared')}
+          onChange={(e) => setActionFilter(e.currentTarget.value as 'all' | 'created' | 'updated' | 'override_set' | 'override_cleared')}
           className="px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none"
         >
           <option value="all">All actions</option>
@@ -344,7 +344,7 @@ export default function AdminBgAudit() {
             <div className="px-6 pt-6 pb-4 space-y-5 max-h-[60vh] overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Override Status</label>
-                <select value={overrideStatus} onChange={(e) => setOverrideStatus((e.target as HTMLInputElement).value as 'checked' | 'not_checked' | 'expired')} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 transition">
+                <select value={overrideStatus} onChange={(e) => setOverrideStatus(e.currentTarget.value as 'checked' | 'not_checked' | 'expired')} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 transition">
                   <option value="checked">BG checked</option>
                   <option value="not_checked">BG not checked</option>
                   <option value="expired">BG expired</option>
@@ -354,17 +354,17 @@ export default function AdminBgAudit() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Confidence</label>
-                  <input type="number" min={0} max={100} value={overrideConfidence} onChange={(e) => setOverrideConfidence((e.target as HTMLInputElement).value)} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-violet-400 transition" />
+                  <input type="number" min={0} max={100} value={overrideConfidence} onChange={(e) => setOverrideConfidence(e.currentTarget.value)} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-violet-400 transition" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Expires At</label>
-                  <input type="date" value={overrideExpiresAt} onChange={(e) => setOverrideExpiresAt((e.target as HTMLInputElement).value)} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-violet-400 transition" />
+                  <input type="date" value={overrideExpiresAt} onChange={(e) => setOverrideExpiresAt(e.currentTarget.value)} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-violet-400 transition" />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Reason</label>
-                <textarea value={overrideReason} onChange={(e) => setOverrideReason((e.target as HTMLInputElement).value)} rows={4} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none transition" placeholder="Why is this override needed?" />
+                <textarea value={overrideReason} onChange={(e) => setOverrideReason(e.currentTarget.value)} rows={4} className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none transition" placeholder="Why is this override needed?" />
               </div>
             </div>
 
@@ -408,7 +408,7 @@ export default function AdminBgAudit() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Reason (required)</label>
                 <textarea
                   value={clearOverrideReason}
-                  onChange={(e) => setClearOverrideReason((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setClearOverrideReason(e.currentTarget.value)}
                   rows={4}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none transition"
                   placeholder="Why should this override be cleared?"

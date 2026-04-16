@@ -1,1 +1,96 @@
 @import "tailwindcss";
+
+/* Mobile-first responsive improvements */
+@layer base {
+	html {
+		/* Support iOS safe area insets */
+		padding-left: env(safe-area-inset-left);
+		padding-right: env(safe-area-inset-right);
+	}
+
+	body {
+		@apply bg-stone-50 antialiased;
+	}
+
+	/* Improve touch target size on mobile */
+	@media (max-width: 768px) {
+		button, a, [role="button"] {
+			@apply min-h-[44px] min-w-[44px];
+		}
+
+		/* Better form input sizes */
+		input, textarea, select {
+			@apply min-h-[44px];
+		}
+	}
+}
+
+/* Safe area utilities */
+.safe-area-inset-top {
+	padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-inset-bottom {
+	padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-inset-left {
+	padding-left: env(safe-area-inset-left);
+}
+
+.safe-area-inset-right {
+	padding-right: env(safe-area-inset-right);
+}
+
+/* Improved scrolling on mobile */
+@supports (padding: max(0px)) {
+	main {
+		padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
+	}
+}
+
+/* Prevent layout shift with scrollbar on desktop */
+html {
+	overflow-y: scroll;
+}
+
+/* Better text rendering on mobile */
+@media (max-width: 768px) {
+	html {
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+}
+
+/* Responsive typography */
+@media (max-width: 640px) {
+	h1 {
+		@apply text-2xl md:text-3xl;
+	}
+
+	h2 {
+		@apply text-xl md:text-2xl;
+	}
+
+	h3 {
+		@apply text-lg md:text-xl;
+	}
+
+	p {
+		@apply text-sm md:text-base;
+	}
+}
+
+/* Better mobile card spacing */
+@media (max-width: 768px) {
+	.card, [role="region"] {
+		@apply rounded-lg border border-stone-200;
+	}
+}
+
+/* Tap highlight for iOS */
+@media (max-width: 768px) {
+	button, a, input, select, textarea {
+		-webkit-tap-highlight-color: rgba(16, 185, 129, 0.1);
+	}
+}

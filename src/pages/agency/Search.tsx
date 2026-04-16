@@ -20,6 +20,7 @@ export default function GlobalSearch() {
   const [selectedNanny, setSelectedNanny] = useState<any>(null);
   const [selectedShiftScore, setSelectedShiftScore] = useState<number | null>(null);
   const [loadingShiftScore, setLoadingShiftScore] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -40,7 +41,9 @@ export default function GlobalSearch() {
 
         if (agencyId) {
           const pool = await getAgencyTalentPool(agencyId);
-          setSavedNannyIds(new Set(pool.map((item) => item.nanny_id)));
+          setSavedNannyIds(new Set(pool
+            .filter((item) => (item.invitation_status || 'accepted') === 'pending' || (item.invitation_status || 'accepted') === 'accepted')
+            .map((item) => item.nanny_id)));
         }
       } catch (error) {
         console.error('Error loading nannies:', error);
@@ -53,6 +56,7 @@ export default function GlobalSearch() {
     if (!agencyId || !nannyId || savedNannyIds.has(nannyId)) return;
 
     setSavingNannyIds((prev) => new Set(prev).add(nannyId));
+    setActionError(null);
     try {
       const added = await addNannyToAgencyTalentPool(agencyId, nannyId);
       if (added?.id) {
@@ -64,6 +68,7 @@ export default function GlobalSearch() {
       }
     } catch (error) {
       console.error('Error adding nanny to talent pool:', error);
+      setActionError(error instanceof Error ? error.message : 'Unable to invite nanny to the talent pool.');
     } finally {
       setSavingNannyIds((prev) => {
         const next = new Set(prev);
@@ -112,6 +117,9 @@ export default function GlobalSearch() {
       </div>
 
       <div className="space-y-4">
+        {actionError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{actionError}</div>
+        ) : null}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400" />
@@ -120,7 +128,7 @@ export default function GlobalSearch() {
               placeholder="Search by name, borough, or certification..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
               value={searchQuery}
-              onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+              onChange={(e) => setSearchQuery(e.currentTarget.value)}
             />
           </div>
         </div>
@@ -130,7 +138,7 @@ export default function GlobalSearch() {
             <MapPin className="h-4 w-4 text-stone-400" />
             <select
               value={selectedBorough}
-              onChange={(e) => setSelectedBorough((e.target as HTMLInputElement).value)}
+              onChange={(e) => setSelectedBorough(e.currentTarget.value)}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
             >
               <option value="All">All Boroughs</option>
@@ -146,7 +154,7 @@ export default function GlobalSearch() {
             <Filter className="h-4 w-4 text-stone-400" />
             <select
               value={minExperience}
-              onChange={(e) => setMinExperience(Number((e.target as HTMLInputElement).value))}
+              onChange={(e) => setMinExperience(Number(e.currentTarget.value))}
               className="text-sm font-medium text-stone-700 bg-transparent outline-none cursor-pointer"
             >
               <option value="0">Any Experience</option>

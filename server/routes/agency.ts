@@ -70,17 +70,67 @@ const resolveAgencyPlanCode = async (agencyId: string) => {
   return isActive ? planCode : PLAN_CODES.FREE;
 };
 
-const canActForAgency = async (agencyId: string, callerUserId: string) => {
-  if (!agencyId || !callerUserId) return false;
-  if (callerUserId === agencyId) return true;
+const normalizeTalentPoolInvitationStatus = (value: unknown): 'pending' | 'accepted' | 'declined' | 'left' => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'pending' || normalized === 'accepted' || normalized === 'declined' || normalized === 'left') {
+    return normalized;
+  }
+  return 'accepted';
+};
+
+const getAgencyDisplayName = async (agencyId: string) => {
+  if (!agencyId) return 'Agency';
+  const snap = await db.collection('agency_profiles').doc(agencyId).get();
+  if (!snap.exists) return 'Agency';
+  const data = snap.data() || {};
+  return String(data.company_name || data.name || 'Agency');
+};
+
+type AgencyAccessContext = {
+  isAgencyAdmin: boolean;
+  isRecruiter: boolean;
+  canActForAgency: boolean;
+};
+
+const getAgencyAccessContext = async (
+  agencyId: string,
+  callerUserId: string,
+): Promise<AgencyAccessContext> => {
+  if (!agencyId || !callerUserId) {
+    return { isAgencyAdmin: false, isRecruiter: false, canActForAgency: false };
+  }
+
+  // Legacy owner pattern: agency profile doc id equals owner uid.
+  const isLegacyOwner = callerUserId === agencyId;
+
+  let isAgencyAdminFromUserDoc = false;
+  try {
+    const userDoc = await db.collection('users').doc(callerUserId).get();
+    if (userDoc.exists) {
+      const data = userDoc.data() || {};
+      const role = String(data.role || '');
+      const linkedAgencyId = String(data.agency_id || data.agency_profile_id || '');
+      isAgencyAdminFromUserDoc = (role === 'agency_admin' || role === 'agency') && linkedAgencyId === agencyId;
+    }
+  } catch {
+    // Non-fatal; recruiter check below still allows scoped access.
+  }
 
   const recruiterSnap = await db.collection('agency_recruiters')
     .where('agency_id', '==', agencyId)
     .where('user_id', '==', callerUserId)
+    .where('status', '==', 'active')
     .limit(1)
     .get();
 
-  return !recruiterSnap.empty;
+  const isRecruiter = !recruiterSnap.empty;
+  const isAgencyAdmin = isLegacyOwner || isAgencyAdminFromUserDoc;
+
+  return {
+    isAgencyAdmin,
+    isRecruiter,
+    canActForAgency: isAgencyAdmin || isRecruiter,
+  };
 };
 
 // GET /api/agency/public-list - Public directory list for unauthenticated visitors
@@ -127,8 +177,8 @@ router.post('/jobs', requireAgencyOwner, async (req: any, res: any) => {
   }
 
   try {
-    const callerAllowed = await canActForAgency(agency_id, callerUserId);
-    if (!callerAllowed) {
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.canActForAgency) {
       return res.status(403).json({ error: 'Forbidden: user does not belong to this agency' });
     }
 
@@ -167,16 +217,187 @@ router.post('/jobs', requireAgencyOwner, async (req: any, res: any) => {
   }
 });
 
+// POST /api/agency/talent-pool/invite - Invite a nanny into an agency talent pool
+router.post('/talent-pool/invite', requireAgencyOwner, async (req: any, res: any) => {
+  const agency_id = String(req.agency_id || '');
+  const callerUserId = String(req.user_id || '');
+  const nannyId = String(req.body?.nannyId || '').trim();
+
+  if (!agency_id || !callerUserId || !nannyId) {
+    return res.status(400).json({ error: 'agency_id and nannyId are required' });
+  }
+
+  try {
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.canActForAgency) {
+      return res.status(403).json({ error: 'Forbidden: user does not belong to this agency' });
+    }
+
+    const existingSameAgencySnap = await db.collection('agency_talent_pool')
+      .where('agency_id', '==', agency_id)
+      .where('nanny_id', '==', nannyId)
+      .limit(1)
+      .get();
+
+    const allMembershipsSnap = await db.collection('agency_talent_pool')
+      .where('nanny_id', '==', nannyId)
+      .get();
+
+    const activeMembershipCount = allMembershipsSnap.docs.filter((docSnap) => {
+      const data = docSnap.data() || {};
+      const status = normalizeTalentPoolInvitationStatus(data.invitation_status);
+      return status === 'pending' || status === 'accepted';
+    }).length;
+
+    const existingSameAgency = existingSameAgencySnap.empty ? null : existingSameAgencySnap.docs[0];
+    const existingSameAgencyStatus = normalizeTalentPoolInvitationStatus(existingSameAgency?.data()?.invitation_status);
+    const existingCountsAgainstLimit = !!existingSameAgency && (existingSameAgencyStatus === 'pending' || existingSameAgencyStatus === 'accepted');
+
+    if (!existingCountsAgainstLimit && activeMembershipCount >= 5) {
+      return res.status(403).json({
+        error: 'This nanny is already in 5 active talent pools and cannot be invited to more right now.',
+        code: 'TALENT_POOL_LIMIT_REACHED',
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    let talentPoolId = '';
+
+    if (existingSameAgency) {
+      if (existingSameAgencyStatus === 'pending' || existingSameAgencyStatus === 'accepted') {
+        return res.json({ id: existingSameAgency.id, alreadyExists: true, invitation_status: existingSameAgencyStatus });
+      }
+
+      await existingSameAgency.ref.set({
+        invitation_status: 'pending',
+        invited_at: nowIso,
+        responded_at: null,
+        left_at: null,
+        exclusion_note: '',
+        latest_note: '',
+        updated_at: nowIso,
+      }, { merge: true });
+      talentPoolId = existingSameAgency.id;
+    } else {
+      const createdRef = await db.collection('agency_talent_pool').add({
+        agency_id,
+        nanny_id: nannyId,
+        status: 'invited',
+        invitation_status: 'pending',
+        tags: [],
+        latest_note: '',
+        exclusion_note: '',
+        invited_at: nowIso,
+        created_at: nowIso,
+        updated_at: nowIso,
+      });
+      talentPoolId = createdRef.id;
+    }
+
+    const agencyName = await getAgencyDisplayName(agency_id);
+    await db.collection('nanny_notifications').add({
+      nanny_id: nannyId,
+      type: 'application',
+      title: 'Talent pool invitation',
+      message: `${agencyName} invited you to join their talent pool.`,
+      link: '/nanny/talent-pools',
+      read: false,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    await db.collection('notification_jobs').add({
+      eventId: `talent-pool-invite-${talentPoolId}`,
+      trigger: 'direct_notification',
+      recipientUserId: nannyId,
+      recipientRole: 'nanny',
+      channel: 'in_app',
+      status: 'pending',
+      scheduledAt: new Date(),
+      sentAt: null,
+      payload: {
+        title: 'Talent pool invitation',
+        body: `${agencyName} invited you to join their talent pool.`,
+        data: {
+          link: '/nanny/talent-pools',
+          skipInApp: '1',
+        },
+      },
+      audit: {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    return res.json({ id: talentPoolId, invitation_status: 'pending' });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to invite nanny to talent pool' });
+  }
+});
+
+// GET /api/agency/recruiters - List recruiter seats for agency admin panel
+router.get('/recruiters', requireAgencyOwner, async (req: any, res: any) => {
+  const agency_id = String(req.agency_id || '');
+  const callerUserId = String(req.user_id || '');
+
+  if (!agency_id || !callerUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.isAgencyAdmin) {
+      return res.status(403).json({ error: 'Forbidden: only agency admins can manage team seats' });
+    }
+
+    const [planCode, recruiterSnap] = await Promise.all([
+      resolveAgencyPlanCode(agency_id),
+      db.collection('agency_recruiters')
+        .where('agency_id', '==', agency_id)
+        .get(),
+    ]);
+
+    const seatLimit = PLAN_RECRUITER_LIMITS[planCode as keyof typeof PLAN_RECRUITER_LIMITS] ?? 0;
+    const recruiters = recruiterSnap.docs
+      .map((docSnap): Record<string, any> => ({
+        id: docSnap.id,
+        ...(docSnap.data() || {}),
+      }))
+      .sort((a, b) => {
+        const aTime = new Date(String(a.created_at || 0)).getTime();
+        const bTime = new Date(String(b.created_at || 0)).getTime();
+        return bTime - aTime;
+      });
+
+    const activeSeatCount = recruiters.filter((item) => item.status === 'active').length;
+
+    return res.json({
+      plan_code: planCode,
+      seat_limit: seatLimit,
+      active_seat_count: activeSeatCount,
+      recruiters,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to load recruiter seats' });
+  }
+});
+
 // POST /api/agency/recruiter - Add a recruiter seat
 router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
   const { email, first_name, last_name } = req.body;
-  const agency_id = req.agency_id;
+  const agency_id = String(req.agency_id || '');
+  const callerUserId = String(req.user_id || '');
 
-  if (!agency_id || !email || !first_name || !last_name) {
+  if (!agency_id || !callerUserId || !email || !first_name || !last_name) {
     return res.status(400).json({ error: 'agency_id, email, first_name, and last_name are required' });
   }
 
   try {
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.isAgencyAdmin) {
+      return res.status(403).json({ error: 'Forbidden: only agency admins can manage team seats' });
+    }
+
     const planCode = await resolveAgencyPlanCode(agency_id);
     const recruiterLimit = PLAN_RECRUITER_LIMITS[planCode as keyof typeof PLAN_RECRUITER_LIMITS] ?? 0;
     const currentRecruiterSnapshot = await db.collection('agency_recruiters')
@@ -226,6 +447,19 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
 
     const newUserId = userRecord.uid;
 
+    const nowIso = new Date().toISOString();
+
+    await db.collection('users').doc(newUserId).set({
+      email,
+      role: 'agency_recruiter',
+      status: 'active',
+      agency_id,
+      first_name,
+      last_name,
+      created_at: nowIso,
+      updated_at: nowIso,
+    }, { merge: true });
+
     await db.collection('agency_recruiters').add({
       agency_id,
       user_id: newUserId,
@@ -233,7 +467,8 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
       first_name,
       last_name,
       status: 'active',
-      created_at: new Date().toISOString()
+      created_at: nowIso,
+      updated_at: nowIso,
     });
 
     // Legacy billing sync: only update existing seat-priced subscriptions.
@@ -263,13 +498,19 @@ router.post('/recruiter', requireAgencyOwner, async (req: any, res: any) => {
 // DELETE /api/agency/recruiter/:id - Remove a recruiter seat
 router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) => {
   const { id: recruiterId } = req.params;
-  const agency_id = req.agency_id;
+  const agency_id = String(req.agency_id || '');
+  const callerUserId = String(req.user_id || '');
 
-  if (!agency_id || !recruiterId) {
+  if (!agency_id || !callerUserId || !recruiterId) {
     return res.status(400).json({ error: 'Missing agency_id or recruiter id' });
   }
 
   try {
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.isAgencyAdmin) {
+      return res.status(403).json({ error: 'Forbidden: only agency admins can manage team seats' });
+    }
+
     // Remove by doc ID first, then fallback to user_id match
     let recruiterSnapshot = await db.collection('agency_recruiters').doc(recruiterId).get();
     let docsToDelete = [];
@@ -288,7 +529,18 @@ router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) =
       return res.status(404).json({ error: 'Recruiter record not found for this agency' });
     }
 
+    const recruiterUserIds = docsToDelete
+      .map((docSnap: any) => String(docSnap.data()?.user_id || ''))
+      .filter(Boolean);
+
     await Promise.all(docsToDelete.map(d => d.ref.delete()));
+
+    await Promise.all(recruiterUserIds.map(async (uid: string) => {
+      await db.collection('users').doc(uid).set({
+        status: 'inactive',
+        updated_at: new Date().toISOString(),
+      }, { merge: true });
+    }));
 
     // Re-calculate recruiter_count based on current active seats
     const remainingSnapshot = await db.collection('agency_recruiters')
@@ -318,9 +570,15 @@ router.delete('/recruiter/:id', requireAgencyOwner, async (req: any, res: any) =
 
 // POST /api/agency/invite-link - Generate a nanny invite link
 router.post('/invite-link', requireAgencyOwner, async (req: any, res: any) => {
-  const agency_id = req.agency_id;
+  const agency_id = String(req.agency_id || '');
+  const callerUserId = String(req.user_id || '');
 
   try {
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.isAgencyAdmin) {
+      return res.status(403).json({ error: 'Forbidden: only agency admins can generate invite links' });
+    }
+
     const code = await generateUniqueInviteCode();
 
     await db.collection('invite_links').doc(code).set({
@@ -354,20 +612,9 @@ router.post('/posts', requireAgencyOwner, async (req: any, res: any) => {
   }
 
   try {
-    const callerIsAgencyOwner = callerUserId === agency_id;
-
-    let callerIsRecruiterForAgency = false;
-    if (!callerIsAgencyOwner) {
-      const recruiterSnap = await db.collection('agency_recruiters')
-        .where('agency_id', '==', agency_id)
-        .where('user_id', '==', callerUserId)
-        .limit(1)
-        .get();
-      callerIsRecruiterForAgency = !recruiterSnap.empty;
-    }
-
-    if (!callerIsAgencyOwner && !callerIsRecruiterForAgency) {
-      return res.status(403).json({ error: 'Forbidden: user does not belong to this agency' });
+    const access = await getAgencyAccessContext(agency_id, callerUserId);
+    if (!access.isAgencyAdmin) {
+      return res.status(403).json({ error: 'Forbidden: only agency admins can publish agency posts' });
     }
 
     const docRef = await db.collection('agency_posts').add({

@@ -195,7 +195,7 @@ service cloud.firestore {
     match /agency_profiles/{userId} {
       // Agency directory is public, so profiles must be readable without auth.
       allow read: if true;
-      allow write: if isOwner(userId) || isAgencyMemberOf(userId) || isLegacyAgencyOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAgencyAdminOf(userId) || isLegacyAgencyOwner(userId) || isAdmin();
     }
 
     match /agency_recruiters/{seatId} {
@@ -430,9 +430,9 @@ service cloud.firestore {
 
     match /agency_posts/{postId} {
       allow read: if true; // Public read
-      allow create: if isAgencyMemberOf(request.resource.data.agency_id) || isLegacyAgencyOwner(request.resource.data.agency_id);
-      allow update: if isAgencyMemberOf(resource.data.agency_id) || isLegacyAgencyOwner(resource.data.agency_id);
-      allow delete: if isAdmin() || isAgencyMemberOf(resource.data.agency_id) || isLegacyAgencyOwner(resource.data.agency_id);
+      allow create: if isAgencyAdminOf(request.resource.data.agency_id) || isLegacyAgencyOwner(request.resource.data.agency_id);
+      allow update: if isAgencyAdminOf(resource.data.agency_id) || isLegacyAgencyOwner(resource.data.agency_id);
+      allow delete: if isAdmin() || isAgencyAdminOf(resource.data.agency_id) || isLegacyAgencyOwner(resource.data.agency_id);
     }
 
     match /agency_talent_pool/{itemId} {

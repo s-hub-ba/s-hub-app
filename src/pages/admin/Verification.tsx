@@ -92,7 +92,7 @@ export default function AdminVerification() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
             placeholder="Search nanny, email, file name..."
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none"
           />
@@ -100,7 +100,7 @@ export default function AdminVerification() {
 
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter((e.target as HTMLInputElement).value as any)}
+          onChange={(e) => setTypeFilter(e.currentTarget.value as any)}
           className="px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none"
         >
           <option value="all">All types</option>
@@ -204,7 +204,7 @@ export default function AdminVerification() {
               <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Rejection Reason</label>
               <textarea
                 value={rejectReason}
-                onChange={(e) => setRejectReason((e.target as HTMLInputElement).value)}
+                onChange={(e) => setRejectReason(e.currentTarget.value)}
                 rows={4}
                 className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-red-400 resize-none transition"
                 placeholder="Explain why this document is being rejected"

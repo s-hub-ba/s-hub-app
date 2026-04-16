@@ -567,7 +567,7 @@ export default function NannyProfile() {
             <select
               value={docType}
               onChange={(e) => {
-                const nextType = (e.target as HTMLInputElement).value as any;
+                const nextType = e.currentTarget.value as any;
                 setDocType(nextType);
                 if (nextType === 'certification') {
                   if (!selectedCertificationName && certificationUploadOptions.length > 0) {
@@ -600,7 +600,7 @@ export default function NannyProfile() {
             <input
               type="text"
               value={docName}
-              onChange={(e) => setDocName((e.target as HTMLInputElement).value)}
+              onChange={(e) => setDocName(e.currentTarget.value)}
               placeholder="e.g. CPR Certificate"
               className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
             />
@@ -623,7 +623,7 @@ export default function NannyProfile() {
             <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Certification This Document Supports</label>
             <select
               value={selectedCertificationName}
-              onChange={(e) => syncCertificationSelection((e.target as HTMLInputElement).value)}
+              onChange={(e) => syncCertificationSelection(e.currentTarget.value)}
               className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
             >
               <option value="">Select certification</option>
@@ -639,7 +639,7 @@ export default function NannyProfile() {
                 <input
                   type="text"
                   value={newCertificationName}
-                  onChange={(e) => setNewCertificationName((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setNewCertificationName(e.currentTarget.value)}
                   placeholder="e.g. Newborn Care Specialist"
                   className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
                 />
@@ -654,7 +654,7 @@ export default function NannyProfile() {
           <input
             type="url"
             value={docUrl}
-            onChange={(e) => setDocUrl((e.target as HTMLInputElement).value)}
+            onChange={(e) => setDocUrl(e.currentTarget.value)}
             placeholder="https://..."
             className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-blue-500 outline-none"
           />

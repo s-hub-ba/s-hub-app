@@ -230,7 +230,7 @@ export default function FamilyOnboarding() {
                           type="text"
                           required
                           value={formData.family_name}
-                          onChange={e => setFormData({ ...formData, family_name: (e.target as HTMLInputElement).value })}
+                          onChange={e => setFormData({ ...formData, family_name: e.currentTarget.value })}
                           className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           placeholder="e.g. Smith Family"
                         />
@@ -242,7 +242,7 @@ export default function FamilyOnboarding() {
                           type="tel"
                           required
                           value={formData.phone}
-                          onChange={e => setFormData({ ...formData, phone: (e.target as HTMLInputElement).value })}
+                          onChange={e => setFormData({ ...formData, phone: e.currentTarget.value })}
                           className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           placeholder="(555) 123-4567"
                         />
@@ -253,7 +253,7 @@ export default function FamilyOnboarding() {
                         <textarea
                           rows={3}
                           value={formData.care_needs}
-                          onChange={e => setFormData({ ...formData, care_needs: (e.target as HTMLInputElement).value })}
+                          onChange={e => setFormData({ ...formData, care_needs: e.currentTarget.value })}
                           className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           placeholder="E.g., special diet, early intervention, mobility support, etc."
                         />
@@ -271,7 +271,7 @@ export default function FamilyOnboarding() {
                             <input
                               type="text"
                               value={child.name}
-                              onChange={e => handleChildChange(index, 'name', (e.target as HTMLInputElement).value)}
+                              onChange={e => handleChildChange(index, 'name', e.currentTarget.value)}
                               className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                               placeholder="Child Name"
                             />
@@ -282,7 +282,7 @@ export default function FamilyOnboarding() {
                               type="number"
                               min={0}
                               value={child.age}
-                              onChange={e => handleChildChange(index, 'age', (e.target as HTMLInputElement).value)}
+                              onChange={e => handleChildChange(index, 'age', e.currentTarget.value)}
                               className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                               placeholder="Age"
                             />
@@ -292,7 +292,7 @@ export default function FamilyOnboarding() {
                             <input
                               type="text"
                               value={child.allergies}
-                              onChange={e => handleChildChange(index, 'allergies', (e.target as HTMLInputElement).value)}
+                              onChange={e => handleChildChange(index, 'allergies', e.currentTarget.value)}
                               className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                               placeholder="E.g., peanuts, dairy"
                             />
@@ -302,7 +302,7 @@ export default function FamilyOnboarding() {
                             <input
                               type="text"
                               value={child.special_needs}
-                              onChange={e => handleChildChange(index, 'special_needs', (e.target as HTMLInputElement).value)}
+                              onChange={e => handleChildChange(index, 'special_needs', e.currentTarget.value)}
                               className="w-full px-3 py-2 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                               placeholder="Optional note"
                             />
@@ -339,7 +339,7 @@ export default function FamilyOnboarding() {
                         <label className="block text-sm font-bold text-stone-900 mb-2">Borough</label>
                         <select 
                           value={formData.location_borough}
-                          onChange={e => setFormData({...formData, location_borough: (e.target as HTMLInputElement).value})}
+                          onChange={e => setFormData({...formData, location_borough: e.currentTarget.value})}
                           className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
                         >
                           <option value="Manhattan">Manhattan</option>
@@ -356,7 +356,7 @@ export default function FamilyOnboarding() {
                           required
                           placeholder="e.g. Upper West Side"
                           value={formData.location_neighborhood}
-                          onChange={e => setFormData({...formData, location_neighborhood: (e.target as HTMLInputElement).value})}
+                          onChange={e => setFormData({...formData, location_neighborhood: e.currentTarget.value})}
                           className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
                         />
                       </div>
@@ -398,7 +398,7 @@ export default function FamilyOnboarding() {
                           <input
                             type="text"
                             value={formData.parenting_style}
-                            onChange={e => setFormData({ ...formData, parenting_style: (e.target as HTMLInputElement).value })}
+                            onChange={e => setFormData({ ...formData, parenting_style: e.currentTarget.value })}
                             placeholder="E.g. positive reinforcement, structured routine"
                             className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           />
@@ -409,7 +409,7 @@ export default function FamilyOnboarding() {
                           <input
                             type="text"
                             value={formData.dietary_preferences}
-                            onChange={e => setFormData({ ...formData, dietary_preferences: (e.target as HTMLInputElement).value })}
+                            onChange={e => setFormData({ ...formData, dietary_preferences: e.currentTarget.value })}
                             placeholder="E.g. vegetarian, allergy-aware, farm-to-table"
                             className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           />
@@ -420,7 +420,7 @@ export default function FamilyOnboarding() {
                           <input
                             type="text"
                             value={formData.cultural_values}
-                            onChange={e => setFormData({ ...formData, cultural_values: (e.target as HTMLInputElement).value })}
+                            onChange={e => setFormData({ ...formData, cultural_values: e.currentTarget.value })}
                             placeholder="E.g. bilingual home, faith-based, arts-focused"
                             className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           />

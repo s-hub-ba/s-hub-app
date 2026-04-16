@@ -38,16 +38,15 @@ jobs:
         run: npm run lint
 
       - name: Validate API base URL secret
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: |
           if [ -z "$VITE_API_BASE_URL" ]; then
             echo "VITE_API_BASE_URL secret is not set. Falling back to default Render API URL."
             echo "VITE_API_BASE_URL=https://s-hub-app.onrender.com" >> "$GITHUB_ENV"
-            exit 0
+          else
+            echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> "$GITHUB_ENV"
           fi
-          echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> "$GITHUB_ENV"
       
       - name: Build
         run: npm run build

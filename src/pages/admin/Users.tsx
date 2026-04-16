@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, Filter, ShieldCheck, MoreHorizontal, User, Building2, Copy, Check, Eye, UserX, UserCheck, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getUsers, updateAdminUser, type AppUserRole, type AppUserStatus } from '../../lib/api';
+import { getAgencies, getUsers, resolveAgencyIdForUser, updateAdminUser, type AppUserRole, type AppUserStatus } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 function toDate(value: any): Date | null {
@@ -85,14 +85,24 @@ export default function AdminUsers() {
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [selectedRole, setSelectedRole] = useState<AppUserRole>('family');
   const [selectedStatus, setSelectedStatus] = useState<AppUserStatus>('active');
+  const [selectedAgencyId, setSelectedAgencyId] = useState('');
+  const [agencies, setAgencies] = useState<Array<{ id: string; company_name?: string; name?: string }>>([]);
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [userActionError, setUserActionError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const loadData = async () => {
     try {
-      const userData = await getUsers();
+      const [userData, agencyData] = await Promise.all([
+        getUsers(),
+        getAgencies(),
+      ]);
       setUsers(userData);
+      setAgencies(agencyData.map((agency) => ({
+        id: agency.id,
+        company_name: agency.company_name,
+        name: (agency as any).name,
+      })));
     } catch (error) {
       console.error('Error loading users:', error);
     }
@@ -141,10 +151,21 @@ export default function AdminUsers() {
     }
   };
 
-  const openUserModal = (user: any) => {
+  const openUserModal = async (user: any) => {
     setSelectedUser(user);
     setSelectedRole((user.role || 'family') as AppUserRole);
     setSelectedStatus((user.status || 'active') as AppUserStatus);
+    const directAgencyId = String(user.agency_id || user.agency_profile_id || '').trim();
+    if (directAgencyId) {
+      setSelectedAgencyId(directAgencyId);
+    } else {
+      try {
+        const resolved = await resolveAgencyIdForUser(String(user.id || ''));
+        setSelectedAgencyId(resolved || '');
+      } catch {
+        setSelectedAgencyId('');
+      }
+    }
     setUserActionError(null);
     setActiveMenuUserId(null);
   };
@@ -188,6 +209,12 @@ export default function AdminUsers() {
 
   const handleSaveUser = async () => {
     if (!selectedUser?.id || isSavingUser) return;
+    const requiresAgencyAssignment = selectedRole === 'agency_admin' || selectedRole === 'agency_recruiter';
+    if (requiresAgencyAssignment && !selectedAgencyId) {
+      setUserActionError('Please select a company for this agency role.');
+      return;
+    }
+
     if (currentUser?.uid === selectedUser.id && selectedStatus === 'inactive') {
       setUserActionError('You cannot deactivate your own admin account from this screen.');
       return;
@@ -205,6 +232,7 @@ export default function AdminUsers() {
       const updated = await updateAdminUser(selectedUser.id, {
         role: selectedRole,
         status: selectedStatus,
+        agency_id: requiresAgencyAssignment ? selectedAgencyId : null,
       });
 
       if (!updated) {
@@ -238,14 +266,14 @@ export default function AdminUsers() {
             placeholder="Search users by name or email..." 
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
         </div>
         <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-medium bg-white">
           <Filter className="h-4 w-4" />
           <select
             value={roleFilter}
-            onChange={(e) => setRoleFilter((e.target as HTMLInputElement).value as 'all' | AppUserRole)}
+            onChange={(e) => setRoleFilter(e.currentTarget.value as 'all' | AppUserRole)}
             className="bg-transparent outline-none cursor-pointer"
           >
             <option value="all">All roles</option>
@@ -258,7 +286,7 @@ export default function AdminUsers() {
           <ShieldCheck className="h-4 w-4" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter((e.target as HTMLInputElement).value as 'all' | AppUserStatus)}
+            onChange={(e) => setStatusFilter(e.currentTarget.value as 'all' | AppUserStatus)}
             className="bg-transparent outline-none cursor-pointer"
           >
             <option value="all">All statuses</option>
@@ -417,7 +445,7 @@ export default function AdminUsers() {
                   <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Change Role</label>
                   <select
                     value={selectedRole}
-                    onChange={(e) => setSelectedRole((e.target as HTMLInputElement).value as AppUserRole)}
+                    onChange={(e) => setSelectedRole(e.currentTarget.value as AppUserRole)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
                   >
                     {ROLE_OPTIONS.map((option) => (
@@ -429,7 +457,7 @@ export default function AdminUsers() {
                   <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Account Status</label>
                   <select
                     value={selectedStatus}
-                    onChange={(e) => setSelectedStatus((e.target as HTMLInputElement).value as AppUserStatus)}
+                    onChange={(e) => setSelectedStatus(e.currentTarget.value as AppUserStatus)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
                   >
                     <option value="active">Active</option>
@@ -437,6 +465,24 @@ export default function AdminUsers() {
                   </select>
                 </div>
               </div>
+
+              {(selectedRole === 'agency_admin' || selectedRole === 'agency_recruiter') ? (
+                <div>
+                  <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Company Assignment</label>
+                  <select
+                    value={selectedAgencyId}
+                    onChange={(e) => setSelectedAgencyId(e.currentTarget.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
+                  >
+                    <option value="">Select agency company</option>
+                    {agencies.map((agency) => (
+                      <option key={agency.id} value={agency.id}>
+                        {agency.company_name || agency.name || agency.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
 
             <div className="px-6 py-4 border-t border-stone-100 flex items-center gap-3">

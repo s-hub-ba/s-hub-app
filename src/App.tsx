@@ -28,6 +28,7 @@ import NannyDevelopment from './pages/nanny/Development';
 import NannyProfile from './pages/nanny/Profile';
 import NannyCalendar from './pages/nanny/Calendar';
 import NannyOnboarding from './pages/nanny/Onboarding';
+import NannyTalentPools from './pages/nanny/TalentPools';
 
 import AgencyDashboard from './pages/agency/Dashboard';
 import AgencyJobs from './pages/agency/Jobs';
@@ -43,6 +44,7 @@ import AgencyEmergencyReplacement from './pages/agency/EmergencyReplacement';
 import AgencyMessages from './pages/agency/Messages';
 import NannyMessages from './pages/nanny/Messages';
 import AgencyProfilePage from './pages/agency/Profile';
+import AgencyTeam from './pages/agency/Team';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminAgencies from './pages/admin/Agencies';
@@ -118,6 +120,7 @@ export default function App() {
               <Route path="dashboard" element={<NannyDashboard />} />
               <Route path="jobs" element={<NannyJobs />} />
               <Route path="applications" element={<NannyApplications />} />
+              <Route path="talent-pools" element={<NannyTalentPools />} />
               <Route path="development" element={<NannyDevelopment />} />
               <Route path="messages" element={<NannyMessages />} />
               <Route path="notifications" element={<Notifications />} />
@@ -135,17 +138,21 @@ export default function App() {
               <Route path="jobs/new" element={<PostJob />} />
               <Route path="applications" element={<AgencyApplications />} />
               <Route path="messages" element={<AgencyMessages />} />
-              <Route path="family-requests" element={<AgencyFamilyRequests />} />
-              <Route path="family-requests/:assignmentId" element={<AgencyFamilyRequestDetail />} />
-              <Route path="request-settings" element={<AgencyRequestSettings />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="search" element={<GlobalSearch />} />
               <Route path="talent" element={<TalentPool />} />
               <Route path="calendar" element={<AgencyCalendar />} />
               <Route path="emergency" element={<AgencyEmergencyReplacement />} />
-              <Route path="billing" element={<Billing />} />
-              <Route path="subscription" element={<Subscription />} />
-              <Route path="profile" element={<AgencyProfilePage />} />
+
+              <Route element={<ProtectedRoute allowedRoles={['agency_admin']} />}>
+                <Route path="family-requests" element={<AgencyFamilyRequests />} />
+                <Route path="family-requests/:assignmentId" element={<AgencyFamilyRequestDetail />} />
+                <Route path="request-settings" element={<AgencyRequestSettings />} />
+                <Route path="billing" element={<Billing />} />
+                <Route path="subscription" element={<Subscription />} />
+                <Route path="profile" element={<AgencyProfilePage />} />
+                <Route path="team" element={<AgencyTeam />} />
+              </Route>
             </Route>
           </Route>
 
