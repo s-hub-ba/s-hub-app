@@ -359,7 +359,7 @@ router.get('/recruiters', requireAgencyOwner, async (req: any, res: any) => {
 
     const seatLimit = PLAN_RECRUITER_LIMITS[planCode as keyof typeof PLAN_RECRUITER_LIMITS] ?? 0;
     const recruiters = recruiterSnap.docs
-      .map((docSnap) => ({
+      .map((docSnap): Record<string, any> => ({
         id: docSnap.id,
         ...(docSnap.data() || {}),
       }))

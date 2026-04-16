@@ -167,7 +167,7 @@ export default function FamilyProfile() {
                 <input 
                   type="text"
                   value={formData.family_name}
-                  onChange={e => setFormData({...formData, family_name: (e.target as HTMLInputElement).value})}
+                  onChange={e => setFormData({...formData, family_name: e.currentTarget.value})}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -176,7 +176,7 @@ export default function FamilyProfile() {
                 <input 
                   type="email"
                   value={formData.email}
-                  onChange={e => setFormData({...formData, email: (e.target as HTMLInputElement).value})}
+                  onChange={e => setFormData({...formData, email: e.currentTarget.value})}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -185,7 +185,7 @@ export default function FamilyProfile() {
                 <input 
                   type="tel"
                   value={formData.phone}
-                  onChange={e => setFormData({...formData, phone: (e.target as HTMLInputElement).value})}
+                  onChange={e => setFormData({...formData, phone: e.currentTarget.value})}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -203,7 +203,7 @@ export default function FamilyProfile() {
                 <label className="block text-sm font-bold text-stone-900 mb-2">Borough</label>
                 <select 
                   value={formData.location_borough}
-                  onChange={e => setFormData({...formData, location_borough: (e.target as HTMLInputElement).value})}
+                  onChange={e => setFormData({...formData, location_borough: e.currentTarget.value})}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-white"
                 >
                   <option value="">Select borough</option>
@@ -219,7 +219,7 @@ export default function FamilyProfile() {
                 <input 
                   type="text"
                   value={formData.location_neighborhood}
-                  onChange={e => setFormData({...formData, location_neighborhood: (e.target as HTMLInputElement).value})}
+                  onChange={e => setFormData({...formData, location_neighborhood: e.currentTarget.value})}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-white"
                 />
               </div>
@@ -240,7 +240,7 @@ export default function FamilyProfile() {
                   min={0}
                   value={formData.children?.length || 0}
                   onChange={e => {
-                    const count = Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0);
+                    const count = Math.max(0, parseInt(e.currentTarget.value) || 0);
                     setFormData(prev => ({
                       ...prev,
                       children: Array.from({ length: count }, (_, idx) => prev.children?.[idx] || { name: '', age: '', allergies: '', special_needs: '' })
@@ -253,7 +253,7 @@ export default function FamilyProfile() {
                 <label className="block text-sm font-bold text-stone-900 mb-2">Care Type</label>
                 <select 
                   value={formData.care_needs}
-                  onChange={e => setFormData({...formData, care_needs: (e.target as HTMLInputElement).value})}
+                  onChange={e => setFormData({...formData, care_needs: e.currentTarget.value})}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all bg-stone-50"
                 >
                   <option value="">Select care type</option>
@@ -286,7 +286,7 @@ export default function FamilyProfile() {
                         type="text"
                         placeholder="Name"
                         value={child.name}
-                        onChange={e => handleChildChange(index, 'name', (e.target as HTMLInputElement).value)}
+                        onChange={e => handleChildChange(index, 'name', e.currentTarget.value)}
                         className="w-full px-3 py-2 border border-stone-200 rounded-lg"
                       />
                       <input
@@ -294,21 +294,21 @@ export default function FamilyProfile() {
                         min={0}
                         placeholder="Age"
                         value={child.age}
-                        onChange={e => handleChildChange(index, 'age', (e.target as HTMLInputElement).value)}
+                        onChange={e => handleChildChange(index, 'age', e.currentTarget.value)}
                         className="w-full px-3 py-2 border border-stone-200 rounded-lg"
                       />
                       <input
                         type="text"
                         placeholder="Allergies (comma separated)"
                         value={child.allergies}
-                        onChange={e => handleChildChange(index, 'allergies', (e.target as HTMLInputElement).value)}
+                        onChange={e => handleChildChange(index, 'allergies', e.currentTarget.value)}
                         className="w-full px-3 py-2 border border-stone-200 rounded-lg"
                       />
                       <input
                         type="text"
                         placeholder="Special Needs"
                         value={child.special_needs}
-                        onChange={e => handleChildChange(index, 'special_needs', (e.target as HTMLInputElement).value)}
+                        onChange={e => handleChildChange(index, 'special_needs', e.currentTarget.value)}
                         className="w-full px-3 py-2 border border-stone-200 rounded-lg"
                       />
                     </div>
@@ -352,7 +352,7 @@ export default function FamilyProfile() {
               <label className="block text-sm font-bold text-stone-900 mb-2">Additional Notes</label>
               <textarea
                 value={formData.additional_notes}
-                onChange={e => setFormData({...formData, additional_notes: (e.target as HTMLInputElement).value})}
+                onChange={e => setFormData({...formData, additional_notes: e.currentTarget.value})}
                 className="w-full h-28 px-4 py-3 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
               />
             </div>

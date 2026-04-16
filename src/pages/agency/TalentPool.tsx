@@ -295,7 +295,7 @@ export default function TalentPool() {
             placeholder="Search talent pool..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
         </div>
       </div>
@@ -374,7 +374,7 @@ export default function TalentPool() {
                       </button>
                       <select
                         value={statusDropdownValue}
-                        onChange={(e) => updateCardStatus(item, (e.target as HTMLInputElement).value)}
+                        onChange={(e) => updateCardStatus(item, e.currentTarget.value)}
                         disabled={isSavingCardAction}
                         className="text-xs rounded-lg border border-stone-200 bg-white px-2 py-1 font-medium text-stone-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
                         aria-label="Update candidate status"
@@ -620,7 +620,7 @@ export default function TalentPool() {
                 <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Status</label>
                 <select
                   value={bgStatusInput}
-                  onChange={(e) => setBgStatusInput((e.target as HTMLInputElement).value as 'checked' | 'not_checked' | 'expired')}
+                  onChange={(e) => setBgStatusInput(e.currentTarget.value as 'checked' | 'not_checked' | 'expired')}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                 >
                   <option value="checked">BG checked</option>
@@ -635,7 +635,7 @@ export default function TalentPool() {
                   <input
                     type="date"
                     value={bgCheckedAtInput}
-                    onChange={(e) => setBgCheckedAtInput((e.target as HTMLInputElement).value)}
+                    onChange={(e) => setBgCheckedAtInput(e.currentTarget.value)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                   />
                 </div>
@@ -644,7 +644,7 @@ export default function TalentPool() {
                   <input
                     type="date"
                     value={bgExpiresAtInput}
-                    onChange={(e) => setBgExpiresAtInput((e.target as HTMLInputElement).value)}
+                    onChange={(e) => setBgExpiresAtInput(e.currentTarget.value)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                   />
                 </div>
@@ -657,7 +657,7 @@ export default function TalentPool() {
                   min={0}
                   max={100}
                   value={bgConfidenceInput}
-                  onChange={(e) => setBgConfidenceInput((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setBgConfidenceInput(e.currentTarget.value)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                 />
               </div>
@@ -667,7 +667,7 @@ export default function TalentPool() {
                 <input
                   type="url"
                   value={bgPrivateUrlInput}
-                  onChange={(e) => setBgPrivateUrlInput((e.target as HTMLInputElement).value)}
+                  onChange={(e) => setBgPrivateUrlInput(e.currentTarget.value)}
                   placeholder="https://…"
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
                 />

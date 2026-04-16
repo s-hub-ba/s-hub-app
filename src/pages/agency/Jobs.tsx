@@ -407,14 +407,14 @@ export default function AgencyJobs() {
             placeholder="Search by title or location..." 
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
         </div>
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-stone-200 text-stone-700 font-medium bg-white min-w-[180px]">
           <Filter className="h-4 w-4" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter((e.target as HTMLInputElement).value as 'all' | 'published' | 'closed')}
+            onChange={(e) => setStatusFilter(e.currentTarget.value as 'all' | 'published' | 'closed')}
             className="bg-transparent outline-none w-full cursor-pointer"
           >
             <option value="all">All Jobs</option>
@@ -520,7 +520,7 @@ export default function AgencyJobs() {
 
             <div className="px-6 py-5">
               <p className="text-stone-600 text-sm text-center leading-relaxed">
-                This will permanently delete <span className="font-semibold text-stone-900">{jobToDelete.title}</span>. All applications linked to this job will also be affected. This cannot be undone.
+                This will permanently delete <span className="font-semibold text-stone-900">{jobs.find((job) => job.id === jobToDelete)?.title || 'this job'}</span>. All applications linked to this job will also be affected. This cannot be undone.
               </p>
             </div>
 

@@ -204,14 +204,14 @@ export default function FamilyRequestForm() {
           <h2 className="md:col-span-2 text-lg font-bold text-stone-900">Parent Contact</h2>
           <input
             value={form.parent_name}
-            onChange={(e) => setForm((prev) => ({ ...prev, parent_name: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, parent_name: e.currentTarget.value }))}
             placeholder="Parent name"
             className="px-4 py-3 rounded-xl border border-stone-200"
             disabled={loadingProfile}
           />
           <input
             value={form.email}
-            onChange={(e) => setForm((prev) => ({ ...prev, email: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, email: e.currentTarget.value }))}
             placeholder="Email"
             type="email"
             className="px-4 py-3 rounded-xl border border-stone-200"
@@ -219,7 +219,7 @@ export default function FamilyRequestForm() {
           />
           <input
             value={form.phone || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, phone: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.currentTarget.value }))}
             placeholder="Phone"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -229,14 +229,14 @@ export default function FamilyRequestForm() {
           <h2 className="md:col-span-2 text-lg font-bold text-stone-900">Location & Household</h2>
           <select
             value={form.borough}
-            onChange={(e) => setForm((prev) => ({ ...prev, borough: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, borough: e.currentTarget.value }))}
             className="px-4 py-3 rounded-xl border border-stone-200 bg-white"
           >
             {BOROUGHS.map((borough) => <option key={borough} value={borough}>{borough}</option>)}
           </select>
           <input
             value={form.neighborhood || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, neighborhood: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, neighborhood: e.currentTarget.value }))}
             placeholder="Neighborhood"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -244,13 +244,13 @@ export default function FamilyRequestForm() {
             type="number"
             min={1}
             value={form.children_count}
-            onChange={(e) => setForm((prev) => ({ ...prev, children_count: Math.max(1, Number((e.target as HTMLInputElement).value) || 1) }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, children_count: Math.max(1, Number(e.currentTarget.value) || 1) }))}
             placeholder="Number of children"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
           <input
             value={form.start_date || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, start_date: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.currentTarget.value }))}
             type="date"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -303,7 +303,7 @@ export default function FamilyRequestForm() {
 
           <textarea
             value={form.schedule || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, schedule: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, schedule: e.currentTarget.value }))}
             placeholder="Schedule details"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
             rows={3}
@@ -314,7 +314,7 @@ export default function FamilyRequestForm() {
               type="number"
               min={0}
               value={form.budget_min ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, budget_min: (e.target as HTMLInputElement).value ? Number((e.target as HTMLInputElement).value) : null }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, budget_min: e.currentTarget.value ? Number(e.currentTarget.value) : null }))}
               placeholder="Budget min ($/hr)"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -322,7 +322,7 @@ export default function FamilyRequestForm() {
               type="number"
               min={0}
               value={form.budget_max ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, budget_max: (e.target as HTMLInputElement).value ? Number((e.target as HTMLInputElement).value) : null }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, budget_max: e.currentTarget.value ? Number(e.currentTarget.value) : null }))}
               placeholder="Budget max ($/hr)"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -373,7 +373,7 @@ export default function FamilyRequestForm() {
 
           <textarea
             value={form.special_requirements || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, special_requirements: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, special_requirements: e.currentTarget.value }))}
             placeholder="Special requirements"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
             rows={2}
@@ -381,7 +381,7 @@ export default function FamilyRequestForm() {
 
           <textarea
             value={form.notes || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: (e.target as HTMLInputElement).value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.currentTarget.value }))}
             placeholder="Additional notes"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
             rows={3}

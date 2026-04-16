@@ -147,7 +147,7 @@ export default function AgencyRequestSettings() {
           <label className="block text-sm font-semibold text-stone-700">Neighborhoods (comma separated)</label>
           <input
             value={neighborhoodCsv}
-            onChange={(e) => setNeighborhoodCsv((e.target as HTMLInputElement).value)}
+            onChange={(e) => setNeighborhoodCsv(e.currentTarget.value)}
             placeholder="park slope, upper west side"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -206,7 +206,7 @@ export default function AgencyRequestSettings() {
           <label className="block text-sm font-semibold text-stone-700">Languages (comma separated)</label>
           <input
             value={languageCsv}
-            onChange={(e) => setLanguageCsv((e.target as HTMLInputElement).value)}
+            onChange={(e) => setLanguageCsv(e.currentTarget.value)}
             placeholder="english, spanish"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -219,7 +219,7 @@ export default function AgencyRequestSettings() {
               type="number"
               min={0}
               value={budgetMin}
-              onChange={(e) => setBudgetMin((e.target as HTMLInputElement).value)}
+              onChange={(e) => setBudgetMin(e.currentTarget.value)}
               placeholder="Budget min"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -227,7 +227,7 @@ export default function AgencyRequestSettings() {
               type="number"
               min={0}
               value={budgetMax}
-              onChange={(e) => setBudgetMax((e.target as HTMLInputElement).value)}
+              onChange={(e) => setBudgetMax(e.currentTarget.value)}
               placeholder="Budget max"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />

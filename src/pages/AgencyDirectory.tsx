@@ -182,7 +182,7 @@ export default function AgencyDirectory() {
               placeholder="Search by agency name or specialty..." 
               className="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
               value={searchQuery}
-              onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+              onChange={(e) => setSearchQuery(e.currentTarget.value)}
             />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 hide-scrollbar">

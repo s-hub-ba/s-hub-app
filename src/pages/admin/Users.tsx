@@ -101,7 +101,7 @@ export default function AdminUsers() {
       setAgencies(agencyData.map((agency) => ({
         id: agency.id,
         company_name: agency.company_name,
-        name: agency.name,
+        name: (agency as any).name,
       })));
     } catch (error) {
       console.error('Error loading users:', error);
@@ -266,14 +266,14 @@ export default function AdminUsers() {
             placeholder="Search users by name or email..." 
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
         </div>
         <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-medium bg-white">
           <Filter className="h-4 w-4" />
           <select
             value={roleFilter}
-            onChange={(e) => setRoleFilter((e.target as HTMLInputElement).value as 'all' | AppUserRole)}
+            onChange={(e) => setRoleFilter(e.currentTarget.value as 'all' | AppUserRole)}
             className="bg-transparent outline-none cursor-pointer"
           >
             <option value="all">All roles</option>
@@ -286,7 +286,7 @@ export default function AdminUsers() {
           <ShieldCheck className="h-4 w-4" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter((e.target as HTMLInputElement).value as 'all' | AppUserStatus)}
+            onChange={(e) => setStatusFilter(e.currentTarget.value as 'all' | AppUserStatus)}
             className="bg-transparent outline-none cursor-pointer"
           >
             <option value="all">All statuses</option>

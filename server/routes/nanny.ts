@@ -336,7 +336,7 @@ router.get('/talent-pools', requireNannyAuth, async (req: any, res: any) => {
       .where('nanny_id', '==', nannyId)
       .get();
 
-    const items = await Promise.all(snap.docs.map(async (docSnap) => {
+    const items = await Promise.all(snap.docs.map(async (docSnap): Promise<Record<string, any>> => {
       const data = docSnap.data() || {};
       const agencyId = String(data.agency_id || '');
       return {

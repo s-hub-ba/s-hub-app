@@ -411,7 +411,7 @@ export default function AgencyEmergencyReplacement() {
             <span className="mb-1 block font-semibold text-stone-700">Shift Title</span>
             <input
               value={shiftTitle}
-              onChange={(e) => setShiftTitle((e.target as HTMLInputElement).value)}
+              onChange={(e) => setShiftTitle(e.currentTarget.value)}
               className="w-full rounded-xl border border-stone-200 px-3 py-2"
             />
           </label>
@@ -420,7 +420,7 @@ export default function AgencyEmergencyReplacement() {
             <span className="mb-1 block font-semibold text-stone-700">Area</span>
             <input
               value={locationArea}
-              onChange={(e) => setLocationArea((e.target as HTMLInputElement).value)}
+              onChange={(e) => setLocationArea(e.currentTarget.value)}
               className="w-full rounded-xl border border-stone-200 px-3 py-2"
             />
           </label>
@@ -430,7 +430,7 @@ export default function AgencyEmergencyReplacement() {
             <input
               type="datetime-local"
               value={startAt}
-              onChange={(e) => setStartAt((e.target as HTMLInputElement).value)}
+              onChange={(e) => setStartAt(e.currentTarget.value)}
               className="w-full rounded-xl border border-stone-200 px-3 py-2"
             />
           </label>
@@ -440,7 +440,7 @@ export default function AgencyEmergencyReplacement() {
             <input
               type="datetime-local"
               value={endAt}
-              onChange={(e) => setEndAt((e.target as HTMLInputElement).value)}
+              onChange={(e) => setEndAt(e.currentTarget.value)}
               className="w-full rounded-xl border border-stone-200 px-3 py-2"
             />
           </label>

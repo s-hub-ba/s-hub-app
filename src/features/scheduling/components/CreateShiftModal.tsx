@@ -119,7 +119,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
               id="nannyId"
               type="text"
               value={nannyId}
-              onChange={(e) => setNannyId((e.target as HTMLInputElement).value)}
+              onChange={(e) => setNannyId(e.currentTarget.value)}
               placeholder="uid of the nanny"
               required
               className={inputCls}
@@ -131,7 +131,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
               id="title"
               type="text"
               value={title}
-              onChange={(e) => setTitle((e.target as HTMLInputElement).value)}
+              onChange={(e) => setTitle(e.currentTarget.value)}
               placeholder="e.g. After-school Monday shift"
               required
               maxLength={200}
@@ -141,10 +141,10 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Start *" htmlFor="startAt">
-              <input id="startAt" type="datetime-local" value={startAt} onChange={(e) => setStartAt((e.target as HTMLInputElement).value)} required className={inputCls} />
+              <input id="startAt" type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.currentTarget.value)} required className={inputCls} />
             </Field>
             <Field label="End *" htmlFor="endAt">
-              <input id="endAt" type="datetime-local" value={endAt} onChange={(e) => setEndAt((e.target as HTMLInputElement).value)} required className={inputCls} />
+              <input id="endAt" type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.currentTarget.value)} required className={inputCls} />
             </Field>
           </div>
 
@@ -153,7 +153,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
               id="locationGeneral"
               type="text"
               value={locationGeneral}
-              onChange={(e) => setLocationGeneral((e.target as HTMLInputElement).value)}
+              onChange={(e) => setLocationGeneral(e.currentTarget.value)}
               placeholder="e.g. Upper East Side, Manhattan"
               className={inputCls}
             />
@@ -164,7 +164,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
               id="locationExact"
               type="text"
               value={locationExact}
-              onChange={(e) => setLocationExact((e.target as HTMLInputElement).value)}
+              onChange={(e) => setLocationExact(e.currentTarget.value)}
               placeholder="Full address"
               className={inputCls}
             />
@@ -172,10 +172,10 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Pay Rate ($/hr)" htmlFor="payRate">
-              <input id="payRate" type="number" value={payRate} onChange={(e) => setPayRate((e.target as HTMLInputElement).value)} min={0} step={0.5} className={inputCls} />
+              <input id="payRate" type="number" value={payRate} onChange={(e) => setPayRate(e.currentTarget.value)} min={0} step={0.5} className={inputCls} />
             </Field>
             <Field label="Urgency" htmlFor="urgency">
-              <select id="urgency" value={urgency} onChange={(e) => setUrgency((e.target as HTMLInputElement).value as any)} className={inputCls}>
+              <select id="urgency" value={urgency} onChange={(e) => setUrgency(e.currentTarget.value as any)} className={inputCls}>
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
                 <option value="high">High</option>
@@ -187,7 +187,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
             <textarea
               id="description"
               value={description}
-              onChange={(e) => setDescription((e.target as HTMLInputElement).value)}
+              onChange={(e) => setDescription(e.currentTarget.value)}
               rows={2}
               className={inputCls}
             />
@@ -203,7 +203,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
               <div className="space-y-3 pl-6">
                 <div className="flex items-center gap-3">
                   <label className="text-xs text-gray-500">Frequency</label>
-                  <select value={recurFreq} onChange={(e) => setRecurFreq((e.target as HTMLInputElement).value as any)} className="text-sm border border-gray-200 rounded-md px-2 py-1">
+                  <select value={recurFreq} onChange={(e) => setRecurFreq(e.currentTarget.value as any)} className="text-sm border border-gray-200 rounded-md px-2 py-1">
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                   </select>
@@ -224,7 +224,7 @@ export const CreateShiftModal: React.FC<CreateShiftModalProps> = ({
                 )}
                 <div className="flex items-center gap-3">
                   <label htmlFor="recurEndsOn" className="text-xs text-gray-500">Ends on</label>
-                  <input id="recurEndsOn" type="date" value={recurEndsOn} onChange={(e) => setRecurEndsOn((e.target as HTMLInputElement).value)} className="text-sm border border-gray-200 rounded-md px-2 py-1" />
+                  <input id="recurEndsOn" type="date" value={recurEndsOn} onChange={(e) => setRecurEndsOn(e.currentTarget.value)} className="text-sm border border-gray-200 rounded-md px-2 py-1" />
                 </div>
               </div>
             )}
