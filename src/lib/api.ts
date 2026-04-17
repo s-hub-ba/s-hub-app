@@ -203,6 +203,11 @@ export interface Job {
   salary_range: string;
   schedule_type: string;
   status: 'published' | 'draft' | 'closed';
+  selected_nanny_id?: string | null;
+  selected_application_id?: string | null;
+  assigned_at?: any;
+  assigned_by_role?: 'agency' | 'family' | 'nanny' | 'admin' | 'system';
+  closed_reason?: string | null;
   created_at: any;
   updated_at: any;
   agency_profiles?: any;
@@ -1144,6 +1149,17 @@ export const updateApplicationStatus = async (
     const docRef = doc(db, 'applications', id);
     const existingDoc = await getDoc(docRef);
     const existingData = existingDoc.exists() ? existingDoc.data() : {};
+    let derivedFamilyId = existingData.family_id || null;
+    if (!derivedFamilyId && existingData.job_id) {
+      try {
+        const jobDoc = await getDoc(doc(db, 'jobs', existingData.job_id));
+        if (jobDoc.exists()) {
+          derivedFamilyId = (jobDoc.data() as any).family_id || null;
+        }
+      } catch {
+        // Preserve existing status behavior if the job lookup fails.
+      }
+    }
     const existingHistory = Array.isArray(existingData.status_history)
       ? existingData.status_history
       : [];
@@ -1169,6 +1185,7 @@ export const updateApplicationStatus = async (
 
     await updateDoc(docRef, {
       status,
+      ...(derivedFamilyId ? { family_id: derivedFamilyId } : {}),
       ...(milestoneField ? { [milestoneField]: serverTimestamp() } : {}),
       status_history: [...existingHistory, historyEntry],
       updated_at: serverTimestamp()
@@ -1193,6 +1210,89 @@ export const updateApplicationStatus = async (
     return { id: updatedDoc.id, ...updatedDoc.data() };
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const assignNannyToJob = async (
+  applicationId: string,
+  options?: {
+    actorRole?: ApplicationStatusHistoryEntry['actor_role'];
+    assignedStatus?: Extract<ApplicationStatus, 'accepted' | 'hired'>;
+    note?: string;
+  }
+) => {
+  const path = `applications/${applicationId}`;
+  try {
+    const appRef = doc(db, 'applications', applicationId);
+    const appDoc = await getDoc(appRef);
+    if (!appDoc.exists()) {
+      throw new Error('Application not found.');
+    }
+
+    const appData = appDoc.data() as Application;
+    if (!appData.job_id || !appData.nanny_id) {
+      throw new Error('Application is missing a job or nanny reference.');
+    }
+
+    const actorRole = options?.actorRole || 'agency';
+    const assignedStatus = options?.assignedStatus || 'accepted';
+    const assignmentNote = options?.note || 'Agency assigned this nanny to the job.';
+
+    let familyId = appData.family_id || null;
+    const jobRef = doc(db, 'jobs', appData.job_id);
+    const jobDoc = await getDoc(jobRef);
+    if (jobDoc.exists()) {
+      familyId = familyId || (jobDoc.data() as any).family_id || null;
+    }
+
+    await updateApplicationStatus(applicationId, assignedStatus, {
+      actorRole,
+      note: assignmentNote,
+    });
+
+    await updateDoc(jobRef, {
+      selected_nanny_id: appData.nanny_id,
+      selected_application_id: applicationId,
+      assigned_at: serverTimestamp(),
+      assigned_by_role: actorRole,
+      ...(familyId ? { family_id: familyId } : {}),
+      status: 'closed',
+      closed_reason: 'filled',
+      updated_at: serverTimestamp(),
+    });
+
+    const siblingQuery = query(collection(db, 'applications'), where('job_id', '==', appData.job_id));
+    const siblingSnapshot = await getDocs(siblingQuery);
+    await Promise.all(siblingSnapshot.docs.map(async (siblingDoc) => {
+      if (siblingDoc.id === applicationId) return;
+
+      const siblingData = siblingDoc.data() as Application;
+      if (['rejected', 'withdrawn', 'completed'].includes(String(siblingData.status || ''))) {
+        return;
+      }
+
+      const siblingHistory = Array.isArray(siblingData.status_history) ? siblingData.status_history : [];
+      const rejectionEntry: ApplicationStatusHistoryEntry = {
+        status: 'rejected',
+        actor_role: actorRole,
+        note: 'Another nanny was assigned to this job.',
+        at: Timestamp.now(),
+      };
+
+      await updateDoc(siblingDoc.ref, {
+        status: 'rejected',
+        ...(familyId ? { family_id: familyId } : {}),
+        rejected_at: serverTimestamp(),
+        status_history: [...siblingHistory, rejectionEntry],
+        updated_at: serverTimestamp(),
+      });
+    }));
+
+    const updatedDoc = await getDoc(appRef);
+    return updatedDoc.exists() ? ({ id: updatedDoc.id, ...updatedDoc.data() } as Application) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
   }
 };
 

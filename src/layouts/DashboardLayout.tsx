@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Baby, Briefcase, Calendar, User, Bell, LogOut, Search, Users, FileText, CreditCard, LayoutDashboard, Heart, MessageSquare, ShieldAlert, ChevronRight, ChevronDown, AlertTriangle, Menu, X } from 'lucide-react';
+import { Baby, Briefcase, Calendar, User, Bell, LogOut, Search, Users, FileText, CreditCard, LayoutDashboard, Heart, MessageSquare, ShieldAlert, ChevronRight, ChevronDown, AlertTriangle, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -218,13 +218,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
         {/* Mobile Header */}
         <header className="md:hidden h-16 bg-white border-b border-stone-200 flex items-center justify-between px-4 sticky top-0 z-30 safe-area-inset-top">
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 -ml-2 hover:bg-stone-100 rounded-lg transition-colors"
-            aria-label="Toggle menu"
-          >
-            {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
+          <div className="w-10" aria-hidden="true" />
           <Link to="/" className="flex items-center gap-2">
             <div className="bg-emerald-600 p-1.5 rounded-lg">
               <Baby className="h-5 w-5 text-white" />

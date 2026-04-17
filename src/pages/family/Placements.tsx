@@ -5,8 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
-  accepted: 'Accepted',
-  hired: 'Accepted',
+  accepted: 'Assigned',
+  hired: 'Assigned',
   active: 'Active',
   pending_family_approval: 'Awaiting Your Approval',
   completed: 'Completed'
