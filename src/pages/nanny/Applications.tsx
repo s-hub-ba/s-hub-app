@@ -13,8 +13,8 @@ const STATUS_CONFIG = {
   reviewing: { color: 'bg-blue-100 text-blue-700', icon: FileText, label: 'In Review' },
   interviewing: { color: 'bg-orange-100 text-orange-700', icon: Clock, label: 'Interviewing' },
   interview_invited: { color: 'bg-orange-100 text-orange-700', icon: Clock, label: 'Interview Invited' },
-  accepted: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Offer Ready' },
-  hired: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Offer Ready' },
+  accepted: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Assigned' },
+  hired: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Assigned' },
   active: { color: 'bg-teal-100 text-teal-700', icon: Briefcase, label: 'Placement Active' },
   pending_family_approval: { color: 'bg-indigo-100 text-indigo-700', icon: Clock, label: 'Pending Family Approval' },
   completed: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, label: 'Completed' },
@@ -27,8 +27,8 @@ const STATUS_TIMELINE_LABELS: Record<string, string> = {
   reviewing: 'Under Review',
   interviewing: 'Interviewing',
   interview_invited: 'Interview Invited',
-  accepted: 'Offer Ready',
-  hired: 'Offer Ready',
+  accepted: 'Assigned',
+  hired: 'Assigned',
   active: 'Placement Active',
   pending_family_approval: 'Awaiting Family Approval',
   completed: 'Completed',
@@ -174,7 +174,7 @@ export default function NannyApplications() {
           : 'You are in the interview stage.';
       case 'accepted':
       case 'hired':
-        return 'You were selected. Review the placement packet and confirm your start.';
+        return 'The agency assigned you to this job. Review the placement packet and confirm your start.';
       case 'active':
         return 'Your placement is live. Log completion when the work is finished.';
       case 'pending_family_approval':

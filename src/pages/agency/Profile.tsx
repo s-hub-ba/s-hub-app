@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Save, Plus, X, Image, Globe, Calendar, MapPin, FileText, Newspaper, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getAgencyById,
@@ -11,6 +12,7 @@ import {
   AgencyPost,
   resolveAgencyIdForUser,
 } from '../../lib/api';
+import { storage } from '../../lib/firebase';
 
 const PREDEFINED_SERVICES = [
   'Full-Time Nanny Placement',
@@ -63,6 +65,12 @@ export default function AgencyProfilePage() {
   const [boroughs, setBoroughs] = useState<string[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [customService, setCustomService] = useState('');
+  const [logoUploadError, setLogoUploadError] = useState('');
+  const [coverUploadError, setCoverUploadError] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
 
   // Posts
   const [posts, setPosts] = useState<AgencyPost[]>([]);
@@ -141,6 +149,49 @@ export default function AgencyProfilePage() {
 
   const removeService = (s: string) => {
     setSpecialties(prev => prev.filter(x => x !== s));
+  };
+
+  const handleAgencyImageUpload = async (kind: 'logo' | 'cover', file: File | null) => {
+    if (!file || !agencyId) return;
+
+    const setError = kind === 'logo' ? setLogoUploadError : setCoverUploadError;
+    const setUploading = kind === 'logo' ? setIsUploadingLogo : setIsUploadingCover;
+    const setValue = kind === 'logo' ? setLogo : setCover;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Please choose an image smaller than 5MB.');
+      return;
+    }
+
+    setUploading(true);
+    setError('');
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const storagePath = `agency-profiles/${agencyId}/${kind}-${Date.now()}.${ext}`;
+      const fileRef = ref(storage, storagePath);
+      await uploadBytes(fileRef, file);
+      const downloadUrl = await getDownloadURL(fileRef);
+      setValue(downloadUrl);
+    } catch (uploadErr: any) {
+      console.error(`Failed to upload agency ${kind}:`, uploadErr);
+      const errorCode = String(uploadErr?.code || '');
+      if (errorCode.includes('storage/unauthorized')) {
+        setError('Storage permissions blocked this upload. Please try again after confirming storage access.');
+      } else if (errorCode.includes('storage/unauthenticated')) {
+        setError('Please sign in again before uploading an image.');
+      } else if (errorCode.includes('storage/quota-exceeded')) {
+        setError('Storage quota was exceeded. Please try again later.');
+      } else {
+        setError(uploadErr?.message || 'Unable to upload the image right now. Please try again.');
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -323,30 +374,96 @@ export default function AgencyProfilePage() {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1.5">Logo URL</label>
+                  <label className="block text-sm font-medium text-stone-700 mb-1.5">Agency Logo</label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
+                      {logo ? (
+                        <img src={logo} alt="Logo preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-stone-400">
+                          {(companyName || 'A').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          void handleAgencyImageUpload('logo', e.currentTarget.files?.[0] || null);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                        className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700 disabled:opacity-60"
+                      >
+                        {isUploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
+                        {isUploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                      </button>
+                      <p className="text-xs text-stone-500">Square images work best. PNG or JPG up to 5MB.</p>
+                    </div>
+                  </div>
+                  <label className="mt-4 block text-xs font-medium uppercase tracking-[0.16em] text-stone-500">Or paste a URL</label>
                   <input
                     type="url"
                     value={logo}
-                    onChange={e => setLogo(e.currentTarget.value)}
+                    onChange={e => {
+                      setLogo(e.currentTarget.value);
+                      if (logoUploadError) setLogoUploadError('');
+                    }}
                     placeholder="https://..."
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
-                  {logo && (
-                    <img src={logo} alt="Logo preview" className="mt-3 h-16 w-16 rounded-xl object-cover border border-stone-200" />
-                  )}
+                  {logoUploadError && <p className="mt-2 text-sm text-red-600">{logoUploadError}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1.5">Cover Image URL</label>
+                  <label className="block text-sm font-medium text-stone-700 mb-1.5">Cover Photo</label>
+                  <div className="space-y-3">
+                    <div className="h-24 w-full overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
+                      {cover ? (
+                        <img src={cover} alt="Cover preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full bg-gradient-to-r from-stone-200 via-stone-100 to-stone-200" />
+                      )}
+                    </div>
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        void handleAgencyImageUpload('cover', e.currentTarget.files?.[0] || null);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => coverInputRef.current?.click()}
+                      disabled={isUploadingCover}
+                      className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700 disabled:opacity-60"
+                    >
+                      {isUploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
+                      {isUploadingCover ? 'Uploading...' : 'Upload Cover'}
+                    </button>
+                    <p className="text-xs text-stone-500">Use a wide image so the public profile header crops cleanly on mobile and desktop.</p>
+                  </div>
+                  <label className="mt-4 block text-xs font-medium uppercase tracking-[0.16em] text-stone-500">Or paste a URL</label>
                   <input
                     type="url"
                     value={cover}
-                    onChange={e => setCover(e.currentTarget.value)}
+                    onChange={e => {
+                      setCover(e.currentTarget.value);
+                      if (coverUploadError) setCoverUploadError('');
+                    }}
                     placeholder="https://..."
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
-                  {cover && (
-                    <img src={cover} alt="Cover preview" className="mt-3 h-16 w-full rounded-xl object-cover border border-stone-200" />
-                  )}
+                  {coverUploadError && <p className="mt-2 text-sm text-red-600">{coverUploadError}</p>}
                 </div>
               </div>
             </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, BookmarkPlus, Check, Phone } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useSearchParams } from 'react-router-dom';
-import { addFamilyNotification, addNannyNotification, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
+import { addFamilyNotification, addNannyNotification, assignNannyToJob, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_COLORS = {
@@ -24,8 +24,8 @@ const STATUS_LABELS = {
   reviewing: 'Reviewing',
   interviewing: 'Interviewing',
   interview_invited: 'Interview Invited',
-  accepted: 'Offer Extended',
-  hired: 'Accepted',
+  accepted: 'Assigned',
+  hired: 'Assigned',
   active: 'Placement Active',
   pending_family_approval: 'Awaiting Family Sign-off',
   completed: 'Completed',
@@ -66,6 +66,7 @@ export default function AgencyApplications() {
   const [isSavingCallOutcome, setIsSavingCallOutcome] = useState(false);
   const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState(false);
   const [talentPoolActionError, setTalentPoolActionError] = useState<string | null>(null);
+  const [assigningApplicationId, setAssigningApplicationId] = useState<string | null>(null);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -264,9 +265,61 @@ export default function AgencyApplications() {
     }
   };
 
+  const isPlacementAssigned = (app: any) => {
+    const selectedApplicationId = app?.jobs?.selected_application_id;
+    if (selectedApplicationId) {
+      return selectedApplicationId === app.id;
+    }
+    return ['accepted', 'hired', 'active', 'pending_family_approval', 'completed'].includes(String(app?.status || ''));
+  };
+
+  const handleAssignApplication = async (app: any, assignedStatus: 'accepted' | 'hired' = 'accepted') => {
+    if (!app?.id || assigningApplicationId) return;
+
+    setAssigningApplicationId(app.id);
+    setOpenDropdownId(null);
+    try {
+      await assignNannyToJob(app.id, {
+        actorRole: 'agency',
+        assignedStatus,
+        note: 'Agency assigned this nanny to the job.',
+      });
+
+      if (app.nanny_id) {
+        await addNannyNotification(
+          app.nanny_id,
+          'You were assigned to a job',
+          `The agency assigned you to ${app.job_title || 'this role'}. Review your job overview for next steps.`,
+          '/nanny/applications'
+        );
+      }
+
+      const familyId = app.family_id || app.jobs?.family_id;
+      if (familyId) {
+        await addFamilyNotification(
+          familyId,
+          'Nanny assigned',
+          `${app.nanny_name || 'A nanny'} was assigned to ${app.job_title || 'your role'}.`,
+          '/family/placements'
+        );
+      }
+
+      await loadData();
+    } catch (error: any) {
+      console.error('Error assigning nanny to job:', error);
+    } finally {
+      setAssigningApplicationId(null);
+    }
+  };
+
   const handleStatusChange = async (appId: string, newStatus: string) => {
     try {
       const app = applications.find((item) => item.id === appId);
+      if (app && (newStatus === 'accepted' || newStatus === 'hired')) {
+        await handleAssignApplication(app, newStatus);
+        return;
+      }
+
       await updateApplicationStatus(appId, newStatus as any, { actorRole: 'agency' });
 
       if (app?.nanny_id) {
@@ -276,8 +329,8 @@ export default function AgencyApplications() {
             message: `Your application for ${app.job_title || 'this job'} is now under review.`
           },
           accepted: {
-            title: 'Placement offer ready',
-            message: `You were selected for ${app.job_title || 'this role'}. Review your job overview for the next steps.`
+            title: 'You were assigned to a job',
+            message: `The agency assigned you to ${app.job_title || 'this role'}. Review your job overview for the next steps.`
           },
           active: {
             title: 'Placement started',
@@ -301,6 +354,10 @@ export default function AgencyApplications() {
       const familyId = app?.family_id || app?.jobs?.family_id;
       if (familyId) {
         const familyNotifications: Record<string, { title: string; message: string }> = {
+          accepted: {
+            title: 'Nanny assigned',
+            message: `${app?.nanny_name || 'A nanny'} was assigned to ${app?.job_title || 'your role'}.`
+          },
           active: {
             title: 'Placement started',
             message: `${app?.nanny_name || 'Your nanny'} has started ${app?.job_title || 'the placement'}.`
@@ -628,6 +685,17 @@ export default function AgencyApplications() {
                   </div>
 
                   <div className="flex flex-col sm:flex-row xl:flex-col items-stretch gap-2 xl:items-end">
+                    {app.status !== 'completed' && app.status !== 'rejected' && app.status !== 'withdrawn' && (
+                      <button
+                        onClick={() => handleAssignApplication(app)}
+                        disabled={assigningApplicationId === app.id || (assigningApplicationId !== null && assigningApplicationId !== app.id)}
+                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors ${isPlacementAssigned(app) ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'} disabled:opacity-60`}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        {assigningApplicationId === app.id ? 'Assigning...' : isPlacementAssigned(app) ? 'Assigned to Job' : 'Assign to Job'}
+                      </button>
+                    )}
+
                     {isOverdueCallPendingFollowup(app) && (
                       <button
                         onClick={() => openOverdueCallPrompt(app)}
@@ -667,6 +735,13 @@ export default function AgencyApplications() {
                           onClick={(e) => e.stopPropagation()}
                           className="absolute right-0 top-full mt-1 w-48 bg-white border border-stone-200 rounded-xl shadow-lg z-50 overflow-hidden"
                         >
+                          <button
+                            onClick={() => handleAssignApplication(app)}
+                            className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2 transition-colors"
+                          >
+                            <Check className="h-4 w-4 text-emerald-500" />
+                            {isPlacementAssigned(app) ? 'Reassign to Job' : 'Assign to Job'}
+                          </button>
                           <button
                             onClick={() => openScheduleModal(app)}
                             className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2 transition-colors"
