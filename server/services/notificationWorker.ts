@@ -1,7 +1,9 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { db, messaging } from '../firebase.js';
+import { processPlacementEndingSoonNotifications } from './placementEndingNotifier.ts';
 
 let isRunning = false;
+let lastPlacementEndingSweepAt = 0;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,10 @@ const STATUS_PENDING = 'pending';
 const STATUS_SENT = 'sent';
 const STATUS_FAILED = 'failed';
 const STATUS_RETRY = 'retry';
+const PLACEMENT_ENDING_SWEEP_MIN_INTERVAL_MS = Math.max(
+  5 * 60 * 1000,
+  Number(process.env.PLACEMENT_ENDING_SWEEP_INTERVAL_MS || 60 * 60 * 1000),
+);
 
 // ─── Role routing maps ────────────────────────────────────────────────────────
 
@@ -372,6 +378,19 @@ export function startNotificationWorker(options?: { intervalMs?: number }) {
     isRunning = true;
     try {
       await processPendingNotificationJobs();
+
+      const nowMs = Date.now();
+      if (nowMs - lastPlacementEndingSweepAt >= PLACEMENT_ENDING_SWEEP_MIN_INTERVAL_MS) {
+        try {
+          const created = await processPlacementEndingSoonNotifications();
+          if (created > 0) {
+            console.log(`[notification-worker] Placement-ending sweep queued ${created} job(s)`);
+          }
+          lastPlacementEndingSweepAt = nowMs;
+        } catch (sweepError) {
+          console.error('[notification-worker] Placement-ending sweep error:', sweepError);
+        }
+      }
     } catch (error) {
       console.error('[notification-worker] Tick error:', error);
     } finally {
