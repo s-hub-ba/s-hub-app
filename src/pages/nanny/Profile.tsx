@@ -549,6 +549,9 @@ export default function NannyProfile() {
                   </button>
                 )}
               </div>
+              <p className="mt-3 text-xs text-stone-500 leading-relaxed">
+                To add or update a certification, click <span className="font-semibold text-stone-700">Edit Profile</span> and add it to your certifications list. Then upload the supporting document below under <span className="font-semibold text-stone-700">Verification Documents</span> — select <span className="font-semibold text-stone-700">Certification</span> as the document type to link it for review.
+              </p>
             </div>
           </div>
         </div>

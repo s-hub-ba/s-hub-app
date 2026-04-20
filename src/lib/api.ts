@@ -2175,7 +2175,27 @@ export const createNannyDocument = async (input: Omit<NannyDocument, 'id' | 'sta
     });
 
     const saved = await getDoc(docRef);
-    return saved.exists() ? ({ id: saved.id, ...saved.data() } as NannyDocument) : null;
+    const createdDoc = saved.exists() ? ({ id: saved.id, ...saved.data() } as NannyDocument) : null;
+
+    // Notify all superadmins that a document is pending review
+    if (createdDoc) {
+      try {
+        const adminsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'superadmin')));
+        const notifyAdmins = adminsSnap.docs.map((adminDoc) =>
+          addAdminNotification(
+            adminDoc.id,
+            'New document pending review',
+            `A nanny has submitted a document for verification: "${fileName}"`,
+            '/admin/verification',
+          )
+        );
+        await Promise.allSettled(notifyAdmins);
+      } catch (notifErr) {
+        console.warn('[createNannyDocument] failed to notify admins', notifErr);
+      }
+    }
+
+    return createdDoc;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
     return null;
@@ -2897,6 +2917,23 @@ export const updateNannyDocumentStatus = async ({
         updated_at: serverTimestamp(),
       }, { merge: true });
     }
+
+    // Notify the nanny about the decision
+    if ((status === 'approved' || status === 'rejected') && existingData?.nanny_id) {
+      try {
+        const docLabel = String(existingData.file_name || 'Your document').trim();
+        const notifTitle = status === 'approved'
+          ? 'Document approved'
+          : 'Document not approved';
+        const notifMessage = status === 'approved'
+          ? `"${docLabel}" has been approved.`
+          : `"${docLabel}" was not approved.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`;
+        await addNannyNotification(existingData.nanny_id, notifTitle, notifMessage, '/nanny/profile');
+      } catch (notifErr) {
+        console.warn('[updateNannyDocumentStatus] failed to notify nanny', notifErr);
+      }
+    }
+
     return updatedDoc;
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
@@ -4204,6 +4241,60 @@ export const markAgencyNotificationRead = async (notificationId: string) => {
   const path = `agency_notifications/${notificationId}`;
   try {
     const docRef = doc(db, 'agency_notifications', notificationId);
+    await updateDoc(docRef, { read: true, updated_at: serverTimestamp() });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+// --- ADMIN NOTIFICATIONS ---
+export interface AdminNotification {
+  id?: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link?: string;
+  read?: boolean;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export const addAdminNotification = async (adminUserId: string, title: string, message: string, link?: string) => {
+  const path = 'admin_notifications';
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      user_id: adminUserId,
+      type: 'system' as NotificationType,
+      title,
+      message,
+      link: link || '/admin/verification',
+      read: false,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+    return { id: docRef.id };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const getAdminNotifications = async (adminUserId: string): Promise<AdminNotification[]> => {
+  const path = 'admin_notifications';
+  try {
+    const q = query(collection(db, path), where('user_id', '==', adminUserId), orderBy('created_at', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AdminNotification));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const markAdminNotificationRead = async (notificationId: string) => {
+  const path = `admin_notifications/${notificationId}`;
+  try {
+    const docRef = doc(db, 'admin_notifications', notificationId);
     await updateDoc(docRef, { read: true, updated_at: serverTimestamp() });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
