@@ -18,7 +18,9 @@ export type SchedulingNotificationTrigger =
   | 'reminder_24h'
   | 'reminder_2h'
   | 'reminder_30m'
-  | 'reschedule_requested';
+  | 'reschedule_requested'
+  | 'placement_ending_soon'
+  | 'placement_ending_final';
 
 export interface EnqueueNotificationInput {
   eventId: string;
