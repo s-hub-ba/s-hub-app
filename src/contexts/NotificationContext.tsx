@@ -5,6 +5,7 @@ import {
   getFamilyNotifications,
   getAgencyNotifications,
   getNannyNotifications,
+  getAdminNotifications,
   resolveAgencyIdsForUser,
   registerPushTokenForCurrentUser,
 } from '../lib/api';
@@ -137,6 +138,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           }
         } catch (error) {
           console.error('Error loading nanny notifications:', error);
+        }
+      } else if (role === 'superadmin') {
+        try {
+          const adminNotifs = await getAdminNotifications(user.uid);
+          if (adminNotifs?.length) {
+            setNotifications(adminNotifs.map((notif) => ({
+              id: notif.id || createNotificationId(),
+              type: notif.type,
+              title: notif.title,
+              message: notif.message,
+              time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
+              read: notif.read ?? false,
+              link: notif.link,
+            })));
+          } else {
+            setNotifications([]);
+          }
+        } catch (error) {
+          console.error('Error loading admin notifications:', error);
         }
       }
     };
