@@ -268,7 +268,10 @@ export default function FamilyRequestForm() {
           />
           <input
             value={form.start_date || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.currentTarget.value }))}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                setForm((prev) => ({ ...prev, start_date: value }));
+              }}
             type="date"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -376,7 +379,10 @@ export default function FamilyRequestForm() {
               <input
                 type="checkbox"
                 checked={!!form.driver_required}
-                onChange={(e) => setForm((prev) => ({ ...prev, driver_required: (e.target as HTMLInputElement).checked }))}
+                  onChange={(e) => {
+                    const checked = e.currentTarget.checked;
+                    setForm((prev) => ({ ...prev, driver_required: checked }));
+                  }}
               />
               Driver required
             </label>
@@ -384,7 +390,10 @@ export default function FamilyRequestForm() {
               <input
                 type="checkbox"
                 checked={!!form.pet_friendly}
-                onChange={(e) => setForm((prev) => ({ ...prev, pet_friendly: (e.target as HTMLInputElement).checked }))}
+                  onChange={(e) => {
+                    const checked = e.currentTarget.checked;
+                    setForm((prev) => ({ ...prev, pet_friendly: checked }));
+                  }}
               />
               Pet friendly
             </label>
@@ -392,7 +401,10 @@ export default function FamilyRequestForm() {
               <input
                 type="checkbox"
                 checked={!!form.special_needs}
-                onChange={(e) => setForm((prev) => ({ ...prev, special_needs: (e.target as HTMLInputElement).checked }))}
+                  onChange={(e) => {
+                    const checked = e.currentTarget.checked;
+                    setForm((prev) => ({ ...prev, special_needs: checked }));
+                  }}
               />
               Special needs support
             </label>
