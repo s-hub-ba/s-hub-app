@@ -1592,9 +1592,15 @@ export const updateNannyProfile = async (id: string, updates: any) => {
 export const getNannyDocuments = async (nannyId: string): Promise<NannyDocument[]> => {
   const path = 'nanny_documents';
   try {
-    const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+    const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+    // Sort by created_at descending
+    return docs.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.().getTime() ?? 0;
+      const bTime = b.created_at?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -2205,9 +2211,15 @@ export const createNannyDocument = async (input: Omit<NannyDocument, 'id' | 'sta
 export const getPendingNannyDocuments = async (): Promise<NannyDocument[]> => {
   const path = 'nanny_documents';
   try {
-    const q = query(collection(db, path), where('status', 'in', ['uploaded', 'under_review']), orderBy('created_at', 'asc'));
+    const q = query(collection(db, path), where('status', 'in', ['uploaded', 'under_review']));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+    const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as NannyDocument));
+    // Sort by created_at ascending
+    return docs.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.().getTime() ?? 0;
+      const bTime = b.created_at?.toDate?.().getTime() ?? 0;
+      return aTime - bTime;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -4027,9 +4039,15 @@ export interface FamilyNotification {
 export const getFamilyNotifications = async (familyId: string): Promise<FamilyNotification[]> => {
   const path = 'family_notifications';
   try {
-    const q = query(collection(db, path), where('family_id', '==', familyId), orderBy('created_at', 'desc'));
+    const q = query(collection(db, path), where('family_id', '==', familyId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FamilyNotification));
+    const notifs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FamilyNotification));
+    // Sort by created_at descending
+    return notifs.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.().getTime() ?? 0;
+      const bTime = b.created_at?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -4154,9 +4172,15 @@ export interface NannyNotification {
 export const getNannyNotifications = async (nannyId: string): Promise<NannyNotification[]> => {
   const path = 'nanny_notifications';
   try {
-    const q = query(collection(db, path), where('nanny_id', '==', nannyId), orderBy('created_at', 'desc'));
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NannyNotification));
+    const notifs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NannyNotification));
+    // Sort by created_at descending
+    return notifs.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.().getTime() ?? 0;
+      const bTime = b.created_at?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -4179,9 +4203,15 @@ export interface AgencyNotification {
 export const getAgencyNotifications = async (agencyId: string): Promise<AgencyNotification[]> => {
   const path = 'agency_notifications';
   try {
-    const q = query(collection(db, path), where('agency_id', '==', agencyId), orderBy('created_at', 'desc'));
+    const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgencyNotification));
+    const notifs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgencyNotification));
+    // Sort by created_at descending
+    return notifs.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.().getTime() ?? 0;
+      const bTime = b.created_at?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -4282,9 +4312,15 @@ export const addAdminNotification = async (adminUserId: string, title: string, m
 export const getAdminNotifications = async (adminUserId: string): Promise<AdminNotification[]> => {
   const path = 'admin_notifications';
   try {
-    const q = query(collection(db, path), where('user_id', '==', adminUserId), orderBy('created_at', 'desc'));
+    const q = query(collection(db, path), where('user_id', '==', adminUserId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AdminNotification));
+    const notifs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AdminNotification));
+    // Sort by created_at descending
+    return notifs.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.().getTime() ?? 0;
+      const bTime = b.created_at?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -5231,6 +5267,7 @@ export type FamilyRequestStatus =
   | 'no_match'
   | 'in_progress'
   | 'accepted'
+  | 'family_chosen'
   | 'closed';
 
 export type FamilyRequestCareType = 'full-time' | 'part-time' | 'temporary';
@@ -5264,6 +5301,8 @@ export interface FamilyRequestRecord extends FamilyRequestInput {
   family_id: string | null;
   status: FamilyRequestStatus;
   top_match_count?: number;
+  chosen_agency_id?: string | null;
+  chosen_at?: any;
   created_at?: any;
   updated_at?: any;
 }
@@ -5792,20 +5831,107 @@ export const respondToFamilyRequestAssignment = async (
     }
 
     if (response === 'more_details') {
-      addFamilyNotification(
-        requestData.family_id || '',
-        'Agency requested more details',
-        `${assignment.agency?.company_name || 'An agency'} requested more information for your request.`,
-        `/family/requests/${requestData.id}`
-      ).catch(() => {
-        // non-critical
-      });
+      let conversationId: string | null = null;
+      if (requestData.family_id) {
+        const convo = await startConversation(
+          requestData.family_id,
+          agencyId,
+          requestData.parent_name,
+          assignment.agency?.company_name || 'Agency'
+        );
+        conversationId = convo?.id || null;
+
+        if (conversationId) {
+          const intro = [
+            `${assignment.agency?.company_name || 'An agency'} would like more details about your childcare request.`,
+            message?.trim() ? `Message: ${message.trim()}` : 'Please reply with any additional information that may help us find the right match.',
+          ].filter(Boolean).join('\n');
+
+          await sendMessage(conversationId, 'agency', agencyId, intro);
+          addFamilyNotification(
+            requestData.family_id,
+            'Agency requested more details',
+            `${assignment.agency?.company_name || 'An agency'} has a question about your childcare request.`,
+            `/family/messages?conversation=${conversationId}`
+          ).catch(() => {});
+        }
+      }
+
+      return { ok: true, conversationId };
     }
 
     return { ok: true, conversationId: null as string | null };
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
     return { ok: false, conversationId: null as string | null };
+  }
+};
+
+export const chooseFamilyRequestAgency = async (
+  requestId: string,
+  chosenAssignmentId: string,
+  familyId: string
+): Promise<{ ok: boolean; chosenAgencyId: string | null }> => {
+  const path = `family_requests/${requestId}`;
+  if (!requestId || !chosenAssignmentId || !familyId) return { ok: false, chosenAgencyId: null };
+  try {
+    // Verify ownership
+    const requestDoc = await getDoc(doc(db, 'family_requests', requestId));
+    if (!requestDoc.exists()) return { ok: false, chosenAgencyId: null };
+    const requestData = { id: requestDoc.id, ...(requestDoc.data() as any) } as FamilyRequestRecord;
+    if (requestData.family_id !== familyId) return { ok: false, chosenAgencyId: null };
+    if (requestData.chosen_agency_id) return { ok: false, chosenAgencyId: requestData.chosen_agency_id };
+
+    // Get the chosen assignment
+    const chosenAssignmentDoc = await getDoc(doc(db, requestAssignmentsCollection, chosenAssignmentId));
+    if (!chosenAssignmentDoc.exists()) return { ok: false, chosenAgencyId: null };
+    const chosenAssignment = { id: chosenAssignmentDoc.id, ...(chosenAssignmentDoc.data() as any) } as FamilyRequestMatchRow;
+    const chosenAgencyId = chosenAssignment.agency_id;
+
+    // Get chosen agency name
+    const chosenAgency = await getAgencyById(chosenAgencyId);
+    const chosenAgencyName = chosenAgency?.company_name || 'An agency';
+
+    // Mark the request as family_chosen
+    await updateDoc(doc(db, 'family_requests', requestId), {
+      status: 'family_chosen' as FamilyRequestStatus,
+      chosen_agency_id: chosenAgencyId,
+      chosen_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+
+    // Get all other assignments for this request
+    const allAssignmentsQuery = query(collection(db, requestAssignmentsCollection), where('request_id', '==', requestId));
+    const allAssignmentsSnap = await getDocs(allAssignmentsQuery);
+    const allAssignments = allAssignmentsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as FamilyRequestMatchRow));
+
+    // Notify unchosen agencies that responded (accepted or more_details)
+    const notifyOthers = allAssignments.filter(
+      (a) => a.agency_id !== chosenAgencyId && (a.status === 'accepted' || a.status === 'more_details')
+    );
+    await Promise.all(
+      notifyOthers.map((a) =>
+        addAgencyNotification(
+          a.agency_id,
+          'Family chose a different agency',
+          'A family you responded to has selected another agency for their care request. Thank you for your interest.',
+          '/agency/family-requests'
+        ).catch(() => {})
+      )
+    );
+
+    // Notify the chosen agency
+    addAgencyNotification(
+      chosenAgencyId,
+      'You were selected by a family! 🎉',
+      `A family has chosen ${chosenAgencyName} for their care request. Post a job to the nanny marketplace so nannies can apply.`,
+      `/agency/family-requests/${chosenAssignmentId}`
+    ).catch(() => {});
+
+    return { ok: true, chosenAgencyId };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return { ok: false, chosenAgencyId: null };
   }
 };
 

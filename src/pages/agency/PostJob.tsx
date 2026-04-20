@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
-import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob, getActiveJobCount } from '../../lib/api';
+import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob, getActiveJobCount, getFamilyRequestById } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgencyEntitlements } from '../../lib/entitlements';
 import { formatLimit } from '../../lib/plans';
@@ -15,6 +15,7 @@ export default function PostJob() {
   const { user } = useAuth();
   const [resolvedAgencyId, setResolvedAgencyId] = useState('');
   const [inquiryContext, setInquiryContext] = useState<any>(null);
+  const [familyRequestContext, setFamilyRequestContext] = useState<any>(null);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -53,7 +54,37 @@ export default function PostJob() {
       }
 
       const inquiryId = searchParams.get('inquiry');
-      if (!inquiryId) return;
+      if (!inquiryId) {
+        // Check for from_request context
+        const fromRequestId = searchParams.get('from_request');
+        if (fromRequestId) {
+          const familyReq = await getFamilyRequestById(fromRequestId);
+          if (familyReq) {
+            setFamilyRequestContext(familyReq);
+            const careLabel = familyReq.care_type
+              ? `${familyReq.care_type.charAt(0).toUpperCase()}${familyReq.care_type.slice(1)}`
+              : '';
+            const desc = [
+              `Care request from: ${familyReq.parent_name || 'Family'}`,
+              familyReq.schedule ? `Schedule: ${familyReq.schedule}` : null,
+              familyReq.special_requirements ? `Special requirements: ${familyReq.special_requirements}` : null,
+              familyReq.notes ? `Notes: ${familyReq.notes}` : null,
+            ].filter(Boolean).join('\n');
+            setFormData(prev => ({
+              ...prev,
+              title: careLabel ? `${careLabel} Nanny – ${familyReq.borough || 'NYC'}` : prev.title,
+              location_borough: familyReq.borough || prev.location_borough,
+              location_neighborhood: familyReq.neighborhood || prev.location_neighborhood,
+              pay_min: familyReq.budget_min != null ? String(familyReq.budget_min) : prev.pay_min,
+              pay_max: familyReq.budget_max != null ? String(familyReq.budget_max) : prev.pay_max,
+              start_date: familyReq.start_date || prev.start_date,
+              description: desc || prev.description,
+              job_type: familyReq.care_type || prev.job_type,
+            }));
+          }
+        }
+        return;
+      }
 
       const convo = await getConversationById(inquiryId);
       if (convo?.inquiry_type === 'agency_intro') {
@@ -244,6 +275,15 @@ export default function PostJob() {
           {inquiryContext && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-sm">
               This job will be linked to inquiry from {inquiryContext.family_name || 'Family'}. On publish, their case is automatically attached for follow-through and past-care tracking.
+            </div>
+          )}
+          {familyRequestContext && (
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-sm">
+              <p className="font-semibold mb-0.5">Posting for a family care request</p>
+              <p className="text-emerald-800">
+                This job has been pre-filled from {familyRequestContext.parent_name || 'a family'}'s care request
+                {familyRequestContext.borough ? ` in ${familyRequestContext.borough}` : ''}. Review and adjust the details, then publish so nannies can apply.
+              </p>
             </div>
           )}
           {error && (

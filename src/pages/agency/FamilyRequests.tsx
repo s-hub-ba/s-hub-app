@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Inbox, ChevronRight, Sparkles } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Inbox, ChevronRight, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAgencyFamilyRequestInbox, resolveAgencyIdForUser } from '../../lib/api';
 
@@ -13,9 +13,12 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function AgencyFamilyRequests() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [agencyId, setAgencyId] = useState('');
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
+
+  const showDeclinedBanner = searchParams.get('declined') === '1';
 
   useEffect(() => {
     const init = async () => {
@@ -53,8 +56,8 @@ export default function AgencyFamilyRequests() {
     <div className="space-y-8 pb-12">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Family Request Inbox</h1>
-          <p className="text-stone-500 mt-1">Prioritized by match score and request freshness.</p>
+          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Care Marketplace</h1>
+          <p className="text-stone-500 mt-1">Family care requests matched to your agency, ranked by fit.</p>
         </div>
         <Link
           to="/agency/request-settings"
@@ -64,10 +67,17 @@ export default function AgencyFamilyRequests() {
         </Link>
       </div>
 
+      {showDeclinedBanner && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          Request declined. The family will be notified and matched with other agencies.
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-10 text-center">
           <Inbox className="h-12 w-12 text-stone-300 mx-auto mb-3" />
-          <h2 className="text-lg font-bold text-stone-900">No family requests yet</h2>
+          <h2 className="text-lg font-bold text-stone-900">No care requests yet</h2>
           <p className="text-sm text-stone-500 mt-1">
             Requests matched to your capabilities will appear here.
           </p>

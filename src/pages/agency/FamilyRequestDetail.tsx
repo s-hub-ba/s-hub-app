@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { CheckCircle2, XCircle, CircleEllipsis, MessageSquare } from 'lucide-react';
+import { CheckCircle2, XCircle, CircleEllipsis, MessageSquare, AlertCircle, ArrowLeft, Trophy, PlusCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getAgencyFamilyRequestAssignment,
@@ -9,6 +9,20 @@ import {
   type FamilyRequestAssignmentStatus,
 } from '../../lib/api';
 
+const STATUS_LABEL: Record<string, string> = {
+  new: 'New',
+  accepted: 'Accepted',
+  declined: 'Declined',
+  more_details: 'More Details Requested',
+};
+
+const STATUS_STYLE: Record<string, string> = {
+  new: 'bg-blue-100 text-blue-700',
+  accepted: 'bg-emerald-100 text-emerald-700',
+  declined: 'bg-rose-100 text-rose-700',
+  more_details: 'bg-amber-100 text-amber-700',
+};
+
 export default function AgencyFamilyRequestDetail() {
   const { user } = useAuth();
   const { assignmentId = '' } = useParams();
@@ -16,9 +30,11 @@ export default function AgencyFamilyRequestDetail() {
 
   const [agencyId, setAgencyId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<FamilyRequestAssignmentStatus | null>(null);
   const [message, setMessage] = useState('');
   const [row, setRow] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [confirmDecline, setConfirmDecline] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -44,18 +60,32 @@ export default function AgencyFamilyRequestDetail() {
 
   const handleResponse = async (status: FamilyRequestAssignmentStatus) => {
     if (!assignmentId || !agencyId || saving) return;
-    setSaving(true);
+    setError('');
+    setSaving(status);
     const result = await respondToFamilyRequestAssignment(assignmentId, agencyId, status, message);
-    setSaving(false);
+    setSaving(null);
 
-    if (!result.ok) return;
+    if (!result.ok) {
+      setError('Something went wrong. Please try again.');
+      return;
+    }
 
     const updated = await getAgencyFamilyRequestAssignment(assignmentId);
     setRow(updated);
 
-    if (status === 'accepted' && result.conversationId) {
+    if ((status === 'accepted' || status === 'more_details') && result.conversationId) {
       navigate(`/agency/messages?conversation=${result.conversationId}`);
+      return;
     }
+
+    if (status === 'declined') {
+      navigate('/agency/family-requests?declined=1');
+    }
+  };
+
+  const handleDeclineConfirmed = () => {
+    setConfirmDecline(false);
+    handleResponse('declined');
   };
 
   if (loading) {
@@ -63,104 +93,217 @@ export default function AgencyFamilyRequestDetail() {
   }
 
   if (!row || !row.request) {
-    return <div className="p-8 text-center text-stone-500">Request not found or unavailable.</div>;
+    return (
+      <div className="p-8 text-center">
+        <p className="text-stone-500 mb-4">Request not found or you no longer have access.</p>
+        <Link to="/agency/family-requests" className="text-emerald-600 font-semibold hover:underline">← Back to Care Marketplace</Link>
+      </div>
+    );
   }
 
   const request = row.request;
+  const status: FamilyRequestAssignmentStatus = row.status;
+  const isResponded = status !== 'new';
 
   return (
-    <div className="space-y-8 pb-12">
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Family Request Detail</h1>
-          <p className="text-stone-500 mt-1">Score {row.score}/100 · {request.borough}{request.neighborhood ? `, ${request.neighborhood}` : ''}</p>
+          <Link to="/agency/family-requests" className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700 mb-2">
+            <ArrowLeft className="h-4 w-4" />
+            Care Marketplace
+          </Link>
+          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">
+            {request.parent_name || 'Family'} · {request.borough || 'NYC'}
+          </h1>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLE[status] || 'bg-stone-100 text-stone-600'}`}>
+              {STATUS_LABEL[status] || status}
+            </span>
+            <span className="text-sm text-stone-500">Match score {row.score}/100</span>
+          </div>
         </div>
-        <Link to="/agency/family-requests" className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50">
-          Back to Inbox
-        </Link>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Family chose your agency banner */}
+      {request.chosen_agency_id === row.agency_id && (
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-start gap-3 flex-1">
+            <Trophy className="h-5 w-5 text-emerald-700 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-bold text-emerald-900 text-sm">This family chose your agency!</p>
+              <p className="text-sm text-emerald-800 mt-0.5">
+                Post a job to the nanny marketplace so nannies can apply and you can find the right match for this family.
+              </p>
+            </div>
+          </div>
+          <Link
+            to={`/agency/post-job?from_request=${row.request_id}`}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold whitespace-nowrap transition-colors shrink-0"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Post a Job for This Family
+          </Link>
+        </div>
+      )}
+
+      {/* Already responded banner */}
+      {isResponded && (
+        <div className={`rounded-2xl border p-4 text-sm font-medium flex items-center gap-2 ${
+          status === 'accepted' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
+          status === 'declined' ? 'border-rose-200 bg-rose-50 text-rose-800' :
+          'border-amber-200 bg-amber-50 text-amber-800'
+        }`}>
+          {status === 'accepted' && <CheckCircle2 className="h-4 w-4 shrink-0" />}
+          {status === 'declined' && <XCircle className="h-4 w-4 shrink-0" />}
+          {status === 'more_details' && <CircleEllipsis className="h-4 w-4 shrink-0" />}
+          <span>
+            {status === 'accepted' && 'You accepted this request. Check your messages to continue coordination.'}
+            {status === 'declined' && 'You declined this request.'}
+            {status === 'more_details' && 'You requested more details. Check your messages to continue the conversation.'}
+          </span>
+          {(status === 'accepted' || status === 'more_details') && (
+            <Link to="/agency/messages" className="ml-auto underline font-semibold whitespace-nowrap">Open Messages →</Link>
+          )}
+        </div>
+      )}
+
+      {/* Request details */}
       <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
-        <h2 className="text-lg font-bold text-stone-900">Parent Request</h2>
+        <h2 className="text-lg font-bold text-stone-900">Care Request</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <Info label="Parent" value={request.parent_name} />
-          <Info label="Email" value={request.email} />
+          <Info label="Contact Email" value={request.email} />
           <Info label="Phone" value={request.phone || 'Not provided'} />
           <Info label="Care Type" value={request.care_type} />
           <Info label="Children" value={`${request.children_count}`} />
           <Info label="Age Groups" value={(request.child_age_groups || []).join(', ') || 'Not provided'} />
           <Info label="Live-In Preference" value={request.live_in} />
           <Info label="Driver Required" value={request.driver_required ? 'Yes' : 'No'} />
-          <Info label="Special Needs" value={request.special_needs ? 'Yes' : 'No'} />
+          <Info label="Special Needs Support" value={request.special_needs ? 'Yes' : 'No'} />
           <Info label="Pet Friendly" value={request.pet_friendly ? 'Yes' : 'No'} />
-          <Info label="Budget" value={`$${request.budget_min ?? '-'} to $${request.budget_max ?? '-'}`} />
+          <Info label="Budget" value={`$${request.budget_min ?? '–'} – $${request.budget_max ?? '–'}/hr`} />
           <Info label="Start Date" value={request.start_date || 'Flexible'} />
+          {(request.languages || []).length > 0 && (
+            <Info label="Languages" value={(request.languages || []).join(', ')} />
+          )}
         </div>
-
         {(request.schedule || request.notes || request.special_requirements) && (
-          <div className="pt-2 space-y-3">
+          <div className="pt-2 space-y-3 border-t border-stone-100">
             {request.schedule && <Info label="Schedule" value={request.schedule} />}
             {request.special_requirements && <Info label="Special Requirements" value={request.special_requirements} />}
-            {request.notes && <Info label="Notes" value={request.notes} />}
+            {request.notes && <Info label="Additional Notes" value={request.notes} />}
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
-        <h2 className="text-lg font-bold text-stone-900">Why This Matched</h2>
-        <ul className="space-y-2 text-sm text-stone-700">
-          {(row.reasons || []).map((reason: string) => (
-            <li key={reason} className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {reason}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* Match reasons */}
+      {(row.reasons || []).length > 0 && (
+        <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-3">
+          <h2 className="text-lg font-bold text-stone-900">Why This Matched Your Agency</h2>
+          <ul className="space-y-2 text-sm text-stone-700">
+            {(row.reasons || []).map((reason: string) => (
+              <li key={reason} className="flex items-start gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                {reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
-        <h2 className="text-lg font-bold text-stone-900">Respond to Family</h2>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.currentTarget.value)}
-          placeholder="Optional note to the family"
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl border border-stone-200"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => handleResponse('accepted')}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-60"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Accept & Open Messaging
-          </button>
-          <button
-            onClick={() => handleResponse('more_details')}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 font-semibold disabled:opacity-60"
-          >
-            <CircleEllipsis className="h-4 w-4" />
-            Request More Details
-          </button>
-          <button
-            onClick={() => handleResponse('declined')}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-300 bg-rose-50 text-rose-700 font-semibold disabled:opacity-60"
-          >
-            <XCircle className="h-4 w-4" />
-            Decline
-          </button>
+      {/* Response actions — only when status is 'new' */}
+      {!isResponded && (
+        <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-bold text-stone-900">Respond to This Request</h2>
+            <p className="text-sm text-stone-500 mt-1">Accepting or asking for more details will open a direct message thread with the family.</p>
+          </div>
+          <textarea
+            value={message}
+            onChange={(e) => {
+              const v = e.currentTarget.value;
+              setMessage(v);
+            }}
+            placeholder="Optional message to the family (shown in the conversation thread)"
+            rows={3}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm"
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => handleResponse('accepted')}
+              disabled={!!saving}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-60 transition-colors"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {saving === 'accepted' ? 'Accepting…' : 'Accept & Message Family'}
+            </button>
+            <button
+              onClick={() => handleResponse('more_details')}
+              disabled={!!saving}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold disabled:opacity-60 transition-colors"
+            >
+              <CircleEllipsis className="h-4 w-4" />
+              {saving === 'more_details' ? 'Opening thread…' : 'Ask for More Details'}
+            </button>
+            <button
+              onClick={() => setConfirmDecline(true)}
+              disabled={!!saving}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 font-semibold disabled:opacity-60 transition-colors"
+            >
+              <XCircle className="h-4 w-4" />
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Messages shortcut for responded requests */}
+      {isResponded && (status === 'accepted' || status === 'more_details') && (
+        <div className="flex justify-end">
           <Link
             to="/agency/messages"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-900 text-white font-semibold hover:bg-stone-800"
           >
             <MessageSquare className="h-4 w-4" />
-            Open Messages
+            Continue in Messages
           </Link>
         </div>
-      </div>
+      )}
+
+      {/* Decline confirmation modal */}
+      {confirmDecline && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-xl border border-stone-200 p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-lg font-bold text-stone-900">Decline this request?</h3>
+            <p className="text-sm text-stone-500">The family will be notified and we'll continue matching them with other agencies. This cannot be undone.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmDecline(false)}
+                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 font-semibold hover:bg-stone-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeclineConfirmed}
+                disabled={saving === 'declined'}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-semibold hover:bg-rose-700 disabled:opacity-60"
+              >
+                {saving === 'declined' ? 'Declining…' : 'Yes, Decline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -168,7 +311,7 @@ export default function AgencyFamilyRequestDetail() {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wider text-stone-500 font-semibold">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold">{label}</p>
       <p className="text-sm text-stone-900 mt-0.5 whitespace-pre-wrap">{value}</p>
     </div>
   );

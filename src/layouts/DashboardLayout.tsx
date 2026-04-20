@@ -58,7 +58,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
         { name: 'Jobs', href: '/agency/jobs', icon: Briefcase },
         { name: 'Applications', href: '/agency/applications', icon: FileText },
         { name: 'Emergency Mode', href: '/agency/emergency', icon: AlertTriangle },
-        { name: 'Family Requests', href: '/agency/family-requests', icon: MessageSquare, adminOnly: true },
+        { name: 'Care Marketplace', href: '/agency/family-requests', icon: MessageSquare, adminOnly: true },
       ],
     },
     {

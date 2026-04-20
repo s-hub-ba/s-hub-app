@@ -204,14 +204,20 @@ export default function FamilyRequestForm() {
           <h2 className="md:col-span-2 text-lg font-bold text-stone-900">Parent Contact</h2>
           <input
             value={form.parent_name}
-            onChange={(e) => setForm((prev) => ({ ...prev, parent_name: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, parent_name: value }));
+            }}
             placeholder="Parent name"
             className="px-4 py-3 rounded-xl border border-stone-200"
             disabled={loadingProfile}
           />
           <input
             value={form.email}
-            onChange={(e) => setForm((prev) => ({ ...prev, email: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, email: value }));
+            }}
             placeholder="Email"
             type="email"
             className="px-4 py-3 rounded-xl border border-stone-200"
@@ -219,7 +225,10 @@ export default function FamilyRequestForm() {
           />
           <input
             value={form.phone || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, phone: value }));
+            }}
             placeholder="Phone"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -229,14 +238,20 @@ export default function FamilyRequestForm() {
           <h2 className="md:col-span-2 text-lg font-bold text-stone-900">Location & Household</h2>
           <select
             value={form.borough}
-            onChange={(e) => setForm((prev) => ({ ...prev, borough: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, borough: value }));
+            }}
             className="px-4 py-3 rounded-xl border border-stone-200 bg-white"
           >
             {BOROUGHS.map((borough) => <option key={borough} value={borough}>{borough}</option>)}
           </select>
           <input
             value={form.neighborhood || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, neighborhood: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, neighborhood: value }));
+            }}
             placeholder="Neighborhood"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -244,7 +259,10 @@ export default function FamilyRequestForm() {
             type="number"
             min={1}
             value={form.children_count}
-            onChange={(e) => setForm((prev) => ({ ...prev, children_count: Math.max(1, Number(e.currentTarget.value) || 1) }))}
+            onChange={(e) => {
+              const value = Math.max(1, Number(e.currentTarget.value) || 1);
+              setForm((prev) => ({ ...prev, children_count: value }));
+            }}
             placeholder="Number of children"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
@@ -303,7 +321,10 @@ export default function FamilyRequestForm() {
 
           <textarea
             value={form.schedule || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, schedule: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, schedule: value }));
+            }}
             placeholder="Schedule details"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
             rows={3}
@@ -314,7 +335,10 @@ export default function FamilyRequestForm() {
               type="number"
               min={0}
               value={form.budget_min ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, budget_min: e.currentTarget.value ? Number(e.currentTarget.value) : null }))}
+              onChange={(e) => {
+                const value = e.currentTarget.value ? Number(e.currentTarget.value) : null;
+                setForm((prev) => ({ ...prev, budget_min: value }));
+              }}
               placeholder="Budget min ($/hr)"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -322,7 +346,10 @@ export default function FamilyRequestForm() {
               type="number"
               min={0}
               value={form.budget_max ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, budget_max: e.currentTarget.value ? Number(e.currentTarget.value) : null }))}
+              onChange={(e) => {
+                const value = e.currentTarget.value ? Number(e.currentTarget.value) : null;
+                setForm((prev) => ({ ...prev, budget_max: value }));
+              }}
               placeholder="Budget max ($/hr)"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -373,7 +400,10 @@ export default function FamilyRequestForm() {
 
           <textarea
             value={form.special_requirements || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, special_requirements: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, special_requirements: value }));
+            }}
             placeholder="Special requirements"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
             rows={2}
@@ -381,7 +411,10 @@ export default function FamilyRequestForm() {
 
           <textarea
             value={form.notes || ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.currentTarget.value }))}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, notes: value }));
+            }}
             placeholder="Additional notes"
             className="w-full px-4 py-3 rounded-xl border border-stone-200"
             rows={3}
