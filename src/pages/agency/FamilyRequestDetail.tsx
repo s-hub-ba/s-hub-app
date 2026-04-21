@@ -35,6 +35,7 @@ export default function AgencyFamilyRequestDetail() {
   const [message, setMessage] = useState('');
   const [row, setRow] = useState<any>(null);
   const [error, setError] = useState('');
+  const [creatingDraft, setCreatingDraft] = useState(false);
   const [confirmDecline, setConfirmDecline] = useState(false);
 
   useEffect(() => {
@@ -59,6 +60,63 @@ export default function AgencyFamilyRequestDetail() {
     load();
   }, [user, assignmentId]);
 
+  const createDraftJobFromRequest = async (requestToUse: any, requestId: string) => {
+    if (!requestToUse || !requestId || !agencyId) {
+      throw new Error('Missing request context for draft creation.');
+    }
+
+    const careLabel = requestToUse.care_type
+      ? `${String(requestToUse.care_type).charAt(0).toUpperCase()}${String(requestToUse.care_type).slice(1)}`
+      : 'Care';
+    const scheduleSummary = requestToUse.schedule
+      ? String(requestToUse.schedule)
+      : requestToUse.start_date && requestToUse.end_date
+        ? `Date range: ${requestToUse.start_date} to ${requestToUse.end_date}`
+        : 'Schedule to be confirmed with family';
+
+    await createJob({
+      title: `${careLabel} Nanny - ${requestToUse.borough || 'NYC'}`,
+      job_type: String(requestToUse.care_type || 'full-time'),
+      work_type: String(requestToUse.live_in || 'live-out'),
+      description: [
+        `Care request from: ${requestToUse.parent_name || 'Family'}`,
+        requestToUse.schedule ? `Schedule: ${requestToUse.schedule}` : null,
+        requestToUse.special_requirements ? `Special requirements: ${requestToUse.special_requirements}` : null,
+        requestToUse.notes ? `Notes: ${requestToUse.notes}` : null,
+      ].filter(Boolean).join('\n'),
+      location_borough: String(requestToUse.borough || ''),
+      location_neighborhood: String(requestToUse.neighborhood || ''),
+      pay_min: requestToUse.budget_min ?? 0,
+      pay_max: requestToUse.budget_max ?? 0,
+      schedule_type: requestToUse.start_date && requestToUse.end_date ? 'date_range' : 'weekly_days',
+      start_date: String(requestToUse.start_date || ''),
+      end_date: requestToUse.start_date && requestToUse.end_date ? String(requestToUse.end_date || '') : null,
+      weekdays: [],
+      required_experience_years: 0,
+      schedule_summary: scheduleSummary,
+      schedule: scheduleSummary,
+      status: 'draft',
+      agency_id: agencyId,
+      family_id: requestToUse.family_id || null,
+      source_inquiry_id: requestId,
+      linked_from_inquiry: false,
+    });
+  };
+
+  const handleCreateDraftNow = async () => {
+    if (!row?.request || !row?.request_id || creatingDraft) return;
+    setError('');
+    setCreatingDraft(true);
+    try {
+      await createDraftJobFromRequest(row.request, row.request_id);
+      navigate('/agency/jobs?status=draft');
+    } catch {
+      setError('Could not auto-create a draft job right now. Please try again in a moment.');
+    } finally {
+      setCreatingDraft(false);
+    }
+  };
+
   const handleResponse = async (status: FamilyRequestAssignmentStatus) => {
     if (!assignmentId || !agencyId || saving) return;
     setError('');
@@ -79,50 +137,11 @@ export default function AgencyFamilyRequestDetail() {
       const requestId = updated?.request_id || row?.request_id;
 
       try {
-        if (!requestToUse || !requestId) {
-          throw new Error('Missing request context');
-        }
+        await createDraftJobFromRequest(requestToUse, requestId);
 
-        const careLabel = requestToUse.care_type
-          ? `${String(requestToUse.care_type).charAt(0).toUpperCase()}${String(requestToUse.care_type).slice(1)}`
-          : 'Care';
-        const scheduleSummary = requestToUse.schedule
-          ? String(requestToUse.schedule)
-          : requestToUse.start_date && requestToUse.end_date
-            ? `Date range: ${requestToUse.start_date} to ${requestToUse.end_date}`
-            : 'Schedule to be confirmed with family';
-
-        await createJob({
-          title: `${careLabel} Nanny - ${requestToUse.borough || 'NYC'}`,
-          job_type: String(requestToUse.care_type || 'full-time'),
-          work_type: String(requestToUse.live_in || 'live-out'),
-          description: [
-            `Care request from: ${requestToUse.parent_name || 'Family'}`,
-            requestToUse.schedule ? `Schedule: ${requestToUse.schedule}` : null,
-            requestToUse.special_requirements ? `Special requirements: ${requestToUse.special_requirements}` : null,
-            requestToUse.notes ? `Notes: ${requestToUse.notes}` : null,
-          ].filter(Boolean).join('\n'),
-          location_borough: String(requestToUse.borough || ''),
-          location_neighborhood: String(requestToUse.neighborhood || ''),
-          pay_min: requestToUse.budget_min ?? 0,
-          pay_max: requestToUse.budget_max ?? 0,
-          schedule_type: requestToUse.start_date && requestToUse.end_date ? 'date_range' : 'weekly_days',
-          start_date: String(requestToUse.start_date || ''),
-          end_date: requestToUse.start_date && requestToUse.end_date ? String(requestToUse.end_date || '') : null,
-          weekdays: [],
-          required_experience_years: 0,
-          schedule_summary: scheduleSummary,
-          schedule: scheduleSummary,
-          status: 'draft',
-          agency_id: agencyId,
-          family_id: requestToUse.family_id || null,
-          source_inquiry_id: requestId,
-          linked_from_inquiry: false,
-        });
-
-        navigate('/agency/jobs');
+        navigate('/agency/jobs?status=draft');
       } catch {
-        navigate(`/agency/post-job?from_request=${requestId || row.request_id}`);
+        setError('Request accepted, but draft auto-creation failed. Use "Create Draft Job Now" below to retry.');
       }
       return;
     }
@@ -200,13 +219,15 @@ export default function AgencyFamilyRequestDetail() {
               </p>
             </div>
           </div>
-          <Link
-            to={`/agency/post-job?from_request=${row.request_id}`}
+          <button
+            type="button"
+            onClick={handleCreateDraftNow}
+            disabled={creatingDraft}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold whitespace-nowrap transition-colors shrink-0"
           >
             <PlusCircle className="h-4 w-4" />
-            Post a Job for This Family
-          </Link>
+            {creatingDraft ? 'Creating Draft...' : 'Create Draft Job Now'}
+          </button>
         </div>
       )}
 

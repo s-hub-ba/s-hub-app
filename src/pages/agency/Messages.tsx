@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Send, User, Baby, ChevronLeft, Trash2 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { deleteConversationThread, getAgencyConversationsForUser, getMessages, markConversationRead, sendMessage, updateInquiryStage } from '../../lib/api';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { createDraftJobFromFamilyRequest, deleteConversationThread, getAgencyConversationsForUser, getFamilyRequestById, getMessages, markConversationRead, sendMessage, updateInquiryStage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function AgencyMessages() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [linkedFamilyRequest, setLinkedFamilyRequest] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isDeletingThread, setIsDeletingThread] = useState(false);
+  const [isCreatingDraftFromRequest, setIsCreatingDraftFromRequest] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const requestedConversationId = searchParams.get('conversation');
@@ -142,6 +145,28 @@ export default function AgencyMessages() {
     };
   }, [activeConversation?.id]);
 
+  useEffect(() => {
+    if (!activeConversation?.source_family_request_id) {
+      setLinkedFamilyRequest(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadLinkedRequest = async () => {
+      try {
+        const request = await getFamilyRequestById(String(activeConversation.source_family_request_id));
+        if (!cancelled) setLinkedFamilyRequest(request);
+      } catch {
+        if (!cancelled) setLinkedFamilyRequest(null);
+      }
+    };
+
+    loadLinkedRequest();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation?.source_family_request_id]);
+
   if (!currentUserId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to view messages.</div>;
   }
@@ -201,6 +226,33 @@ export default function AgencyMessages() {
     }
   };
 
+  const canCreateDraftFromRequest = !!(
+    activeConversation?.source_family_request_id
+    && activeConversation?.agency_id
+    && linkedFamilyRequest?.status === 'family_chosen'
+    && linkedFamilyRequest?.chosen_agency_id === activeConversation?.agency_id
+  );
+
+  const handleCreateDraftFromApprovedRequest = async () => {
+    if (!canCreateDraftFromRequest || isCreatingDraftFromRequest) return;
+    setIsCreatingDraftFromRequest(true);
+    try {
+      const created = await createDraftJobFromFamilyRequest(
+        String(activeConversation.source_family_request_id),
+        String(activeConversation.agency_id)
+      );
+      if (!created?.id) {
+        setLoadError('Could not create a draft from this request right now.');
+        return;
+      }
+      navigate('/agency/jobs?status=draft');
+    } catch (error: any) {
+      setLoadError(error?.message || 'Could not create a draft from this request right now.');
+    } finally {
+      setIsCreatingDraftFromRequest(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-6 min-h-[calc(100dvh-8rem)]">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -230,6 +282,13 @@ export default function AgencyMessages() {
               </div>
             ) : (
               conversations.map(convo => (
+                (() => {
+                  const isMarketplaceReadyToPost = (
+                    !!convo?.source_family_request_id
+                    && String(convo?.family_request_status || '') === 'family_chosen'
+                    && !convo?.linked_job_id
+                  );
+                  return (
                 <button
                   key={convo.id}
                   onClick={() => {
@@ -255,10 +314,19 @@ export default function AgencyMessages() {
                           <span className="text-[11px] text-stone-400">{formatConversationTime(convo)}</span>
                         </div>
                       </div>
-                      <p className="text-xs text-stone-500 truncate">{convo.last_message || (convo.inquiry_type === 'agency_intro' ? 'Inquiry thread' : 'Click to view messages')}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-xs text-stone-500 truncate">{convo.last_message || (convo.inquiry_type === 'agency_intro' ? 'Inquiry thread' : 'Click to view messages')}</p>
+                        {isMarketplaceReadyToPost ? (
+                          <span className="shrink-0 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                            Ready to Post
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </button>
+                  );
+                })()
               ))
             )}
           </div>
@@ -314,6 +382,27 @@ export default function AgencyMessages() {
                   {activeConversation.inquiry_description_preview && (
                     <p className="mt-1 line-clamp-2">{activeConversation.inquiry_description_preview}</p>
                   )}
+                </div>
+              )}
+
+              {activeConversation.source_family_request_id && (
+                <div className="mx-4 mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold uppercase tracking-wider">Care Marketplace Request</p>
+                    <button
+                      type="button"
+                      onClick={handleCreateDraftFromApprovedRequest}
+                      disabled={!canCreateDraftFromRequest || isCreatingDraftFromRequest}
+                      className="inline-flex px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-blue-700 font-semibold hover:bg-blue-100 transition-colors disabled:opacity-50"
+                    >
+                      {isCreatingDraftFromRequest ? 'Creating Draft...' : 'Create Draft Job'}
+                    </button>
+                  </div>
+                  <p className="mt-1">
+                    {canCreateDraftFromRequest
+                      ? 'Family approved your agency. You can now create a draft job from this request.'
+                      : 'Waiting for family approval before this request can be turned into a job posting.'}
+                  </p>
                 </div>
               )}
 

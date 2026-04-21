@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, Plus, MapPin, Clock, Trash2, Lock, RotateCcw, BriefcaseBusiness, Hourglass, CheckCircle2, XCircle, CalendarPlus } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { getJobs, deleteJob, getApplicationsForAgency, notifyApplicationCareMilestone, resolveAgencyIdForUser, updateApplicationCareSession, updateApplicationStatus, updateJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { toDate } from '../../lib/utils';
 
 export default function AgencyJobs() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'closed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'closed' | 'draft'>('all');
   const [jobs, setJobs] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
   const { user } = useAuth();
@@ -47,6 +48,26 @@ export default function AgencyJobs() {
     if (!agencyId) return;
     loadJobs();
   }, [agencyId]);
+
+  useEffect(() => {
+    const requestedStatus = String(searchParams.get('status') || '').toLowerCase();
+    if (requestedStatus === 'published' || requestedStatus === 'closed' || requestedStatus === 'draft') {
+      setStatusFilter(requestedStatus);
+      return;
+    }
+    setStatusFilter('all');
+  }, [searchParams]);
+
+  const applyStatusFilter = (nextFilter: 'all' | 'published' | 'closed' | 'draft') => {
+    setStatusFilter(nextFilter);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextFilter === 'all') {
+      nextParams.delete('status');
+    } else {
+      nextParams.set('status', nextFilter);
+    }
+    setSearchParams(nextParams);
+  };
 
   const loadJobs = async () => {
     try {
@@ -237,6 +258,7 @@ export default function AgencyJobs() {
 
   const openJobsCount = jobs.filter((job) => (job.status || 'published') === 'published').length;
   const closedJobsCount = jobs.filter((job) => job.status === 'closed').length;
+  const draftJobsCount = jobs.filter((job) => job.status === 'draft').length;
   const activeCareCount = activeCare.filter((app) => app.status === 'active').length;
 
   const applicationsByJob = applications.reduce((acc, app) => {
@@ -267,10 +289,19 @@ export default function AgencyJobs() {
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Manage Jobs</h1>
           <p className="text-stone-500 mt-1">Create and manage your agency's job postings.</p>
         </div>
-        <Link to="/agency/jobs/new" className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center justify-center gap-2">
-          <Plus className="h-4 w-4" />
-          Post New Job
-        </Link>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => applyStatusFilter('draft')}
+            className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors"
+          >
+            Open Draft Jobs
+          </button>
+          <Link to="/agency/jobs/new" className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center justify-center gap-2">
+            <Plus className="h-4 w-4" />
+            Post New Job
+          </Link>
+        </div>
       </div>
 
       {jobActionError && (
@@ -294,6 +325,10 @@ export default function AgencyJobs() {
         <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm">
           <div className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Closed</div>
           <div className="text-2xl font-bold text-stone-700 mt-1">{closedJobsCount}</div>
+        </div>
+        <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm">
+          <div className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Drafts</div>
+          <div className="text-2xl font-bold text-amber-700 mt-1">{draftJobsCount}</div>
         </div>
         <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm md:col-span-3">
           <div className="text-xs uppercase tracking-wider text-stone-500 font-semibold">In Session (Active Care)</div>
@@ -424,12 +459,13 @@ export default function AgencyJobs() {
           <Filter className="h-4 w-4" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.currentTarget.value as 'all' | 'published' | 'closed')}
+            onChange={(e) => applyStatusFilter(e.currentTarget.value as 'all' | 'published' | 'closed' | 'draft')}
             className="bg-transparent outline-none w-full cursor-pointer"
           >
             <option value="all">All Jobs</option>
             <option value="published">Open Jobs</option>
             <option value="closed">Closed Jobs</option>
+            <option value="draft">Draft Jobs</option>
           </select>
         </div>
       </div>
