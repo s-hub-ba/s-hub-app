@@ -3219,7 +3219,11 @@ export const getAgencyConversationsForUser = async (userId: string) => {
     }
   });
 
-  const values = Array.from(unique.values());
+  const values = Array.from(unique.values()).filter((conversation: any) => {
+    const isInquiryConversation = conversation?.inquiry_type === 'agency_intro';
+    const isConvertedToJob = !!conversation?.linked_job_id && conversation?.inquiry_stage === 'done';
+    return !(isInquiryConversation && isConvertedToJob);
+  });
   const toMillis = (value: any): number => {
     if (!value) return 0;
     if (typeof value?.toDate === 'function') return value.toDate().getTime();
@@ -4579,7 +4583,13 @@ export const getConversations = async (userId: string, role: 'family' | 'nanny' 
   try {
     let q = query(collection(db, path), where('participants', 'array-contains', userId));
     const snapshot = await getDocs(q);
-    const conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const conversations = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter((conversation: any) => {
+        const isInquiryConversation = conversation?.inquiry_type === 'agency_intro';
+        const isConvertedToJob = !!conversation?.linked_job_id && conversation?.inquiry_stage === 'done';
+        return !(isInquiryConversation && isConvertedToJob);
+      });
 
     const toMillis = (value: any): number => {
       if (!value) return 0;
@@ -4606,7 +4616,13 @@ export const getAgencyConversations = async (agencyId: string) => {
     console.log(`[DEBUG] getAgencyConversations(${agencyId}): querying conversations`);
     const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snapshot = await getDocs(q);
-    const conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const conversations = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter((conversation: any) => {
+        const isInquiryConversation = conversation?.inquiry_type === 'agency_intro';
+        const isConvertedToJob = !!conversation?.linked_job_id && conversation?.inquiry_stage === 'done';
+        return !(isInquiryConversation && isConvertedToJob);
+      });
     console.log(`[DEBUG] getAgencyConversations(${agencyId}): found ${conversations.length} conversations`);
 
     const toMillis = (value: any): number => {
@@ -5849,6 +5865,71 @@ export const getFamilyRequestById = async (requestId: string): Promise<FamilyReq
   }
 };
 
+export const createDraftJobFromFamilyRequest = async (
+  requestId: string,
+  agencyId: string
+): Promise<{ id: string } | null> => {
+  if (!requestId || !agencyId) return null;
+
+  const request = await getFamilyRequestById(requestId);
+  if (!request) {
+    throw new Error('Care request not found.');
+  }
+
+  if (request.chosen_agency_id !== agencyId || request.status !== 'family_chosen') {
+    throw new Error('This request is not yet approved by the family for your agency.');
+  }
+
+  const careLabel = request.care_type
+    ? `${String(request.care_type).charAt(0).toUpperCase()}${String(request.care_type).slice(1)}`
+    : 'Care';
+  const scheduleSummary = request.schedule
+    ? String(request.schedule)
+    : request.start_date && request.end_date
+      ? `Date range: ${request.start_date} to ${request.end_date}`
+      : 'Schedule to be confirmed with family';
+
+  const created = await createJob({
+    title: `${careLabel} Nanny - ${request.borough || 'NYC'}`,
+    job_type: String(request.care_type || 'full-time'),
+    work_type: String(request.live_in || 'live-out'),
+    description: [
+      `Care request from: ${request.parent_name || 'Family'}`,
+      request.schedule ? `Schedule: ${request.schedule}` : null,
+      request.special_requirements ? `Special requirements: ${request.special_requirements}` : null,
+      request.notes ? `Notes: ${request.notes}` : null,
+    ].filter(Boolean).join('\n'),
+    location_borough: String(request.borough || ''),
+    location_neighborhood: String(request.neighborhood || ''),
+    pay_min: request.budget_min ?? 0,
+    pay_max: request.budget_max ?? 0,
+    schedule_type: request.start_date && request.end_date ? 'date_range' : 'weekly_days',
+    start_date: String(request.start_date || ''),
+    end_date: request.start_date && request.end_date ? String(request.end_date || '') : null,
+    weekdays: [],
+    required_experience_years: 0,
+    schedule_summary: scheduleSummary,
+    schedule: scheduleSummary,
+    status: 'draft',
+    agency_id: agencyId,
+    family_id: request.family_id || null,
+    source_inquiry_id: requestId,
+    linked_from_inquiry: false,
+  });
+
+  if (created?.id && request.family_id) {
+    const conversationId = `${request.family_id}_${agencyId}`;
+    await setDoc(doc(db, 'conversations', conversationId), {
+      source_family_request_id: requestId,
+      family_request_status: 'family_chosen',
+      linked_job_id: created.id,
+      updated_at: serverTimestamp(),
+    }, { merge: true });
+  }
+
+  return created?.id ? { id: String(created.id) } : null;
+};
+
 export const getFamilyRequestsForFamily = async (familyId: string): Promise<FamilyRequestRecord[]> => {
   const path = 'family_requests';
   if (!familyId) return [];
@@ -6016,6 +6097,12 @@ export const respondToFamilyRequestAssignment = async (
         conversationId = convo?.id || null;
 
         if (conversationId) {
+          await setDoc(doc(db, 'conversations', conversationId), {
+            source_family_request_id: requestData.id,
+            family_request_status: 'accepted',
+            updated_at: serverTimestamp(),
+          }, { merge: true });
+
           const intro = [
             `Your family request has been accepted by ${assignment.agency?.company_name || 'the agency'}.`,
             message?.trim() ? `Agency note: ${message.trim()}` : null,
@@ -6145,6 +6232,28 @@ export const chooseFamilyRequestAgency = async (
       `A family has chosen ${chosenAgencyName} for their care request. Post a job to the nanny marketplace so nannies can apply.`,
       `/agency/family-requests/${chosenAssignmentId}`
     ).catch(() => {});
+
+    if (requestData.family_id) {
+      const conversationId = `${requestData.family_id}_${chosenAgencyId}`;
+      await setDoc(doc(db, 'conversations', conversationId), {
+        participants: [requestData.family_id, chosenAgencyId],
+        family_id: requestData.family_id,
+        agency_id: chosenAgencyId,
+        family_name: requestData.parent_name || 'Family',
+        agency_name: chosenAgencyName,
+        source_family_request_id: requestId,
+        family_request_status: 'family_chosen',
+        updated_at: serverTimestamp(),
+        created_at: serverTimestamp(),
+      }, { merge: true });
+
+      await sendMessage(
+        conversationId,
+        'family',
+        requestData.family_id,
+        `We approved your agency for this care request. Please create the job posting so nannies can apply.`
+      );
+    }
 
     return { ok: true, chosenAgencyId };
   } catch (error) {
