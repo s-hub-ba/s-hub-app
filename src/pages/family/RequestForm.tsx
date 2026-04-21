@@ -165,6 +165,16 @@ export default function FamilyRequestForm() {
       return;
     }
 
+    if ((form.budget_min ?? 0) < 0 || (form.budget_max ?? 0) < 0) {
+      setError('Budget values cannot be negative.');
+      return;
+    }
+
+    if (form.budget_min != null && form.budget_max != null && form.budget_max < form.budget_min) {
+      setError('Budget max must be greater than or equal to budget min.');
+      return;
+    }
+
     if (!canSubmit) {
       setError('Please complete all required fields before submitting.');
       return;
@@ -359,11 +369,15 @@ export default function FamilyRequestForm() {
                     value={form.end_date || ''}
                     onChange={(e) => {
                       const value = e.currentTarget.value;
-                      setForm((prev) => ({ ...prev, end_date: value }));
+                      setForm((prev) => ({
+                        ...prev,
+                        end_date: value,
+                        // If an explicit end date is provided, treat the request as not flexible.
+                        is_flexible: value ? false : prev.is_flexible,
+                      }));
                     }}
                     type="date"
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white"
-                    disabled={!!form.is_flexible}
                   />
                 </div>
               )}
@@ -418,7 +432,8 @@ export default function FamilyRequestForm() {
               min={0}
               value={form.budget_min ?? ''}
               onChange={(e) => {
-                const value = e.currentTarget.value ? Number(e.currentTarget.value) : null;
+                const rawValue = e.currentTarget.value;
+                const value = rawValue === '' ? null : Math.max(0, Number(rawValue) || 0);
                 setForm((prev) => ({ ...prev, budget_min: value }));
               }}
               placeholder="Budget min ($/hr)"
@@ -429,7 +444,8 @@ export default function FamilyRequestForm() {
               min={0}
               value={form.budget_max ?? ''}
               onChange={(e) => {
-                const value = e.currentTarget.value ? Number(e.currentTarget.value) : null;
+                const rawValue = e.currentTarget.value;
+                const value = rawValue === '' ? null : Math.max(0, Number(rawValue) || 0);
                 setForm((prev) => ({ ...prev, budget_max: value }));
               }}
               placeholder="Budget max ($/hr)"

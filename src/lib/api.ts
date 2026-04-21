@@ -97,6 +97,30 @@ const getTimestampMillis = (value: any): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const getRecordRecency = (value: { updated_at?: any; created_at?: any }): number => {
+  return Math.max(getTimestampMillis(value?.updated_at), getTimestampMillis(value?.created_at));
+};
+
+const toNonNegativeNumber = (value: unknown): number | null => {
+  if (value === '' || value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, parsed);
+};
+
+const normalizeJobPayload = (jobData: any) => {
+  const payMin = toNonNegativeNumber(jobData?.pay_min);
+  const payMax = toNonNegativeNumber(jobData?.pay_max);
+  const requiredExperienceYears = toNonNegativeNumber(jobData?.required_experience_years);
+
+  return {
+    ...jobData,
+    pay_min: payMin,
+    pay_max: payMax,
+    required_experience_years: requiredExperienceYears == null ? 0 : Math.floor(requiredExperienceYears),
+  };
+};
+
 // --- Types ---
 export type AppUserRole = 'nanny' | 'family' | 'agency' | 'agency_admin' | 'agency_recruiter' | 'superadmin';
 
@@ -848,13 +872,19 @@ export const getJobById = async (id: string): Promise<Job | null> => {
 export const createJob = async (jobData: any) => {
   const path = 'jobs';
   try {
-    if (jobData?.agency_id) {
+    const normalizedJobData = normalizeJobPayload(jobData);
+
+    if (normalizedJobData.pay_min != null && normalizedJobData.pay_max != null && normalizedJobData.pay_max < normalizedJobData.pay_min) {
+      throw new Error('Max pay must be greater than or equal to min pay.');
+    }
+
+    if (normalizedJobData?.agency_id) {
       try {
-        const headers = await buildApiHeaders({ 'x-agency-id': String(jobData.agency_id) });
+        const headers = await buildApiHeaders({ 'x-agency-id': String(normalizedJobData.agency_id) });
         const response = await fetch(buildApiUrl('/api/agency/jobs'), {
           method: 'POST',
           headers,
-          body: JSON.stringify(jobData),
+          body: JSON.stringify(normalizedJobData),
         });
 
         const payload = await response.json().catch(() => ({}));
@@ -876,10 +906,10 @@ export const createJob = async (jobData: any) => {
       }
     }
 
-    const shouldCountAgainstLimit = (jobData?.status || 'published') === 'published';
-    if (shouldCountAgainstLimit && jobData?.agency_id) {
-      const entitlements = await getAgencyEntitlementsForAgency(jobData.agency_id);
-      const currentCount = await getActiveJobCount(jobData.agency_id);
+    const shouldCountAgainstLimit = (normalizedJobData?.status || 'published') === 'published';
+    if (shouldCountAgainstLimit && normalizedJobData?.agency_id) {
+      const entitlements = await getAgencyEntitlementsForAgency(normalizedJobData.agency_id);
+      const currentCount = await getActiveJobCount(normalizedJobData.agency_id);
 
       if (!entitlements.canCreateJobPosting(currentCount)) {
         throw new Error(
@@ -891,7 +921,7 @@ export const createJob = async (jobData: any) => {
     }
 
     const docRef = await addDoc(collection(db, path), {
-      ...jobData,
+      ...normalizedJobData,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
     });
@@ -970,8 +1000,13 @@ export const updateJob = async (id: string, updates: any) => {
     const docRef = doc(db, 'jobs', id);
     const existingDoc = await getDoc(docRef);
     const existingData = existingDoc.exists() ? existingDoc.data() : null;
-    const nextStatus = updates?.status || existingData?.status || 'draft';
-    const agencyId = updates?.agency_id || existingData?.agency_id;
+    const normalizedUpdates = normalizeJobPayload(updates);
+    const nextStatus = normalizedUpdates?.status || existingData?.status || 'draft';
+    const agencyId = normalizedUpdates?.agency_id || existingData?.agency_id;
+
+    if (normalizedUpdates.pay_min != null && normalizedUpdates.pay_max != null && normalizedUpdates.pay_max < normalizedUpdates.pay_min) {
+      throw new Error('Max pay must be greater than or equal to min pay.');
+    }
 
     if (agencyId && nextStatus === 'published' && existingData?.status !== 'published') {
       const entitlements = await getAgencyEntitlementsForAgency(agencyId);
@@ -987,7 +1022,7 @@ export const updateJob = async (id: string, updates: any) => {
     }
 
     await updateDoc(docRef, {
-      ...updates,
+      ...normalizedUpdates,
       updated_at: serverTimestamp()
     });
     const updatedDoc = await getDoc(docRef);
@@ -4675,16 +4710,12 @@ export const getAgencySubscription = async (
 ): Promise<AgencySubscription | null> => {
   const path = 'agency_subscriptions';
   try {
-    const q = query(
-      collection(db, path),
-      where('agency_id', '==', agencyId),
-      orderBy('created_at', 'desc'),
-      firestoreLimit(1)
-    );
+    const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snap = await getDocs(q);
     if (snap.empty) return null;
-    const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as AgencySubscription;
+    return snap.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as AgencySubscription))
+      .sort((a, b) => getRecordRecency(b) - getRecordRecency(a))[0] ?? null;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
     return null;
@@ -4831,17 +4862,15 @@ export const upsertAgencySubscription = async (
     const renewal = new Date();
     renewal.setMonth(renewal.getMonth() + 1);
 
-    const q = query(
-      collection(db, path),
-      where('agency_id', '==', agencyId),
-      firestoreLimit(1)
-    );
+    const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snap = await getDocs(q);
 
     let subId: string;
 
     if (!snap.empty) {
-      const existingRef = snap.docs[0].ref;
+      const existingRef = snap.docs
+        .slice()
+        .sort((a, b) => getRecordRecency(b.data() || {}) - getRecordRecency(a.data() || {}))[0].ref;
       await updateDoc(existingRef, {
         plan_code: planCode,
         status: 'active',
@@ -4849,7 +4878,7 @@ export const upsertAgencySubscription = async (
         price_at_purchase: priceAtPurchase,
         updated_at: now,
       });
-      subId = snap.docs[0].id;
+      subId = existingRef.id;
     } else {
       const ref = await addDoc(collection(db, path), {
         agency_id: agencyId,

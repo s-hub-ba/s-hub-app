@@ -30,14 +30,14 @@ const AgencyCalendar: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Shift Calendar</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage shift offers, interviews and confirmed bookings, with talent-pool availability overlaid in the same view.</p>
         </div>
         <button
           onClick={() => { setPreselectedStart(undefined); setPreselectedEnd(undefined); setShowCreateModal(true); }}
-          className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
+          className="w-full sm:w-auto px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium shadow-sm hover:opacity-90 transition-opacity"
         >
           + Create Shift
         </button>

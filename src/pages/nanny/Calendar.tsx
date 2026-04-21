@@ -142,21 +142,21 @@ const NannyCalendar: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">My Calendar</h1>
           <p className="text-sm text-gray-500 mt-0.5">Set your availability and track upcoming shifts</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <button
             onClick={() => { setForm({ type: 'availability', startAt: toLocalValue(new Date()), endAt: toLocalValue(new Date(new Date().getTime() + 3600000)), title: 'Available' }); setShowForm(true); }}
-            className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
+            className="w-full sm:w-auto px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
           >
             + Availability
           </button>
           <button
             onClick={() => { setForm({ type: 'block', startAt: toLocalValue(new Date()), endAt: toLocalValue(new Date(new Date().getTime() + 3600000)), title: 'Blocked' }); setShowForm(true); }}
-            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors"
+            className="w-full sm:w-auto px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors"
           >
             Block Time
           </button>

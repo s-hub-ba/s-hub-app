@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Send, User, Baby } from 'lucide-react';
+import { MessageSquare, Send, User, Baby, ChevronLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getAgencyConversationsForUser, getMessages, sendMessage, updateInquiryStage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -162,7 +162,7 @@ export default function AgencyMessages() {
   };
 
   return (
-    <div className="space-y-8 pb-12 h-[calc(100vh-8rem)]">
+    <div className="space-y-6 pb-6 min-h-[calc(100dvh-8rem)]">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Messages</h1>
@@ -176,9 +176,9 @@ export default function AgencyMessages() {
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex h-full min-h-[500px]">
+      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex min-h-[32rem] h-[calc(100dvh-13rem)] flex-col md:flex-row">
         {/* Conversations List */}
-        <div className="w-1/3 border-r border-stone-200 flex flex-col">
+        <div className={`${activeConversation ? 'hidden md:flex' : 'flex'} w-full md:w-1/3 border-b md:border-b-0 md:border-r border-stone-200 flex-col`}>
           <div className="p-4 border-b border-stone-100 bg-stone-50">
             <h2 className="font-bold text-stone-900">Conversations</h2>
           </div>
@@ -222,10 +222,18 @@ export default function AgencyMessages() {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className={`${activeConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col`}>
           {activeConversation ? (
             <>
               <div className="p-4 border-b border-stone-100 bg-white flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveConversation(null)}
+                  className="md:hidden inline-flex items-center justify-center rounded-lg border border-stone-200 p-2 text-stone-600"
+                  aria-label="Back to conversations"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
                 <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
                   {activeConversation.family_id ? <Baby className="h-5 w-5" /> : <User className="h-5 w-5" />}
                 </div>
@@ -257,7 +265,7 @@ export default function AgencyMessages() {
                 </div>
               )}
 
-              <div className="flex-1 p-6 overflow-y-auto bg-stone-50/50 space-y-4">
+              <div className="flex-1 overflow-y-auto bg-stone-50/50 p-4 md:p-6 space-y-4">
                 {messages.length === 0 ? (
                   <div className="text-center text-stone-500 mt-10">
                     <p>No messages yet. Start the conversation!</p>
@@ -267,7 +275,7 @@ export default function AgencyMessages() {
                     const isMe = msg.sender_type === 'agency' && msg.sender_id === currentUserId;
                     return (
                       <div key={msg.id || `${msg.sender_id || 'unknown'}-${msg.created_at?.seconds || msg.created_at || 'unknown-time'}`} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+                        <div className={`max-w-[88%] md:max-w-[70%] rounded-2xl px-4 py-3 ${
                           isMe 
                             ? 'bg-emerald-600 text-white rounded-br-sm' 
                             : 'bg-white border border-stone-200 text-stone-900 rounded-bl-sm shadow-sm'

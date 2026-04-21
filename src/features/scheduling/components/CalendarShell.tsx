@@ -6,7 +6,7 @@
 // pages can re-fetch after an action.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -45,6 +45,7 @@ export const CalendarShell: React.FC<CalendarShellProps> = ({
   className = '',
 }) => {
   const calendarRef = useRef<FullCalendar>(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [rangeStart, setRangeStart] = useState<Date>(() => {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay()); // start of current week
@@ -89,8 +90,30 @@ export const CalendarShell: React.FC<CalendarShellProps> = ({
 
   const fcEvents = mapEventsToCalendar(events);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    const api = calendarRef.current?.getApi();
+    if (!api) return;
+
+    const nextView = isMobile ? 'listWeek' : defaultView;
+    if (api.view.type !== nextView) {
+      api.changeView(nextView);
+    }
+  }, [defaultView, isMobile]);
+
   return (
-    <div className={`flex flex-col gap-3 ${className}`}>
+    <div className={`flex flex-col gap-3 ${isMobile ? 'mobile-calendar' : ''} ${className}`}>
       {/* Loading indicator */}
       {loading && (
         <div className="flex items-center gap-2 text-sm text-gray-500 px-1">
@@ -104,11 +127,11 @@ export const CalendarShell: React.FC<CalendarShellProps> = ({
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView={defaultView}
+          initialView={isMobile ? 'listWeek' : defaultView}
           headerToolbar={{
-            left: 'prev,next today',
+            left: isMobile ? 'prev,next' : 'prev,next today',
             center: 'title',
-            right: 'timeGridWeek,dayGridMonth,listWeek',
+            right: isMobile ? 'today,listWeek,dayGridMonth' : 'timeGridWeek,dayGridMonth,listWeek',
           }}
           buttonText={{
             today: 'Today',
@@ -129,6 +152,8 @@ export const CalendarShell: React.FC<CalendarShellProps> = ({
           slotMinTime="06:00:00"
           slotMaxTime="23:00:00"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', meridiem: 'short' }}
+          dayMaxEventRows={isMobile ? 2 : true}
+          stickyHeaderDates
           // Gracefully handle no events
           noEventsContent={<NoEventsMessage />}
         />
