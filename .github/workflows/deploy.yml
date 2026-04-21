@@ -41,12 +41,26 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: |
-          if [ -z "$VITE_API_BASE_URL" ]; then
+          RESOLVED_API_BASE_URL="$(echo "$VITE_API_BASE_URL" | xargs)"
+
+          if [ -z "$RESOLVED_API_BASE_URL" ]; then
             echo "VITE_API_BASE_URL secret is not set. Falling back to default Render API URL."
-            echo "VITE_API_BASE_URL=https://s-hub-app.onrender.com" >> "$GITHUB_ENV"
-          else
-            echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> "$GITHUB_ENV"
+            RESOLVED_API_BASE_URL="https://s-hub-app.onrender.com"
           fi
+
+          if ! echo "$RESOLVED_API_BASE_URL" | grep -Eq '^https?://'; then
+            echo "VITE_API_BASE_URL must start with http:// or https://"
+            exit 1
+          fi
+
+          if ! echo "$RESOLVED_API_BASE_URL" | grep -Eq '^https?://[^[:space:]]+$'; then
+            echo "VITE_API_BASE_URL must not contain spaces."
+            exit 1
+          else
+            echo "Using API base URL: $RESOLVED_API_BASE_URL"
+          fi
+
+          echo "VITE_API_BASE_URL=$RESOLVED_API_BASE_URL" >> "$GITHUB_ENV"
       
       - name: Build
         run: npm run build

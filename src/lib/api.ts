@@ -44,23 +44,7 @@ import {
   type ShiftScoreConfigOverrides,
 } from './shiftScore';
 import { db, auth } from './firebase';
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
-function resolveApiBaseUrl(): string {
-  if (API_BASE_URL) return API_BASE_URL;
-
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-    throw new Error('Missing VITE_API_BASE_URL. Configure your backend API URL for GitHub Pages builds.');
-  }
-
-  return '';
-}
-
-function buildApiUrl(path: string): string {
-  const base = resolveApiBaseUrl();
-  return base ? `${base}${path}` : path;
-}
+import { buildApiUrl } from './apiBase';
 
 async function buildApiHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
   const headers: Record<string, string> = {

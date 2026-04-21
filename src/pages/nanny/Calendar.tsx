@@ -11,10 +11,11 @@ import React, { useState, useCallback } from 'react';
 import { getAuth } from 'firebase/auth';
 import { CheckCircle2, Save } from 'lucide-react';
 import CalendarShell from '../../features/scheduling/components/CalendarShell';
+import { getApiBaseUrl } from '../../lib/apiBase';
 import { getNannyById, updateNannyProfile } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = getApiBaseUrl();
 
 async function postJson(path: string, body: object) {
   const auth = getAuth();

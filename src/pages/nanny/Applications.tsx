@@ -3,10 +3,11 @@ import { getAuth } from 'firebase/auth';
 import { Briefcase, Calendar, CheckCircle2, Clock, FileText, MapPin, Phone, ShieldCheck, UserRound, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { addAgencyNotification, addFamilyNotification, getApplicationsForNanny, getFamilyProfile, getJobById, respondToApplicationCall, updateApplicationStatus } from '../../lib/api';
+import { getApiBaseUrl } from '../../lib/apiBase';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = getApiBaseUrl();
 
 const STATUS_CONFIG = {
   applied: { color: 'bg-stone-100 text-stone-700', icon: Clock, label: 'Applied' },

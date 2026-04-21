@@ -9,6 +9,7 @@ import {
   getNannyById,
   getNannyOfficialShiftScore,
 } from '../../lib/api';
+import { getApiBaseUrl } from '../../lib/apiBase';
 import { useAuth } from '../../contexts/AuthContext';
 import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 
@@ -42,7 +43,7 @@ const getShiftScoreTierIndex = (score: number): number => {
   return 0;
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = getApiBaseUrl();
 
 async function getSchedulingEvents(): Promise<ScheduleEventLite[]> {
   const auth = getAuth();
