@@ -15,7 +15,7 @@ export interface FamilyRequestForMatch {
   borough: string;
   neighborhood?: string;
   child_age_groups: string[];
-  care_type: 'full-time' | 'part-time' | 'temporary';
+  care_type: 'full-time' | 'part-time' | 'occasional';
   live_in: 'live-in' | 'live-out' | 'either';
   budget_min?: number | null;
   budget_max?: number | null;
@@ -57,6 +57,13 @@ export interface AgencyMatchResult {
 }
 
 const normalize = (value: string): string => value.trim().toLowerCase();
+
+const normalizeCareType = (value: string): FamilyRequestForMatch['care_type'] => {
+  const normalized = normalize(value || '');
+  if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
+  if (normalized === 'occasional' || normalized === 'temporary' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  return 'full-time';
+};
 
 const toSet = (values: string[]): Set<string> => new Set((values || []).map(normalize).filter(Boolean));
 
@@ -105,9 +112,10 @@ export function scoreAgencyForFamilyRequest(
   locationScore = Math.min(locationScore, MATCH_WEIGHTS.location);
 
   const careTypes = toSet(capability.supported_care_types || []);
-  const requestCareType = normalize(request.care_type || '');
+  const requestCareType = normalizeCareType(request.care_type || '');
   let careTypeScore = 0;
-  if (requestCareType && careTypes.has(requestCareType)) {
+  const supportsOccasional = careTypes.has('occasional') || careTypes.has('temporary') || careTypes.has('last-minute') || careTypes.has('last minute');
+  if (requestCareType && (careTypes.has(requestCareType) || (requestCareType === 'occasional' && supportsOccasional))) {
     careTypeScore = MATCH_WEIGHTS.careType;
     reasons.push(`Supports ${request.care_type} care`);
   }

@@ -192,7 +192,9 @@ export default function AgencyFamilyRequestDetail() {
           <Info label="Special Needs Support" value={request.special_needs ? 'Yes' : 'No'} />
           <Info label="Pet Friendly" value={request.pet_friendly ? 'Yes' : 'No'} />
           <Info label="Budget" value={`$${request.budget_min ?? '–'} – $${request.budget_max ?? '–'}/hr`} />
-          <Info label="Start Date" value={request.start_date || 'Flexible'} />
+          <Info label="Start Date" value={request.start_date || 'Not specified'} />
+          <Info label="End Date" value={request.end_date || (request.is_flexible ? 'Flexible' : 'Not specified')} />
+          <Info label="Schedule Flexibility" value={request.is_flexible ? 'Flexible timing accepted' : 'Specific dates requested'} />
           {(request.languages || []).length > 0 && (
             <Info label="Languages" value={(request.languages || []).join(', ')} />
           )}

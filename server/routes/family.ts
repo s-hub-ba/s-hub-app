@@ -14,9 +14,11 @@ type FamilyRequestPayload = {
   neighborhood?: string;
   children_count: number;
   child_age_groups: string[];
-  care_type: 'full-time' | 'part-time' | 'temporary';
+  care_type: 'full-time' | 'part-time' | 'occasional';
   live_in: 'live-in' | 'live-out' | 'either';
   start_date?: string;
+  end_date?: string;
+  is_flexible?: boolean;
   schedule?: string;
   budget_min?: number | null;
   budget_max?: number | null;
@@ -29,6 +31,13 @@ type FamilyRequestPayload = {
 };
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const normalizeCareType = (value: unknown): FamilyRequestPayload['care_type'] => {
+  const normalized = normalize(value);
+  if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
+  if (normalized === 'occasional' || normalized === 'temporary' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  return 'full-time';
+};
 
 const normalizeStringList = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -54,7 +63,7 @@ const getDefaultAgencyCapability = (agencyId: string, agencyProfile: any) => {
     boroughs_served: normalizeStringList(agencyProfile?.boroughs || []),
     neighborhoods_served: normalizeStringList(agencyProfile?.neighborhoods || []),
     supported_care_types: specialties.filter((item) =>
-      ['full-time', 'part-time', 'temporary', 'live-in', 'live-out'].some((token) => item.includes(token))
+      ['full-time', 'part-time', 'temporary', 'occasional', 'last-minute', 'last minute', 'live-in', 'live-out'].some((token) => item.includes(token))
     ),
     supported_age_groups: specialties.filter((item) =>
       ['infant', 'newborn', 'toddler', 'preschool', 'school-age', 'teen'].some((token) => item.includes(token))
@@ -83,7 +92,9 @@ const scoreAgency = (request: FamilyRequestPayload, capability: any) => {
   location = Math.min(40, location);
 
   const supportedCareTypes = toSet(capability?.supported_care_types || []);
-  const careType = supportedCareTypes.has(normalize(request.care_type)) ? 20 : 0;
+  const requestCareType = normalizeCareType(request.care_type);
+  const supportsOccasional = supportedCareTypes.has('occasional') || supportedCareTypes.has('temporary') || supportedCareTypes.has('last-minute') || supportedCareTypes.has('last minute');
+  const careType = supportedCareTypes.has(requestCareType) || (requestCareType === 'occasional' && supportsOccasional) ? 20 : 0;
 
   const requestAges = toSet(normalizeStringList(request.child_age_groups || []));
   const supportedAges = toSet(capability?.supported_age_groups || []);
@@ -163,9 +174,11 @@ const sanitizeFamilyPayload = (payload: FamilyRequestPayload): FamilyRequestPayl
   neighborhood: String(payload.neighborhood || '').trim(),
   children_count: Math.max(1, Number(payload.children_count) || 1),
   child_age_groups: normalizeStringList(payload.child_age_groups || []),
-  care_type: payload.care_type,
+  care_type: normalizeCareType(payload.care_type),
   live_in: payload.live_in,
   start_date: String(payload.start_date || ''),
+  end_date: String(payload.end_date || ''),
+  is_flexible: !!payload.is_flexible,
   schedule: String(payload.schedule || ''),
   budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
   budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,
@@ -235,7 +248,7 @@ router.post('/requests/eligibility', requireFamilyAuth, async (req: any, res: an
   }
 
   try {
-    const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted']);
+    const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen']);
     const snapshot = await db.collection('family_requests')
       .where('family_id', '==', familyId)
       .get();
@@ -274,7 +287,7 @@ router.post('/requests/submit', requireFamilyAuth, async (req: any, res: any) =>
   }
 
   try {
-    const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted']);
+    const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen']);
     const existing = await db.collection('family_requests').where('family_id', '==', familyId).get();
     const activeCount = existing.docs.filter((docSnap) => activeStatuses.has(String(docSnap.data()?.status || 'submitted'))).length;
 

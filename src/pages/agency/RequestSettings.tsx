@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getAgencyCapabilities, resolveAgencyIdForUser, upsertAgencyCapabilities } from '../../lib/api';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
-const CARE_TYPES = ['full-time', 'part-time', 'temporary'];
+const CARE_TYPES = ['full-time', 'part-time', 'occasional'];
 const AGE_GROUPS = ['newborn', 'infant', 'toddler', 'preschool', 'school-age', 'teen'];
 
 const parseCsv = (value: string) => value.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);

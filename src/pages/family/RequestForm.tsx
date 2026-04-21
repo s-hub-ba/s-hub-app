@@ -7,8 +7,19 @@ import { isValidEmail, isValidPhone } from '../../lib/validation';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
 const AGE_GROUPS = ['newborn', 'infant', 'toddler', 'preschool', 'school-age', 'teen'];
-const CARE_TYPES: FamilyRequestInput['care_type'][] = ['full-time', 'part-time', 'temporary'];
+const CARE_TYPES: Array<{ value: FamilyRequestInput['care_type']; label: string; description: string }> = [
+  { value: 'full-time', label: 'Full-Time', description: 'Ongoing daily care with a defined placement window.' },
+  { value: 'part-time', label: 'Part-Time', description: 'Recurring weekly support with a defined start and end.' },
+  { value: 'occasional', label: 'Occasional / Last-Minute', description: 'Backup care, date nights, weekends, or urgent coverage.' },
+];
 const LANGUAGE_CHOICES = ['English', 'Spanish', 'French', 'Mandarin', 'Cantonese', 'Russian', 'Hebrew', 'Arabic'];
+
+const normalizeProfileCareType = (value: unknown): FamilyRequestInput['care_type'] => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
+  if (normalized === 'temporary' || normalized === 'occasional' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  return 'full-time';
+};
 
 export default function FamilyRequestForm() {
   const { user } = useAuth();
@@ -30,6 +41,8 @@ export default function FamilyRequestForm() {
     care_type: 'full-time',
     live_in: 'live-out',
     start_date: '',
+    end_date: '',
+    is_flexible: false,
     schedule: '',
     budget_min: null,
     budget_max: null,
@@ -71,11 +84,7 @@ export default function FamilyRequestForm() {
               })
               .filter(Boolean)
           : prev.child_age_groups,
-        care_type: (profile?.care_needs || '').toLowerCase() === 'part-time'
-          ? 'part-time'
-          : (profile?.care_needs || '').toLowerCase() === 'temporary'
-            ? 'temporary'
-            : prev.care_type,
+        care_type: profile?.care_needs ? normalizeProfileCareType(profile.care_needs) : prev.care_type,
         languages: Array.isArray(profile?.languages) ? profile.languages : prev.languages,
         driver_required: !!profile?.driver_requirement,
         pet_friendly: !!profile?.pet_friendly,
@@ -87,6 +96,8 @@ export default function FamilyRequestForm() {
   }, [familyId]);
 
   const canSubmit = useMemo(() => {
+    const needsDateRange = form.care_type === 'full-time' || form.care_type === 'part-time';
+    const hasValidDateRange = form.is_flexible || (!!form.start_date && !!form.end_date);
     return (
       form.parent_name.trim().length >= 2
       && isValidEmail(form.email)
@@ -95,8 +106,11 @@ export default function FamilyRequestForm() {
       && form.children_count > 0
       && form.child_age_groups.length > 0
       && !!form.care_type
+      && (!needsDateRange || hasValidDateRange)
     );
   }, [form]);
+
+  const needsDateRange = form.care_type === 'full-time' || form.care_type === 'part-time';
 
   const toggleAgeGroup = (value: string) => {
     setForm((prev) => {
@@ -138,6 +152,16 @@ export default function FamilyRequestForm() {
 
     if (form.phone && !isValidPhone(form.phone)) {
       setError('Please enter a valid phone number with at least 10 digits.');
+      return;
+    }
+
+    if (needsDateRange && !form.is_flexible && (!form.start_date || !form.end_date)) {
+      setError('Please add both a start date and end date, or mark the request as flexible.');
+      return;
+    }
+
+    if (needsDateRange && form.start_date && form.end_date && form.end_date < form.start_date) {
+      setError('End date must be on or after the start date.');
       return;
     }
 
@@ -266,15 +290,6 @@ export default function FamilyRequestForm() {
             placeholder="Number of children"
             className="px-4 py-3 rounded-xl border border-stone-200"
           />
-          <input
-            value={form.start_date || ''}
-              onChange={(e) => {
-                const value = e.currentTarget.value;
-                setForm((prev) => ({ ...prev, start_date: value }));
-              }}
-            type="date"
-            className="px-4 py-3 rounded-xl border border-stone-200"
-          />
         </section>
 
         <section className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
@@ -284,13 +299,88 @@ export default function FamilyRequestForm() {
             {CARE_TYPES.map((careType) => (
               <button
                 type="button"
-                key={careType}
-                onClick={() => setForm((prev) => ({ ...prev, care_type: careType }))}
-                className={`px-3 py-2.5 rounded-xl border text-sm font-semibold ${form.care_type === careType ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-200 text-stone-700 hover:bg-stone-50'}`}
+                key={careType.value}
+                onClick={() => setForm((prev) => ({
+                  ...prev,
+                  care_type: careType.value,
+                  end_date: careType.value === 'occasional' ? '' : prev.end_date,
+                }))}
+                className={`px-4 py-3 rounded-2xl border text-left transition-colors ${form.care_type === careType.value ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-200 text-stone-700 hover:bg-stone-50'}`}
               >
-                {careType}
+                <span className="block text-sm font-semibold">{careType.label}</span>
+                <span className={`mt-1 block text-xs ${form.care_type === careType.value ? 'text-stone-300' : 'text-stone-500'}`}>{careType.description}</span>
               </button>
             ))}
+          </div>
+
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-stone-900">
+                {needsDateRange ? 'Placement Dates' : 'Occasional Care Timing'}
+              </h3>
+              <p className="text-sm text-stone-500 mt-1">
+                {needsDateRange
+                  ? 'For full-time and part-time care, add a start and end date or mark the request as flexible.'
+                  : 'Use this for backup care, last-minute help, weekends, or date nights.'}
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-stone-700">
+              <input
+                type="checkbox"
+                checked={!!form.is_flexible}
+                onChange={(e) => {
+                  const checked = e.currentTarget.checked;
+                  setForm((prev) => ({ ...prev, is_flexible: checked }));
+                }}
+              />
+              Flexible
+            </label>
+
+            <div className={`grid grid-cols-1 ${needsDateRange ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-4`}>
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-2">
+                  {needsDateRange ? 'Start date' : 'First date needed'}
+                </label>
+                <input
+                  value={form.start_date || ''}
+                  onChange={(e) => {
+                    const value = e.currentTarget.value;
+                    setForm((prev) => ({ ...prev, start_date: value }));
+                  }}
+                  type="date"
+                  className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white"
+                />
+              </div>
+              {needsDateRange && (
+                <div>
+                  <label className="block text-sm font-semibold text-stone-700 mb-2">End date</label>
+                  <input
+                    value={form.end_date || ''}
+                    onChange={(e) => {
+                      const value = e.currentTarget.value;
+                      setForm((prev) => ({ ...prev, end_date: value }));
+                    }}
+                    type="date"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white"
+                    disabled={!!form.is_flexible}
+                  />
+                </div>
+              )}
+            </div>
+
+            <textarea
+              value={form.schedule || ''}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                setForm((prev) => ({ ...prev, schedule: value }));
+              }}
+              placeholder={needsDateRange
+                ? 'Add hours, days, school pickup details, or anything agencies should know about the weekly schedule.'
+                : 'Describe the dates, hours, or situations you need care for. Example: Friday evenings, sick-day backup, weekends, or urgent coverage.'}
+              className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white"
+              rows={3}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -321,17 +411,6 @@ export default function FamilyRequestForm() {
               ))}
             </div>
           </div>
-
-          <textarea
-            value={form.schedule || ''}
-            onChange={(e) => {
-              const value = e.currentTarget.value;
-              setForm((prev) => ({ ...prev, schedule: value }));
-            }}
-            placeholder="Schedule details"
-            className="w-full px-4 py-3 rounded-xl border border-stone-200"
-            rows={3}
-          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <input
@@ -442,7 +521,7 @@ export default function FamilyRequestForm() {
           </Link>
           <button
             type="submit"
-            disabled={!canSubmit || submitting}
+            disabled={submitting}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-900 text-white font-bold disabled:opacity-60"
           >
             {submitting ? <Sparkles className="h-4 w-4 animate-pulse" /> : <Send className="h-4 w-4" />}

@@ -122,6 +122,15 @@ export default function FamilyRequestResults() {
             {request.care_type} care in {request.neighborhood || 'your area'}, {request.borough} · {request.children_count} child{request.children_count > 1 ? 'ren' : ''}
             {request.budget_min || request.budget_max ? ` · $${request.budget_min ?? '–'}–$${request.budget_max ?? '–'}/hr` : ''}
           </p>
+          <p className="text-sm text-stone-500 mt-2">
+            {request.is_flexible
+              ? 'Flexible timing'
+              : request.start_date && request.end_date
+                ? `Dates: ${request.start_date} to ${request.end_date}`
+                : request.start_date
+                  ? `First date needed: ${request.start_date}`
+                  : 'Dates not specified yet'}
+          </p>
         </div>
       )}
 

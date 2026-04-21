@@ -5270,7 +5270,7 @@ export type FamilyRequestStatus =
   | 'family_chosen'
   | 'closed';
 
-export type FamilyRequestCareType = 'full-time' | 'part-time' | 'temporary';
+export type FamilyRequestCareType = 'full-time' | 'part-time' | 'occasional';
 export type FamilyRequestLiveIn = 'live-in' | 'live-out' | 'either';
 export type FamilyRequestAssignmentStatus = 'new' | 'accepted' | 'declined' | 'more_details';
 
@@ -5285,6 +5285,8 @@ export interface FamilyRequestInput {
   care_type: FamilyRequestCareType;
   live_in: FamilyRequestLiveIn;
   start_date?: string;
+  end_date?: string;
+  is_flexible?: boolean;
   schedule?: string;
   budget_min?: number | null;
   budget_max?: number | null;
@@ -5352,6 +5354,13 @@ export interface FamilyRequestMatchRow {
   updated_at?: any;
 }
 
+const normalizeFamilyRequestCareType = (value: unknown): FamilyRequestCareType => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
+  if (normalized === 'occasional' || normalized === 'temporary' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  return 'full-time';
+};
+
 const normalizeRequestStringList = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return value
@@ -5361,6 +5370,16 @@ const normalizeRequestStringList = (value: unknown): string[] => {
 
 const requestAssignmentsCollection = 'family_request_assignments';
 
+const careTypeMatchesCapability = (requestCareType: string, supportedCareTypes: string[]): boolean => {
+  const requestType = normalizeFamilyRequestCareType(requestCareType);
+  const supported = new Set((supportedCareTypes || []).map((item) => String(item || '').trim().toLowerCase()));
+  if (supported.has(requestType)) return true;
+  if (requestType === 'occasional') {
+    return supported.has('temporary') || supported.has('last-minute') || supported.has('last minute');
+  }
+  return false;
+};
+
 const getDefaultAgencyCapabilityFromProfile = (agency: AgencyProfile): AgencyCapabilityProfile => {
   const specialties = normalizeRequestStringList((agency as any).specialties || []);
   return {
@@ -5369,7 +5388,7 @@ const getDefaultAgencyCapabilityFromProfile = (agency: AgencyProfile): AgencyCap
     boroughs_served: normalizeRequestStringList((agency as any).boroughs || []),
     neighborhoods_served: normalizeRequestStringList((agency as any).neighborhoods || []),
     supported_care_types: specialties.filter((s) =>
-      ['full-time', 'part-time', 'temporary', 'live-in', 'live-out'].some((token) => s.includes(token))
+      ['full-time', 'part-time', 'temporary', 'occasional', 'last-minute', 'last minute', 'live-in', 'live-out'].some((token) => s.includes(token))
     ),
     supported_age_groups: specialties.filter((s) =>
       ['infant', 'newborn', 'toddler', 'preschool', 'school-age', 'teen'].some((token) => s.includes(token))
@@ -5577,7 +5596,7 @@ export const submitFamilyRequestAndMatch = async (
         }
       }
 
-      const activeStatuses: FamilyRequestStatus[] = ['submitted', 'matched', 'in_progress', 'accepted'];
+      const activeStatuses: FamilyRequestStatus[] = ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'];
       const existingRequests = await getDocs(query(collection(db, path), where('family_id', '==', familyId)));
       const activeRequestCount = existingRequests.docs.filter((entry) => activeStatuses.includes((entry.data().status || 'submitted') as FamilyRequestStatus)).length;
 
@@ -5595,9 +5614,11 @@ export const submitFamilyRequestAndMatch = async (
       neighborhood: payload.neighborhood?.trim() || '',
       children_count: Math.max(1, Number(payload.children_count) || 1),
       child_age_groups: normalizeRequestStringList(payload.child_age_groups || []),
-      care_type: payload.care_type,
+      care_type: normalizeFamilyRequestCareType(payload.care_type),
       live_in: payload.live_in,
       start_date: payload.start_date || '',
+      end_date: payload.end_date || '',
+      is_flexible: !!payload.is_flexible,
       schedule: payload.schedule || '',
       budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
       budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,

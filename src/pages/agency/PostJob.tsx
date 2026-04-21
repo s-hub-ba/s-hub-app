@@ -310,7 +310,7 @@ export default function PostJob() {
                       <option value="">Select Type</option>
                       <option value="Full-Time">Full-Time</option>
                       <option value="Part-Time">Part-Time</option>
-                      <option value="Temporary">Temporary</option>
+                      <option value="Temporary">Occasional / Last-Minute</option>
                       <option value="Overnight">Overnight</option>
                       <option value="Date Night">Date Night</option>
                     </select>
