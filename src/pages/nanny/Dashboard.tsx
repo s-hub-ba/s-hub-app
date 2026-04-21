@@ -1,9 +1,10 @@
 import { useMemo, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAuth } from 'firebase/auth';
-import { Trophy, Star, Briefcase, CalendarClock, Clock3, IdCard } from 'lucide-react';
+import { Trophy, Star, Briefcase, CalendarClock, Clock3, IdCard, Megaphone } from 'lucide-react';
 import {
   getApplicationsForNanny,
+  getFollowedAgencyPostsForNanny,
   getJobs,
   getNannyById,
   getNannyOfficialShiftScore,
@@ -83,6 +84,7 @@ export default function NannyDashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [recommendedJobs, setRecommendedJobs] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
+  const [followedAgencyPosts, setFollowedAgencyPosts] = useState<any[]>([]);
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEventLite[]>([]);
   const [shiftScore, setShiftScore] = useState(0);
   const [profileCompletion, setProfileCompletion] = useState(0);
@@ -102,12 +104,13 @@ export default function NannyDashboard() {
       if (!nannyId) return;
 
       try {
-        const [apps, fetchedProfile, scoreData, jobs, events] = await Promise.all([
+        const [apps, fetchedProfile, scoreData, jobs, events, posts] = await Promise.all([
           getApplicationsForNanny(nannyId),
           getNannyById(nannyId),
           getNannyOfficialShiftScore(),
           getJobs(),
           getSchedulingEvents(),
+          getFollowedAgencyPostsForNanny(nannyId, 6),
         ]);
 
         const completion = Math.round((Number(scoreData?.details?.completedFields || 0) / Math.max(1, Number(scoreData?.details?.totalFields || 1))) * 100);
@@ -115,6 +118,7 @@ export default function NannyDashboard() {
         setProfile(fetchedProfile);
         setApplications(apps);
         setRecommendedJobs(jobs.slice(0, 2));
+        setFollowedAgencyPosts(posts);
         setScheduleEvents(events);
         setShiftScore(Number(scoreData?.score || 0));
         setProfileCompletion(completion);
@@ -328,6 +332,30 @@ export default function NannyDashboard() {
           </div>
         </section>
       </div>
+
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-stone-900 inline-flex items-center gap-2">
+            <Megaphone className="h-5 w-5 text-rose-600" />
+            Posts From Agencies You Follow
+          </h2>
+          <Link to="/agencies" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Explore agencies</Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {followedAgencyPosts.length === 0 ? (
+            <div className="rounded-3xl border border-stone-200 bg-white p-8 text-center text-stone-500 md:col-span-2">
+              No updates yet from followed agencies.
+            </div>
+          ) : followedAgencyPosts.map((post) => (
+            <div key={post.id} className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">{post.agency_name || 'Agency update'}</p>
+              <h3 className="mt-1 text-base font-bold text-stone-900">{post.title}</h3>
+              <p className="mt-2 line-clamp-3 text-sm text-stone-600">{post.content}</p>
+              <p className="mt-3 text-[11px] text-stone-400">{post.created_at ? new Date(post.created_at?.seconds ? post.created_at.seconds * 1000 : post.created_at).toLocaleString() : 'Recently posted'}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">

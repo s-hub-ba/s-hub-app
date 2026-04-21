@@ -165,7 +165,20 @@ export default function NannyProfile() {
     }
 
     try {
-      const updated = await updateNannyProfile(nannyId, formData);
+      const yearsExperience = Math.max(0, Number(formData.years_experience || 0));
+      const expectedPayMin = Math.max(0, Number(formData.expected_pay_min || 0));
+      const expectedPayMax = Math.max(0, Number(formData.expected_pay_max || 0));
+      if (expectedPayMax < expectedPayMin) {
+        alert('Expected max pay must be greater than or equal to expected min pay.');
+        return;
+      }
+
+      const updated = await updateNannyProfile(nannyId, {
+        ...formData,
+        years_experience: yearsExperience,
+        expected_pay_min: expectedPayMin,
+        expected_pay_max: expectedPayMax,
+      });
       if (updated) {
         setProfile(updated);
         setIsEditing(false);
@@ -219,6 +232,15 @@ export default function NannyProfile() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'years_experience' || name === 'expected_pay_min' || name === 'expected_pay_max') {
+      if (value === '') {
+        setFormData((prev: any) => ({ ...prev, [name]: '' }));
+        return;
+      }
+      const parsed = Number(value);
+      setFormData((prev: any) => ({ ...prev, [name]: Number.isFinite(parsed) ? String(Math.max(0, parsed)) : '' }));
+      return;
+    }
     setFormData((prev: any) => ({ ...prev, [name]: value }));
   };
 
@@ -481,7 +503,7 @@ export default function NannyProfile() {
                 <div>
                   <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Years of Experience</label>
                   {isEditing ? (
-                    <input type="number" name="years_experience" value={formData.years_experience || ''} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    <input type="number" min={0} name="years_experience" value={formData.years_experience || ''} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
                   ) : (
                     <div className="text-stone-900 font-medium">{profile.years_experience} Years</div>
                   )}
@@ -490,9 +512,9 @@ export default function NannyProfile() {
                   <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">Expected Pay Range ($/hr)</label>
                   {isEditing ? (
                     <div className="flex items-center gap-2">
-                      <input type="number" name="expected_pay_min" value={formData.expected_pay_min || ''} onChange={handleChange} className="w-24 px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                      <input type="number" min={0} name="expected_pay_min" value={formData.expected_pay_min || ''} onChange={handleChange} className="w-24 px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
                       <span className="text-stone-400">-</span>
-                      <input type="number" name="expected_pay_max" value={formData.expected_pay_max || ''} onChange={handleChange} className="w-24 px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                      <input type="number" min={0} name="expected_pay_max" value={formData.expected_pay_max || ''} onChange={handleChange} className="w-24 px-3 py-2 rounded-lg border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
                     </div>
                   ) : (
                     <div className="text-stone-900 font-medium">${profile.expected_pay_min} - ${profile.expected_pay_max} / hr</div>

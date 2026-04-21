@@ -96,8 +96,22 @@ export default function PostJob() {
       const convo = await getConversationById(inquiryId);
       if (convo?.inquiry_type === 'agency_intro') {
         setInquiryContext(convo);
+        const inquirySummary = [
+          `Inquiry from: ${convo.family_name || 'Family'}`,
+          convo.family_email ? `Email: ${convo.family_email}` : null,
+          convo.family_phone ? `Phone: ${convo.family_phone}` : null,
+          convo.family_borough ? `Borough: ${convo.family_borough}` : null,
+          convo.inquiry_schedule_type === 'date_range'
+            ? `Date range: ${convo.inquiry_start_date || 'TBD'} to ${convo.inquiry_end_date || 'TBD'}`
+            : `Preferred weekdays: ${(Array.isArray(convo.inquiry_weekdays) ? convo.inquiry_weekdays : []).join(', ') || 'Not specified'}`,
+          convo.inquiry_description_preview || null,
+        ].filter(Boolean).join('\n');
+
         setFormData(prev => ({
           ...prev,
+          title: prev.title || `Nanny Placement${convo.family_borough ? ` - ${convo.family_borough}` : ''}`,
+          location_borough: convo.family_borough || prev.location_borough,
+          description: prev.description || inquirySummary,
           schedule_type: convo.inquiry_schedule_type === 'date_range' ? 'date_range' : 'weekly_days',
           start_date: convo.inquiry_schedule_type === 'date_range' ? (convo.inquiry_start_date || '') : prev.start_date,
           end_date: convo.inquiry_schedule_type === 'date_range' ? (convo.inquiry_end_date || '') : '',
@@ -222,7 +236,7 @@ export default function PostJob() {
       const created = await createJob({
         ...formData,
         agency_id: resolvedAgencyId,
-        family_id: inquiryContext?.family_id || null,
+        family_id: inquiryContext?.family_id || familyRequestContext?.family_id || null,
         source_inquiry_id: inquiryContext?.id || null,
         linked_from_inquiry: !!inquiryContext?.id,
         end_date: formData.schedule_type === 'date_range' ? formData.end_date : null,

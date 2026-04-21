@@ -4,7 +4,7 @@ import {
   CheckCircle2, Star, ArrowRight, AlertCircle, MessageSquare,
   Clock, XCircle, CircleEllipsis, Trophy,
 } from 'lucide-react';
-import { getFamilyRequestById, getMatchedAgenciesForRequest, chooseFamilyRequestAgency } from '../../lib/api';
+import { getFamilyRequestById, getMatchedAgenciesForRequest, chooseFamilyRequestAgency, closeFamilyRequest } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const TIER_LABELS: Record<string, string> = {
@@ -40,6 +40,9 @@ export default function FamilyRequestResults() {
   const [matches, setMatches] = useState<any[]>([]);
   const [choosing, setChoosing] = useState<string | null>(null);
   const [chooseError, setChooseError] = useState('');
+  const [closingRequest, setClosingRequest] = useState(false);
+  const [closeMessage, setCloseMessage] = useState('');
+  const [deletedRequest, setDeletedRequest] = useState(false);
 
   const familyId = user?.uid || '';
 
@@ -55,6 +58,27 @@ export default function FamilyRequestResults() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  const handleCloseRequest = async () => {
+    if (!familyId || !id || closingRequest) return;
+    const confirmed = window.confirm('Delete this care request? Agencies will be notified that this request is closed.');
+    if (!confirmed) return;
+
+    setClosingRequest(true);
+    setChooseError('');
+    const result = await closeFamilyRequest(id, familyId);
+    if (!result.ok) {
+      setChooseError('Unable to close this request right now. Please try again.');
+      setClosingRequest(false);
+      return;
+    }
+
+    setCloseMessage(`Request deleted. ${result.notified} agenc${result.notified === 1 ? 'y was' : 'ies were'} notified.`);
+    setDeletedRequest(true);
+    setRequest(null);
+    setMatches([]);
+    setClosingRequest(false);
+  };
 
   const handleChoose = async (assignmentId: string) => {
     if (!familyId || choosing) return;
@@ -74,12 +98,52 @@ export default function FamilyRequestResults() {
   }
 
   const isChosen = !!request?.chosen_agency_id;
+  const isClosed = request?.status === 'closed';
   const chosenAgency = isChosen ? matches.find((m) => m.agency_id === request.chosen_agency_id) : null;
+
+  if (!loading && !request && !deletedRequest) {
+    return (
+      <div className="space-y-6 pb-12">
+        <div className="rounded-3xl border border-stone-200 bg-white p-8 text-center">
+          <XCircle className="h-10 w-10 text-stone-300 mx-auto mb-3" />
+          <h2 className="text-xl font-bold text-stone-900">Request Not Found</h2>
+          <p className="text-sm text-stone-500 mt-1">This care request may have already been deleted.</p>
+          <Link to="/family/request-care" className="inline-flex mt-4 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-semibold">
+            Submit New Request
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-12">
       {/* Header banner */}
-      {isChosen ? (
+      {deletedRequest ? (
+        <div className="rounded-3xl border border-stone-200 bg-stone-50 p-6">
+          <div className="flex items-start gap-3">
+            <XCircle className="h-5 w-5 text-stone-600 mt-0.5 shrink-0" />
+            <div>
+              <h1 className="text-2xl font-bold text-stone-900">Request Deleted</h1>
+              <p className="text-sm text-stone-600 mt-1">
+                Your care request and its marketplace matches were permanently removed.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : isClosed ? (
+        <div className="rounded-3xl border border-stone-200 bg-stone-50 p-6">
+          <div className="flex items-start gap-3">
+            <XCircle className="h-5 w-5 text-stone-600 mt-0.5 shrink-0" />
+            <div>
+              <h1 className="text-2xl font-bold text-stone-900">Request Closed</h1>
+              <p className="text-sm text-stone-600 mt-1">
+                This care request has been closed and agencies were notified.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : isChosen ? (
         <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
           <div className="flex items-start gap-3">
             <Trophy className="h-5 w-5 text-emerald-700 mt-0.5 shrink-0" />
@@ -114,10 +178,34 @@ export default function FamilyRequestResults() {
         </div>
       )}
 
+      {closeMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          {closeMessage}
+        </div>
+      )}
+
       {/* Request summary */}
       {request && (
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6">
-          <h2 className="text-lg font-bold text-stone-900">Your Request</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-lg font-bold text-stone-900">Your Request</h2>
+            {!isClosed ? (
+              <button
+                type="button"
+                onClick={handleCloseRequest}
+                disabled={closingRequest}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                {closingRequest ? 'Closing...' : 'Delete Request'}
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600">
+                Closed
+              </span>
+            )}
+          </div>
           <p className="text-sm text-stone-500 mt-1">
             {request.care_type} care in {request.neighborhood || 'your area'}, {request.borough} · {request.children_count} child{request.children_count > 1 ? 'ren' : ''}
             {request.budget_min || request.budget_max ? ` · $${request.budget_min ?? '–'}–$${request.budget_max ?? '–'}/hr` : ''}
@@ -234,7 +322,7 @@ export default function FamilyRequestResults() {
                           Messages
                         </Link>
                       )}
-                      {canChoose && (
+                      {canChoose && !isClosed && (
                         <button
                           onClick={() => handleChoose(match.id)}
                           disabled={!!choosing}
