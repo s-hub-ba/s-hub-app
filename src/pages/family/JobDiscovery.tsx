@@ -112,7 +112,7 @@ export default function JobDiscovery() {
             <option value="All">All Schedules</option>
             <option value="Full-Time">Full-Time</option>
             <option value="Part-Time">Part-Time</option>
-            <option value="Temporary">Temporary</option>
+            <option value="Temporary">Occasional / Last-Minute</option>
             <option value="Live-In">Live-In</option>
           </select>
         </div>

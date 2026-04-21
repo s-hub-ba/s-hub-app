@@ -333,7 +333,7 @@ service cloud.firestore {
         && request.resource.data.parent_name is string
         && request.resource.data.email is string
         && request.resource.data.borough is string
-        && request.resource.data.care_type in ['full-time', 'part-time', 'temporary']
+        && request.resource.data.care_type in ['full-time', 'part-time', 'temporary', 'occasional']
         && request.resource.data.live_in in ['live-in', 'live-out', 'either'];
 
       allow update: if isAdmin()
