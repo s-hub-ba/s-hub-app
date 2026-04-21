@@ -61,13 +61,20 @@ const resolveAgencyPlanCode = async (agencyId: string) => {
   const subscription = subscriptionSnapshot.docs
     .map((docSnap) => docSnap.data() || {})
     .sort((a, b) => {
-      const aTime = new Date(String(a.created_at || a.updated_at || 0)).getTime();
-      const bTime = new Date(String(b.created_at || b.updated_at || 0)).getTime();
+      const aTime = new Date(String(a.updated_at || a.created_at || 0)).getTime();
+      const bTime = new Date(String(b.updated_at || b.created_at || 0)).getTime();
       return bTime - aTime;
     })[0] || {};
   const planCode = typeof subscription.plan_code === 'string' ? subscription.plan_code : PLAN_CODES.FREE;
   const isActive = subscription.status === 'active' || subscription.status === 'trial';
   return isActive ? planCode : PLAN_CODES.FREE;
+};
+
+const toNonNegativeNumber = (value: unknown): number | null => {
+  if (value === '' || value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, parsed);
 };
 
 const normalizeTalentPoolInvitationStatus = (value: unknown): 'pending' | 'accepted' | 'declined' | 'left' => {
@@ -182,8 +189,19 @@ router.post('/jobs', requireAgencyOwner, async (req: any, res: any) => {
       return res.status(403).json({ error: 'Forbidden: user does not belong to this agency' });
     }
 
+    const sanitizedPayload = {
+      ...payload,
+      pay_min: toNonNegativeNumber(payload.pay_min),
+      pay_max: toNonNegativeNumber(payload.pay_max),
+      required_experience_years: Math.floor(toNonNegativeNumber(payload.required_experience_years) ?? 0),
+    };
+
+    if (sanitizedPayload.pay_min != null && sanitizedPayload.pay_max != null && sanitizedPayload.pay_max < sanitizedPayload.pay_min) {
+      return res.status(400).json({ error: 'Max pay must be greater than or equal to min pay.' });
+    }
+
     const planCode = await resolveAgencyPlanCode(agency_id);
-    const shouldCountAgainstLimit = (payload.status || 'published') === 'published';
+    const shouldCountAgainstLimit = (sanitizedPayload.status || 'published') === 'published';
 
     if (shouldCountAgainstLimit) {
       const activeJobSnapshot = await db.collection('jobs')
@@ -204,7 +222,7 @@ router.post('/jobs', requireAgencyOwner, async (req: any, res: any) => {
 
     const nowIso = new Date().toISOString();
     const docRef = await db.collection('jobs').add({
-      ...payload,
+      ...sanitizedPayload,
       agency_id,
       created_at: nowIso,
       updated_at: nowIso,

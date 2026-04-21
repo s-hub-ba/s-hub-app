@@ -87,8 +87,8 @@ export default function AgencyRequestSettings() {
       supports_special_needs: supportsSpecialNeeds,
       supports_driver_requests: supportsDriverRequests,
       supported_languages: parseCsv(languageCsv),
-      budget_min: budgetMin ? Number(budgetMin) : null,
-      budget_max: budgetMax ? Number(budgetMax) : null,
+      budget_min: budgetMin ? Math.max(0, Number(budgetMin)) : null,
+      budget_max: budgetMax ? Math.max(0, Number(budgetMax)) : null,
       is_featured: isFeatured,
       has_priority_lead_boost: priorityLeadBoost,
     });
@@ -219,7 +219,10 @@ export default function AgencyRequestSettings() {
               type="number"
               min={0}
               value={budgetMin}
-              onChange={(e) => setBudgetMin(e.currentTarget.value)}
+              onChange={(e) => {
+                const rawValue = e.currentTarget.value;
+                setBudgetMin(rawValue === '' ? '' : String(Math.max(0, Number(rawValue) || 0)));
+              }}
               placeholder="Budget min"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />
@@ -227,7 +230,10 @@ export default function AgencyRequestSettings() {
               type="number"
               min={0}
               value={budgetMax}
-              onChange={(e) => setBudgetMax(e.currentTarget.value)}
+              onChange={(e) => {
+                const rawValue = e.currentTarget.value;
+                setBudgetMax(rawValue === '' ? '' : String(Math.max(0, Number(rawValue) || 0)));
+              }}
               placeholder="Budget max"
               className="px-4 py-3 rounded-xl border border-stone-200"
             />

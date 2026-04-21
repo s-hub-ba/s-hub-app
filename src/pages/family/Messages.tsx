@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { MessageSquare, Send, Building2 } from 'lucide-react';
+import { MessageSquare, Send, Building2, ChevronLeft } from 'lucide-react';
 import { getConversations, getMessages, sendMessage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -160,7 +160,7 @@ export default function FamilyMessages() {
   };
 
   return (
-    <div className="space-y-8 pb-12 h-[calc(100vh-8rem)]">
+    <div className="space-y-6 pb-6 min-h-[calc(100dvh-8rem)]">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Messages</h1>
@@ -174,9 +174,9 @@ export default function FamilyMessages() {
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex h-full min-h-[500px]">
+      <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex min-h-[32rem] h-[calc(100dvh-13rem)] flex-col md:flex-row">
         {/* Conversations List */}
-        <div className="w-1/3 border-r border-stone-200 flex flex-col">
+        <div className={`${activeConversation ? 'hidden md:flex' : 'flex'} w-full md:w-1/3 border-b md:border-b-0 md:border-r border-stone-200 flex-col`}>
           <div className="p-4 border-b border-stone-100 bg-stone-50">
             <h2 className="font-bold text-stone-900">Agencies</h2>
           </div>
@@ -218,10 +218,18 @@ export default function FamilyMessages() {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className={`${activeConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col`}>
           {activeConversation ? (
             <>
               <div className="p-4 border-b border-stone-100 bg-white flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveConversation(null)}
+                  className="md:hidden inline-flex items-center justify-center rounded-lg border border-stone-200 p-2 text-stone-600"
+                  aria-label="Back to conversations"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
                 <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
                   <Building2 className="h-5 w-5" />
                 </div>
@@ -240,7 +248,7 @@ export default function FamilyMessages() {
                 </div>
               )}
               
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-stone-50/50">
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-stone-50/50">
                 {messages.length === 0 ? (
                   <div className="text-center text-stone-500 py-8">
                     <p className="text-sm">Send a message to start the conversation.</p>
@@ -249,7 +257,7 @@ export default function FamilyMessages() {
                   messages.filter(Boolean).map(msg => (
                     <div 
                       key={msg.id || `${msg.sender_id || 'unknown'}-${msg.created_at?.seconds || msg.created_at || 'unknown-time'}`} 
-                      className={`flex flex-col max-w-[80%] ${
+                      className={`flex flex-col max-w-[88%] md:max-w-[80%] ${
                         msg.sender_type === 'family' ? 'ml-auto items-end' : 'mr-auto items-start'
                       }`}
                     >

@@ -92,11 +92,20 @@ async function upsertAgencySubscriptionRecord(agencyId: string, planCode: string
 
   const snapshot = await db.collection('agency_subscriptions')
     .where('agency_id', '==', agencyId)
-    .limit(1)
     .get();
 
   if (!snapshot.empty) {
-    await snapshot.docs[0].ref.set({
+    const latestDoc = snapshot.docs
+      .slice()
+      .sort((a, b) => {
+        const aData = a.data() || {};
+        const bData = b.data() || {};
+        const aTime = new Date(String(aData.updated_at || aData.created_at || 0)).getTime();
+        const bTime = new Date(String(bData.updated_at || bData.created_at || 0)).getTime();
+        return bTime - aTime;
+      })[0];
+
+    await latestDoc.ref.set({
       agency_id: agencyId,
       plan_code: planCode,
       status: 'active',

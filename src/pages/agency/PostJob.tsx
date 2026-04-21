@@ -23,6 +23,13 @@ export default function PostJob() {
   const [activeJobCount, setActiveJobCount] = useState(0);
 
   const { entitlements } = useAgencyEntitlements(resolvedAgencyId);
+
+  const normalizeNonNegativeInput = (value: string, allowDecimal = true) => {
+    if (!value) return '';
+    const parsed = allowDecimal ? Number(value) : parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return '';
+    return String(Math.max(0, allowDecimal ? parsed : Math.floor(parsed)));
+  };
   
   const [formData, setFormData] = useState({
     title: '',
@@ -147,6 +154,14 @@ export default function PostJob() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === 'pay_min' || name === 'pay_max') {
+      setFormData(prev => ({ ...prev, [name]: normalizeNonNegativeInput(value) }));
+      return;
+    }
+    if (name === 'required_experience_years') {
+      setFormData(prev => ({ ...prev, [name]: normalizeNonNegativeInput(value, false) }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -186,6 +201,20 @@ export default function PostJob() {
         throw new Error('Please select at least one weekday for a weekly schedule.');
       }
 
+      const payMin = formData.pay_min === '' ? null : Math.max(0, Number(formData.pay_min));
+      const payMax = formData.pay_max === '' ? null : Math.max(0, Number(formData.pay_max));
+      const requiredExperienceYears = formData.required_experience_years === ''
+        ? 0
+        : Math.max(0, parseInt(formData.required_experience_years, 10) || 0);
+
+      if (payMin == null || payMax == null) {
+        throw new Error('Please add both a min pay and max pay.');
+      }
+
+      if (payMax < payMin) {
+        throw new Error('Max pay must be greater than or equal to min pay.');
+      }
+
       const scheduleSummary = formData.schedule_type === 'date_range'
         ? `Date range: ${formData.start_date || 'TBD'} to ${formData.end_date || 'TBD'}`
         : `Weekdays: ${formData.weekdays.join(', ') || 'Not specified'}`;
@@ -200,9 +229,9 @@ export default function PostJob() {
         weekdays: formData.schedule_type === 'weekly_days' ? formData.weekdays : [],
         schedule_summary: scheduleSummary,
         schedule: scheduleSummary,
-        pay_min: parseFloat(formData.pay_min),
-        pay_max: parseFloat(formData.pay_max),
-        required_experience_years: parseInt(formData.required_experience_years) || 0
+        pay_min: payMin,
+        pay_max: payMax,
+        required_experience_years: requiredExperienceYears
       });
 
       if (created?.id && inquiryContext?.family_id) {
@@ -367,11 +396,11 @@ export default function PostJob() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Min Pay ($/hr)</label>
-                    <input name="pay_min" value={formData.pay_min} onChange={handleChange} type="number" required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="25" />
+                    <input name="pay_min" value={formData.pay_min} onChange={handleChange} type="number" min={0} required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="25" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Max Pay ($/hr)</label>
-                    <input name="pay_max" value={formData.pay_max} onChange={handleChange} type="number" required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="35" />
+                    <input name="pay_max" value={formData.pay_max} onChange={handleChange} type="number" min={0} required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="35" />
                   </div>
                 </div>
               </motion.div>
@@ -384,7 +413,7 @@ export default function PostJob() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Required Experience (Years)</label>
-                    <input name="required_experience_years" value={formData.required_experience_years} onChange={handleChange} type="number" required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="3" />
+                    <input name="required_experience_years" value={formData.required_experience_years} onChange={handleChange} type="number" min={0} required className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none" placeholder="3" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Schedule Type</label>
