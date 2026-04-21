@@ -266,7 +266,8 @@ service cloud.firestore {
             && resource.data.agency_id == agencyId
             && request.resource.data.agency_id == resource.data.agency_id
             && (isAgencyMemberOf(agencyId) || isLegacyAgencyOwner(agencyId)));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid);
 
     }
 
@@ -297,7 +298,8 @@ service cloud.firestore {
           && request.resource.data.status == 'cancelled'
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'audit'])
         );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid);
     }
 
     match /schedule_audit_logs/{logId} {
@@ -371,12 +373,14 @@ service cloud.firestore {
       allow read: if canAccessConversation(resource.data);
       allow create: if isAuthenticated();
       allow update: if canAccessConversation(resource.data);
+      allow delete: if canAccessConversation(resource.data);
       
       match /messages/{msgId} {
         allow read: if canAccessConversation(get(/databases/$(database)/documents/conversations/$(convId)).data);
         allow create: if isAuthenticated()
           && request.auth.uid == request.resource.data.sender_id
           && canAccessConversation(get(/databases/$(database)/documents/conversations/$(convId)).data);
+        allow delete: if canAccessConversation(get(/databases/$(database)/documents/conversations/$(convId)).data);
       }
     }
 

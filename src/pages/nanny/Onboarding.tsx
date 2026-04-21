@@ -64,6 +64,15 @@ export default function NannyOnboarding() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'years_experience' || name === 'expected_pay_min' || name === 'expected_pay_max') {
+      if (value === '') {
+        setFormData(prev => ({ ...prev, [name]: '' }));
+        return;
+      }
+      const parsed = Number(value);
+      setFormData(prev => ({ ...prev, [name]: Number.isFinite(parsed) ? String(Math.max(0, parsed)) : '' }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -120,12 +129,19 @@ export default function NannyOnboarding() {
     try {
       if (user?.uid) {
         console.log('[NannyOnboarding] saving profile', user.uid);
+        const yearsExperience = Math.max(0, parseInt(formData.years_experience, 10) || 0);
+        const expectedPayMin = Math.max(0, parseFloat(formData.expected_pay_min) || 0);
+        const expectedPayMax = Math.max(0, parseFloat(formData.expected_pay_max) || 0);
+        if (expectedPayMax < expectedPayMin) {
+          throw new Error('Expected max pay must be greater than or equal to expected min pay.');
+        }
+
         const updated = await updateNannyProfile(user.uid, {
           ...formData,
-          years_experience: parseInt(formData.years_experience) || 0,
+          years_experience: yearsExperience,
           travel_radius_miles: parseInt(formData.travel_radius_miles) || 10,
-          expected_pay_min: parseFloat(formData.expected_pay_min) || 0,
-          expected_pay_max: parseFloat(formData.expected_pay_max) || 0,
+          expected_pay_min: expectedPayMin,
+          expected_pay_max: expectedPayMax,
         });
         console.log('[NannyOnboarding] profile updated', updated);
       }
@@ -236,7 +252,7 @@ export default function NannyOnboarding() {
 
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Years of Professional Experience</label>
-                  <input name="years_experience" value={formData.years_experience} onChange={handleChange} type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="e.g. 5" />
+                  <input name="years_experience" value={formData.years_experience} onChange={handleChange} type="number" min={0} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="e.g. 5" />
                 </div>
 
                 <div>
@@ -318,11 +334,11 @@ export default function NannyOnboarding() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Min Pay ($/hr)</label>
-                    <input name="expected_pay_min" value={formData.expected_pay_min} onChange={handleChange} type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="25" />
+                    <input name="expected_pay_min" value={formData.expected_pay_min} onChange={handleChange} type="number" min={0} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="25" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Max Pay ($/hr)</label>
-                    <input name="expected_pay_max" value={formData.expected_pay_max} onChange={handleChange} type="number" className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="45" />
+                    <input name="expected_pay_max" value={formData.expected_pay_max} onChange={handleChange} type="number" min={0} className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="45" />
                   </div>
                 </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Send, Building2, ChevronLeft } from 'lucide-react';
+import { MessageSquare, Send, Building2, ChevronLeft, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { getConversations, getMessages, sendMessage } from '../../lib/api';
+import { deleteConversationThread, getConversations, getMessages, markConversationRead, sendMessage } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function NannyMessages() {
@@ -12,6 +12,7 @@ export default function NannyMessages() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isDeletingThread, setIsDeletingThread] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   
   const nannyId = user?.uid || '';
@@ -35,6 +36,22 @@ export default function NannyMessages() {
     const date = toDate(convo?.updated_at || convo?.created_at);
     if (!date) return '';
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const hasUnansweredMessage = (convo: any) => {
+    const lastSender = String(convo?.last_message_sender_id || '');
+    if (!lastSender || lastSender === nannyId) return false;
+    const seenAt = toMillis(convo?.read_by?.[nannyId]);
+    const lastAt = toMillis(convo?.last_message_at || convo?.updated_at || convo?.created_at);
+    return lastAt > seenAt;
   };
 
   useEffect(() => {
@@ -104,6 +121,9 @@ export default function NannyMessages() {
     };
 
     loadMessages();
+    markConversationRead(activeConversation.id, nannyId).catch(() => {
+      // Non-blocking marker for unanswered-message dots.
+    });
     const intervalId = window.setInterval(loadMessages, 5000);
 
     return () => {
@@ -139,6 +159,26 @@ export default function NannyMessages() {
       setLoadError(error instanceof Error ? error.message : 'Unable to send your message. Please try again.');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!activeConversation?.id || !nannyId || isDeletingThread) return;
+    const confirmed = window.confirm('Delete this chat thread? This removes the conversation for all participants.');
+    if (!confirmed) return;
+
+    setIsDeletingThread(true);
+    try {
+      const ok = await deleteConversationThread(activeConversation.id, nannyId);
+      if (!ok) {
+        setLoadError('Unable to delete this thread right now.');
+        return;
+      }
+      setConversations((prev) => prev.filter((convo) => convo.id !== activeConversation.id));
+      setActiveConversation(null);
+      setMessages([]);
+    } finally {
+      setIsDeletingThread(false);
     }
   };
 
@@ -189,7 +229,10 @@ export default function NannyMessages() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="font-bold text-stone-900 text-sm">{convo.agency_name || `Agency ID: ${convo.agency_id.substring(0, 8)}...`}</h3>
-                        <span className="text-[11px] text-stone-400 shrink-0">{formatConversationTime(convo)}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {hasUnansweredMessage(convo) ? <span className="h-2 w-2 rounded-full bg-red-500" /> : null}
+                          <span className="text-[11px] text-stone-400">{formatConversationTime(convo)}</span>
+                        </div>
                       </div>
                       <p className="text-xs text-stone-500 truncate">{convo.last_message || 'Click to view messages'}</p>
                     </div>
@@ -220,6 +263,15 @@ export default function NannyMessages() {
                   <h3 className="font-bold text-stone-900">{activeConversation.agency_name || `Agency ID: ${activeConversation.agency_id.substring(0, 8)}...`}</h3>
                   <p className="text-xs text-stone-500">Active now</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleDeleteConversation}
+                  disabled={isDeletingThread}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {isDeletingThread ? 'Deleting...' : 'Delete Thread'}
+                </button>
               </div>
 
               <div className="flex-1 p-4 md:p-6 overflow-y-auto bg-stone-50/50 space-y-4">

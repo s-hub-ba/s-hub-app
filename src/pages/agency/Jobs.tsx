@@ -10,6 +10,7 @@ export default function AgencyJobs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'closed'>('all');
   const [jobs, setJobs] = useState<any[]>([]);
+  const [applications, setApplications] = useState<any[]>([]);
   const { user } = useAuth();
   const [agencyId, setAgencyId] = useState('');
   const [resolvingAgency, setResolvingAgency] = useState(true);
@@ -54,6 +55,7 @@ export default function AgencyJobs() {
         getApplicationsForAgency(agencyId),
       ]);
       setJobs(fetchedJobs);
+      setApplications(apps);
       setActiveCare(apps.filter((app) => app.status === 'active' || app.status === 'pending_family_approval'));
     } catch (error) {
       console.error('Error loading jobs:', error);
@@ -236,6 +238,14 @@ export default function AgencyJobs() {
   const openJobsCount = jobs.filter((job) => (job.status || 'published') === 'published').length;
   const closedJobsCount = jobs.filter((job) => job.status === 'closed').length;
   const activeCareCount = activeCare.filter((app) => app.status === 'active').length;
+
+  const applicationsByJob = applications.reduce((acc, app) => {
+    const jobId = String(app.job_id || '');
+    if (!jobId) return acc;
+    if (!acc[jobId]) acc[jobId] = [];
+    acc[jobId].push(app);
+    return acc;
+  }, {} as Record<string, any[]>);
 
   const formatPostedDate = (value: unknown) => {
     const date = toDate(value);
@@ -491,6 +501,43 @@ export default function AgencyJobs() {
                     Delete
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">Applications for this Job</p>
+                  <span className="inline-flex items-center rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700">
+                    {(applicationsByJob[job.id] || []).length}
+                  </span>
+                </div>
+
+                {(applicationsByJob[job.id] || []).length === 0 ? (
+                  <p className="mt-3 text-sm text-stone-500">No applications yet.</p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {(applicationsByJob[job.id] || []).slice(0, 4).map((app) => {
+                      const nannyName = app.nanny_profiles
+                        ? `${app.nanny_profiles.first_name || ''} ${app.nanny_profiles.last_name || ''}`.trim()
+                        : 'Nanny applicant';
+                      return (
+                        <div key={app.id} className="flex items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-stone-900 truncate">{nannyName}</p>
+                            <p className="text-xs text-stone-500">Applied {formatPostedDate(app.created_at)}</p>
+                          </div>
+                          <span className="inline-flex items-center rounded-lg bg-stone-100 px-2 py-1 text-[11px] font-bold text-stone-700 capitalize">
+                            {String(app.status || 'applied').replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {(applicationsByJob[job.id] || []).length > 4 ? (
+                      <Link to="/agency/applications" className="inline-flex text-xs font-semibold text-emerald-700 hover:text-emerald-800">
+                        View all applications for this job
+                      </Link>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </motion.div>
           ))}

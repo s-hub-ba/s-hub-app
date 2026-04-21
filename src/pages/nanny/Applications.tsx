@@ -41,6 +41,7 @@ export default function NannyApplications() {
   const [applications, setApplications] = useState<any[]>([]);
   const [shiftOffers, setShiftOffers] = useState<any[]>([]);
   const [commitments, setCommitments] = useState<Record<string, { confirm24h?: boolean; confirm3h?: boolean }>>({});
+  const [placementActionError, setPlacementActionError] = useState<string | null>(null);
 
   const nannyId = user?.uid || '';
 
@@ -210,7 +211,13 @@ export default function NannyApplications() {
 
   const handleStartPlacement = async (app: any) => {
     try {
+      if (app.family_start_approved === false) {
+        setPlacementActionError('This placement is awaiting family approval before it can be started.');
+        return;
+      }
+
       await updateApplicationStatus(app.id, 'active', { actorRole: 'nanny' });
+      setPlacementActionError(null);
       await addAgencyNotification(
         app.agency_id,
         'Placement started',
@@ -224,7 +231,7 @@ export default function NannyApplications() {
           familyId,
           'Placement started',
           `${app.nanny_profiles?.first_name || 'Your nanny'} started ${app.job_title || 'the placement'}.`,
-          '/family/applications'
+          '/family/placements'
         );
       }
 
@@ -237,13 +244,14 @@ export default function NannyApplications() {
   const handleMarkWorkDone = async (app: any) => {
     try {
       await updateApplicationStatus(app.id, 'pending_family_approval', { actorRole: 'nanny' });
+      setPlacementActionError(null);
       const familyId = app.family_id || app.jobs?.family_id;
       if (familyId) {
         await addFamilyNotification(
           familyId,
-          'Work completion requested',
-          `Nanny ${app.nanny_profiles?.first_name || 'Nanny'} marked the job '${app.job_title || ''}' as done. Please review and confirm.`,
-          '/family/applications'
+          'Work marked done',
+          `Nanny ${app.nanny_profiles?.first_name || 'Nanny'} marked ${app.job_title || 'this placement'} as done. Please review and confirm.`,
+          '/family/placements'
         );
       }
       await loadData();
@@ -296,6 +304,12 @@ export default function NannyApplications() {
 
   return (
     <div className="space-y-8 pb-12">
+      {placementActionError ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {placementActionError}
+        </div>
+      ) : null}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Job Overview</h1>

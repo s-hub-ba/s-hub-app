@@ -180,8 +180,8 @@ const sanitizeFamilyPayload = (payload: FamilyRequestPayload): FamilyRequestPayl
   end_date: String(payload.end_date || ''),
   is_flexible: !!payload.is_flexible,
   schedule: String(payload.schedule || ''),
-  budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
-  budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,
+  budget_min: typeof payload.budget_min === 'number' ? Math.max(0, payload.budget_min) : null,
+  budget_max: typeof payload.budget_max === 'number' ? Math.max(0, payload.budget_max) : null,
   languages: normalizeStringList(payload.languages || []),
   driver_required: !!payload.driver_required,
   pet_friendly: !!payload.pet_friendly,
@@ -299,6 +299,9 @@ router.post('/requests/submit', requireFamilyAuth, async (req: any, res: any) =>
     }
 
     const sanitized = sanitizeFamilyPayload(payload);
+    if (sanitized.budget_min != null && sanitized.budget_max != null && sanitized.budget_max < sanitized.budget_min) {
+      return res.status(400).json({ error: 'Budget max must be greater than or equal to budget min.' });
+    }
     const nowIso = new Date().toISOString();
 
     const requestRef = await db.collection('family_requests').add({

@@ -106,6 +106,7 @@ export default function App() {
 
               <Route path="saved" element={<SavedJobs />} />
               <Route path="placements" element={<FamilyPlacements />} />
+              <Route path="applications" element={<FamilyPlacements />} />
               <Route path="calendar" element={<FamilyCalendar />} />
               <Route path="messages" element={<FamilyMessages />} />
               <Route path="notifications" element={<Notifications />} />

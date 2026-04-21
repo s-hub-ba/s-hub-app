@@ -654,6 +654,7 @@ export interface AgencyProfile {
 export interface AgencyPost {
   id?: string;
   agency_id: string;
+  agency_name?: string;
   title: string;
   content: string;
   created_at?: any;
@@ -1285,6 +1286,13 @@ export const assignNannyToJob = async (
       note: assignmentNote,
     });
 
+    // Family must approve the assignment before the nanny can start the placement.
+    await updateDoc(appRef, {
+      family_start_approved: false,
+      family_start_approved_at: null,
+      updated_at: serverTimestamp(),
+    });
+
     await updateDoc(jobRef, {
       selected_nanny_id: appData.nanny_id,
       selected_application_id: applicationId,
@@ -1381,9 +1389,10 @@ export const notifyApplicationCareMilestone = async ({
     const jobDoc = app.job_id ? await getDoc(doc(db, 'jobs', app.job_id)) : null;
     const jobTitle = jobDoc?.exists() ? String((jobDoc.data() as any).title || 'the placement') : 'the placement';
     const familyId = app.family_id || (jobDoc?.exists() ? (jobDoc.data() as any).family_id : null);
+    const familyLink = milestone === 'review_requested' ? '/family/saved' : '/family/placements';
 
     if (familyId && familyTitle && familyMessage) {
-      await addFamilyNotification(familyId, familyTitle, familyMessage.replace('{jobTitle}', jobTitle), '/family/applications');
+      await addFamilyNotification(familyId, familyTitle, familyMessage.replace('{jobTitle}', jobTitle), familyLink);
     }
     if (app.nanny_id && nannyTitle && nannyMessage) {
       await addNannyNotification(app.nanny_id, nannyTitle, nannyMessage.replace('{jobTitle}', jobTitle), '/nanny/applications');
@@ -1615,8 +1624,27 @@ export const getNannyById = async (id: string): Promise<NannyProfile | null> => 
 export const updateNannyProfile = async (id: string, updates: any) => {
   const path = `nanny_profiles/${id}`;
   try {
+    const sanitizedUpdates = { ...updates };
+    if ('years_experience' in sanitizedUpdates) {
+      sanitizedUpdates.years_experience = Math.max(0, Number(sanitizedUpdates.years_experience || 0));
+    }
+    if ('expected_pay_min' in sanitizedUpdates) {
+      sanitizedUpdates.expected_pay_min = Math.max(0, Number(sanitizedUpdates.expected_pay_min || 0));
+    }
+    if ('expected_pay_max' in sanitizedUpdates) {
+      sanitizedUpdates.expected_pay_max = Math.max(0, Number(sanitizedUpdates.expected_pay_max || 0));
+    }
+
+    if (
+      typeof sanitizedUpdates.expected_pay_min === 'number'
+      && typeof sanitizedUpdates.expected_pay_max === 'number'
+      && sanitizedUpdates.expected_pay_max < sanitizedUpdates.expected_pay_min
+    ) {
+      throw new Error('Expected max pay must be greater than or equal to expected min pay.');
+    }
+
     const docRef = doc(db, 'nanny_profiles', id);
-    await setDoc(docRef, { ...updates, updated_at: serverTimestamp() }, { merge: true });
+    await setDoc(docRef, { ...sanitizedUpdates, updated_at: serverTimestamp() }, { merge: true });
     const updatedDoc = await getDoc(docRef);
     return { id: updatedDoc.id, ...updatedDoc.data() };
   } catch (error) {
@@ -3512,6 +3540,19 @@ export const getFamilyFollowedAgencies = async (familyId: string): Promise<strin
   }
 };
 
+export const getNannyFollowedAgencies = async (nannyId: string): Promise<string[]> => {
+  const path = 'family_agency_follows';
+  try {
+    const q = query(collection(db, path), where('nanny_id', '==', nannyId));
+    const snapshot = await getDocs(q);
+    const ids = snapshot.docs.map(d => d.data().agency_id as string).filter(Boolean);
+    return Array.from(new Set(ids));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
 export const addCareHistory = async (history: CareHistory) => {
   const path = 'care_history';
   try {
@@ -3939,6 +3980,44 @@ export const getAgencyPosts = async (agencyId: string): Promise<AgencyPost[]> =>
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgencyPost));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+};
+
+export const getFollowedAgencyPostsForNanny = async (
+  nannyId: string,
+  limitCount = 8
+): Promise<AgencyPost[]> => {
+  if (!nannyId) return [];
+
+  try {
+    const followedAgencyIds = await getNannyFollowedAgencies(nannyId);
+    if (!followedAgencyIds.length) return [];
+
+    const postsByAgency = await Promise.all(
+      followedAgencyIds.map((agencyId) => getAgencyPosts(agencyId))
+    );
+    const agencies = await Promise.all(
+      followedAgencyIds.map((agencyId) => getAgencyById(agencyId))
+    );
+
+    const agencyNameById = new Map<string, string>();
+    agencies.forEach((agency, index) => {
+      if (agency) {
+        agencyNameById.set(followedAgencyIds[index], agency.company_name || 'Agency');
+      }
+    });
+
+    return postsByAgency
+      .flat()
+      .map((post) => ({
+        ...post,
+        agency_name: post.agency_name || agencyNameById.get(post.agency_id) || 'Agency',
+      }))
+      .sort((a, b) => toMillisSafe(b.created_at || b.updated_at) - toMillisSafe(a.created_at || a.updated_at))
+      .slice(0, Math.max(1, limitCount));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'agency_posts');
     return [];
   }
 };
@@ -5253,6 +5332,45 @@ export const getMessages = async (conversationId: string) => {
   }
 };
 
+export const markConversationRead = async (conversationId: string, userId: string) => {
+  const path = `conversations/${conversationId}`;
+  if (!conversationId || !userId) return false;
+  try {
+    await updateDoc(doc(db, 'conversations', conversationId), {
+      [`read_by.${userId}`]: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    return false;
+  }
+};
+
+export const deleteConversationThread = async (conversationId: string, userId: string) => {
+  const path = `conversations/${conversationId}`;
+  if (!conversationId || !userId) return false;
+
+  try {
+    const conversationRef = doc(db, 'conversations', conversationId);
+    const conversationDoc = await getDoc(conversationRef);
+    if (!conversationDoc.exists()) return false;
+
+    const data = conversationDoc.data() as any;
+    const participants = Array.isArray(data?.participants) ? data.participants : [];
+    if (!participants.includes(userId)) return false;
+
+    const messagesPath = `conversations/${conversationId}/messages`;
+    const messageSnap = await getDocs(collection(db, messagesPath));
+    await Promise.all(messageSnap.docs.map((messageDoc) => deleteDoc(messageDoc.ref)));
+    await deleteDoc(conversationRef);
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    return false;
+  }
+};
+
 export const sendMessage = async (conversationId: string, senderType: 'family' | 'agency' | 'nanny', senderId: string, message: string) => {
   const path = `conversations/${conversationId}/messages`;
   const trimmedMessage = message.trim();
@@ -5277,6 +5395,10 @@ export const sendMessage = async (conversationId: string, senderType: 'family' |
     try {
       await updateDoc(doc(db, 'conversations', conversationId), {
         last_message: trimmedMessage,
+        last_message_sender_id: senderId,
+        last_message_sender_type: senderType,
+        last_message_at: serverTimestamp(),
+        [`read_by.${senderId}`]: serverTimestamp(),
         updated_at: serverTimestamp()
       });
     } catch (updateError) {
@@ -5469,8 +5591,8 @@ export const upsertAgencyCapabilities = async (
       supports_special_needs: !!payload.supports_special_needs,
       supports_driver_requests: !!payload.supports_driver_requests,
       supported_languages: normalizeRequestStringList(payload.supported_languages || []),
-      budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
-      budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,
+      budget_min: typeof payload.budget_min === 'number' ? Math.max(0, payload.budget_min) : null,
+      budget_max: typeof payload.budget_max === 'number' ? Math.max(0, payload.budget_max) : null,
       is_featured: !!payload.is_featured,
       featured_until: payload.featured_until || null,
       has_priority_lead_boost: !!payload.has_priority_lead_boost,
@@ -5649,8 +5771,8 @@ export const submitFamilyRequestAndMatch = async (
       end_date: payload.end_date || '',
       is_flexible: !!payload.is_flexible,
       schedule: payload.schedule || '',
-      budget_min: typeof payload.budget_min === 'number' ? payload.budget_min : null,
-      budget_max: typeof payload.budget_max === 'number' ? payload.budget_max : null,
+      budget_min: typeof payload.budget_min === 'number' ? Math.max(0, payload.budget_min) : null,
+      budget_max: typeof payload.budget_max === 'number' ? Math.max(0, payload.budget_max) : null,
       languages: normalizeRequestStringList(payload.languages || []),
       driver_required: !!payload.driver_required,
       pet_friendly: !!payload.pet_friendly,
@@ -5658,6 +5780,10 @@ export const submitFamilyRequestAndMatch = async (
       special_requirements: payload.special_requirements?.trim() || '',
       notes: payload.notes?.trim() || '',
     };
+
+    if (sanitized.budget_min != null && sanitized.budget_max != null && sanitized.budget_max < sanitized.budget_min) {
+      throw new Error('Budget max must be greater than or equal to budget min.');
+    }
 
     const requestRef = await addDoc(collection(db, path), {
       ...sanitized,
@@ -5739,6 +5865,48 @@ export const getFamilyRequestsForFamily = async (familyId: string): Promise<Fami
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
+  }
+};
+
+export const closeFamilyRequest = async (
+  requestId: string,
+  familyId: string
+): Promise<{ ok: boolean; notified: number }> => {
+  const path = `family_requests/${requestId}`;
+  if (!requestId || !familyId) return { ok: false, notified: 0 };
+
+  try {
+    const requestDoc = await getDoc(doc(db, 'family_requests', requestId));
+    if (!requestDoc.exists()) return { ok: false, notified: 0 };
+
+    const requestData = requestDoc.data() as any;
+    if (requestData.family_id !== familyId) return { ok: false, notified: 0 };
+
+    const assignmentQuery = query(collection(db, requestAssignmentsCollection), where('request_id', '==', requestId));
+    const assignmentSnap = await getDocs(assignmentQuery);
+
+    const allAssignments = assignmentSnap.docs
+      .map((entry) => ({ id: entry.id, ...(entry.data() as any) } as FamilyRequestMatchRow));
+
+    const activeAssignments = allAssignments
+      .filter((assignment) => assignment.status === 'new' || assignment.status === 'accepted' || assignment.status === 'more_details');
+
+    await Promise.all(activeAssignments.map(async (assignment) => {
+      await addAgencyNotification(
+        assignment.agency_id,
+        'Family request closed',
+        'The family deleted this care request before moving forward.',
+        '/agency/family-requests'
+      );
+    }));
+
+    await Promise.all(allAssignments.map((assignment) => deleteDoc(doc(db, requestAssignmentsCollection, assignment.id))));
+    await deleteDoc(doc(db, 'family_requests', requestId));
+
+    return { ok: true, notified: activeAssignments.length };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    return { ok: false, notified: 0 };
   }
 };
 

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, MapPin, RotateCcw } from 'lucide-react';
-import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationStatus } from '../../lib/api';
+import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
-  accepted: 'Assigned',
-  hired: 'Assigned',
+  accepted: 'Assigned - Awaiting Start Approval',
+  hired: 'Assigned - Awaiting Start Approval',
   active: 'Active',
-  pending_family_approval: 'Awaiting Your Approval',
+  pending_family_approval: 'Awaiting Completion Approval',
   completed: 'Completed'
 };
 
@@ -40,12 +40,22 @@ export default function FamilyPlacements() {
     loadData();
   }, [familyId]);
 
+  const isAwaitingStartApproval = (app: any) => {
+    return ['accepted', 'hired'].includes(app.status) && app.family_start_approved === false;
+  };
+
   const awaitingApproval = useMemo(
-    () => applications.filter((app) => app.status === 'pending_family_approval'),
+    () => applications.filter((app) => isAwaitingStartApproval(app) || app.status === 'pending_family_approval'),
     [applications]
   );
   const activePlacements = useMemo(
-    () => applications.filter((app) => ['accepted', 'hired', 'active'].includes(app.status)),
+    () => applications.filter((app) => {
+      if (app.status === 'active') return true;
+      if (['accepted', 'hired'].includes(app.status)) {
+        return app.family_start_approved !== false;
+      }
+      return false;
+    }),
     [applications]
   );
   const completedPlacements = useMemo(
@@ -97,6 +107,39 @@ export default function FamilyPlacements() {
     }
   };
 
+  const handleApproveStart = async (app: any) => {
+    if (updatingId) return;
+    setUpdatingId(app.id);
+    try {
+      await updateApplicationCareSession(app.id, {
+        family_start_approved: true,
+        family_start_approved_at: new Date().toISOString(),
+      });
+
+      if (app.nanny_id) {
+        await addNannyNotification(
+          app.nanny_id,
+          'Family approved placement start',
+          `The family approved start for ${app.jobs?.title || 'your placement'}. You can start when ready.`,
+          '/nanny/applications'
+        );
+      }
+
+      if (app.agency_id) {
+        await addAgencyNotification(
+          app.agency_id,
+          'Family approved placement start',
+          `The family approved start for ${app.jobs?.title || 'the placement'}.`,
+          '/agency/applications'
+        );
+      }
+
+      await loadData();
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const handleRequestChanges = async (app: any) => {
     if (updatingId) return;
     setUpdatingId(app.id);
@@ -127,7 +170,7 @@ export default function FamilyPlacements() {
     }
   };
 
-  const renderPlacementCard = (app: any, withActions = false) => (
+  const renderPlacementCard = (app: any, actionMode: 'none' | 'start' | 'completion' = 'none') => (
     <div key={app.id} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
@@ -142,26 +185,28 @@ export default function FamilyPlacements() {
           </div>
         </div>
 
-        {withActions ? (
+        {actionMode !== 'none' ? (
           <div className="flex flex-col gap-2 md:min-w-[220px]">
             <button
               type="button"
-              onClick={() => handleApproveCompletion(app)}
+              onClick={() => actionMode === 'start' ? handleApproveStart(app) : handleApproveCompletion(app)}
               disabled={updatingId === app.id}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
             >
               <CheckCircle2 className="h-4 w-4" />
-              Approve Completion
+              {actionMode === 'start' ? 'Approve Placement Start' : 'Approve Completion'}
             </button>
-            <button
-              type="button"
-              onClick={() => handleRequestChanges(app)}
-              disabled={updatingId === app.id}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-100 px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-200 disabled:opacity-60"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Request Follow-up
-            </button>
+            {actionMode === 'completion' ? (
+              <button
+                type="button"
+                onClick={() => handleRequestChanges(app)}
+                disabled={updatingId === app.id}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-100 px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-200 disabled:opacity-60"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Request Follow-up
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -204,7 +249,9 @@ export default function FamilyPlacements() {
         ) : awaitingApproval.length === 0 ? (
           <div className="rounded-3xl border border-stone-200 bg-white p-6 text-sm text-stone-500">No placements are waiting for your sign-off.</div>
         ) : (
-          <div className="space-y-4">{awaitingApproval.map((app) => renderPlacementCard(app, true))}</div>
+          <div className="space-y-4">
+            {awaitingApproval.map((app) => renderPlacementCard(app, isAwaitingStartApproval(app) ? 'start' : 'completion'))}
+          </div>
         )}
       </section>
 
@@ -213,7 +260,7 @@ export default function FamilyPlacements() {
         {activePlacements.length === 0 ? (
           <div className="rounded-3xl border border-stone-200 bg-white p-6 text-sm text-stone-500">No active placements right now.</div>
         ) : (
-          <div className="space-y-4">{activePlacements.map((app) => renderPlacementCard(app))}</div>
+          <div className="space-y-4">{activePlacements.map((app) => renderPlacementCard(app, 'none'))}</div>
         )}
       </section>
     </div>

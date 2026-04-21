@@ -298,8 +298,8 @@ export default function AgencyApplications() {
       if (familyId) {
         await addFamilyNotification(
           familyId,
-          'Nanny assigned',
-          `${app.nanny_name || 'A nanny'} was assigned to ${app.job_title || 'your role'}.`,
+          'Nanny assigned - approval needed',
+          `${app.nanny_name || 'A nanny'} was assigned to ${app.job_title || 'your role'}. Please approve before the placement starts.`,
           '/family/placements'
         );
       }
@@ -355,8 +355,8 @@ export default function AgencyApplications() {
       if (familyId) {
         const familyNotifications: Record<string, { title: string; message: string }> = {
           accepted: {
-            title: 'Nanny assigned',
-            message: `${app?.nanny_name || 'A nanny'} was assigned to ${app?.job_title || 'your role'}.`
+            title: 'Nanny assigned - approval needed',
+            message: `${app?.nanny_name || 'A nanny'} was assigned to ${app?.job_title || 'your role'}. Please approve before start.`
           },
           active: {
             title: 'Placement started',
@@ -373,7 +373,12 @@ export default function AgencyApplications() {
         };
         const familyNotification = familyNotifications[newStatus];
         if (familyNotification) {
-          await addFamilyNotification(familyId, familyNotification.title, familyNotification.message, '/family/applications');
+          await addFamilyNotification(
+            familyId,
+            familyNotification.title,
+            familyNotification.message,
+            newStatus === 'completed' ? '/family/saved' : '/family/placements'
+          );
         }
       }
 
