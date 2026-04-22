@@ -123,7 +123,7 @@ export default function FamilyRequestForm() {
     try {
       const result = await closeFamilyRequest(activeRequest.id, familyId);
       if (!result.ok) {
-        setError('Unable to delete your current request right now. Please try again.');
+        setError(result.error || 'Unable to delete your current request right now. Please try again.');
         return;
       }
       setActiveRequest(null);

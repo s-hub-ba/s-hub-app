@@ -5936,50 +5936,74 @@ export const getFamilyRequestsForFamily = async (familyId: string): Promise<Fami
 export const closeFamilyRequest = async (
   requestId: string,
   familyId: string
-): Promise<{ ok: boolean; notified: number }> => {
+): Promise<{ ok: boolean; notified: number; error?: string }> => {
   const path = `family_requests/${requestId}`;
-  if (!requestId || !familyId) return { ok: false, notified: 0 };
+  if (!requestId || !familyId) {
+    return { ok: false, notified: 0, error: 'Missing request id or family id.' };
+  }
 
   try {
-    const requestDoc = await getDoc(doc(db, 'family_requests', requestId));
-    if (!requestDoc.exists()) return { ok: false, notified: 0 };
+    const headers = await buildApiHeaders();
+    const encodedId = encodeURIComponent(requestId);
+    const endpointAttempts = [
+      { method: 'POST', url: buildApiUrl(`/api/family/requests/${encodedId}/close`) },
+      { method: 'POST', url: buildApiUrl(`/api/family/requests/close/${encodedId}`) },
+      { method: 'DELETE', url: buildApiUrl(`/api/family/requests/${encodedId}?familyId=${encodeURIComponent(familyId)}`) },
+    ];
 
-    const requestData = requestDoc.data() as any;
-    if (requestData.family_id !== familyId) return { ok: false, notified: 0 };
+    let saw404 = false;
+    for (const attempt of endpointAttempts) {
+      const response = await fetch(attempt.url, {
+        method: attempt.method,
+        headers,
+        body: attempt.method === 'DELETE' ? undefined : JSON.stringify({ familyId }),
+      });
 
-    const assignmentQuery = query(collection(db, requestAssignmentsCollection), where('request_id', '==', requestId));
-    const assignmentSnap = await getDocs(assignmentQuery);
+      if (response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        return {
+          ok: true,
+          notified: Number(payload?.notified || 0),
+        };
+      }
 
-    const allAssignments = assignmentSnap.docs
-      .map((entry) => ({ id: entry.id, ...(entry.data() as any) } as FamilyRequestMatchRow));
+      if (response.status === 404) {
+        saw404 = true;
+        continue;
+      }
 
-    const activeAssignments = allAssignments
-      .filter((assignment) => assignment.status === 'new' || assignment.status === 'accepted' || assignment.status === 'more_details');
+      const payload = await response.json().catch(() => ({}));
+      const errorMessage = String(payload?.error || '').trim() || `Unable to close request (${response.status}).`;
+      return { ok: false, notified: 0, error: errorMessage };
+    }
 
-    await Promise.all(activeAssignments.map(async (assignment) => {
-      await addAgencyNotification(
-        assignment.agency_id,
-        'Family request closed',
-        'The family deleted this care request before moving forward.',
-        '/agency/family-requests'
-      );
-    }));
+    if (saw404) {
+      return {
+        ok: false,
+        notified: 0,
+        error: 'Close-request API is not available on this backend yet. Deploy/restart the latest server and try again.',
+      };
+    }
 
-    await Promise.all(allAssignments.map((assignment) => deleteDoc(doc(db, requestAssignmentsCollection, assignment.id))));
-    await deleteDoc(doc(db, 'family_requests', requestId));
-
-    return { ok: true, notified: activeAssignments.length };
+    return { ok: false, notified: 0, error: 'Unable to close this request right now. Please try again.' };
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-    return { ok: false, notified: 0 };
+    console.error('[closeFamilyRequest] failed', error);
+    return {
+      ok: false,
+      notified: 0,
+      error: error instanceof Error ? error.message : 'Unable to close this request right now. Please try again.',
+    };
   }
 };
 
-export const getMatchedAgenciesForRequest = async (requestId: string) => {
+export const getMatchedAgenciesForRequest = async (requestId: string, familyId?: string) => {
   const path = requestAssignmentsCollection;
   if (!requestId) return [];
   try {
-    const matchQuery = query(collection(db, path), where('request_id', '==', requestId));
+    const normalizedFamilyId = String(familyId || '').trim();
+    const matchQuery = normalizedFamilyId
+      ? query(collection(db, path), where('request_id', '==', requestId), where('family_id', '==', normalizedFamilyId))
+      : query(collection(db, path), where('request_id', '==', requestId));
     const snapshot = await getDocs(matchQuery);
     const rows = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) } as FamilyRequestMatchRow));
 
@@ -6190,7 +6214,11 @@ export const chooseFamilyRequestAgency = async (
     });
 
     // Get all other assignments for this request
-    const allAssignmentsQuery = query(collection(db, requestAssignmentsCollection), where('request_id', '==', requestId));
+    const allAssignmentsQuery = query(
+      collection(db, requestAssignmentsCollection),
+      where('request_id', '==', requestId),
+      where('family_id', '==', familyId)
+    );
     const allAssignmentsSnap = await getDocs(allAssignmentsQuery);
     const allAssignments = allAssignmentsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as FamilyRequestMatchRow));
 

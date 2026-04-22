@@ -423,6 +423,95 @@ router.post('/requests/submit', requireFamilyAuth, async (req: any, res: any) =>
   }
 });
 
+const closeFamilyRequestById = async (requestId: string, familyId: string) => {
+  const requestRef = db.collection('family_requests').doc(requestId);
+  const requestSnap = await requestRef.get();
+  if (!requestSnap.exists) {
+    return { status: 404 as const, body: { error: 'Care request not found.' } };
+  }
+
+  const requestData = requestSnap.data() || {};
+  if (String(requestData.family_id || '') !== familyId) {
+    return { status: 403 as const, body: { error: 'Forbidden: request does not belong to this family' } };
+  }
+
+  const assignmentsSnap = await db.collection('family_request_assignments')
+    .where('request_id', '==', requestId)
+    .where('family_id', '==', familyId)
+    .get();
+
+  const assignments = assignmentsSnap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() || {}),
+  } as any));
+
+  const activeAssignments = assignments.filter((assignment) =>
+    assignment.status === 'new' || assignment.status === 'accepted' || assignment.status === 'more_details'
+  );
+
+  const nowIso = new Date().toISOString();
+  await Promise.all(activeAssignments.map((assignment) => {
+    const agencyId = String(assignment.agency_id || '').trim();
+    if (!agencyId) return Promise.resolve();
+    return db.collection('agency_notifications').add({
+      agency_id: agencyId,
+      type: 'message',
+      title: 'Family request closed',
+      message: 'The family deleted this care request before moving forward.',
+      link: '/agency/family-requests',
+      read: false,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+  }));
+
+  const batch = db.batch();
+  assignmentsSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+  batch.delete(requestRef);
+  await batch.commit();
+
+  return { status: 200 as const, body: { ok: true, notified: activeAssignments.length } };
+};
+
+const resolveCloseRequestPayload = (req: any) => {
+  const requestId = String(req.params?.requestId || req.body?.requestId || '').trim();
+  const callerFamilyId = String(req.userId || '').trim();
+  const familyId = String(req.body?.familyId || req.query?.familyId || callerFamilyId || '').trim();
+  return { requestId, callerFamilyId, familyId };
+};
+
+const handleCloseFamilyRequest = async (req: any, res: any) => {
+  const { requestId, callerFamilyId, familyId } = resolveCloseRequestPayload(req);
+
+  if (!requestId) {
+    return res.status(400).json({ error: 'requestId is required' });
+  }
+
+  if (!familyId) {
+    return res.status(400).json({ error: 'familyId is required' });
+  }
+
+  if (familyId !== callerFamilyId) {
+    return res.status(403).json({ error: 'Forbidden: cannot close requests for another family' });
+  }
+
+  try {
+    const result = await closeFamilyRequestById(requestId, familyId);
+    return res.status(result.status).json(result.body);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to close care request' });
+  }
+};
+
+// Preferred route used by the frontend.
+router.post('/requests/:requestId/close', requireFamilyAuth, handleCloseFamilyRequest);
+// Compatibility alias for older clients or cached bundles.
+router.post('/requests/close/:requestId', requireFamilyAuth, handleCloseFamilyRequest);
+// REST-style compatibility for clients using DELETE.
+router.delete('/requests/:requestId', requireFamilyAuth, handleCloseFamilyRequest);
+
 // ── FCM Push Token Management ────────────────────────────────────────────
 router.post('/fcm-token', requireFamilyAuth, async (req: any, res: any) => {
   try {
