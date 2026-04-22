@@ -50,14 +50,14 @@ export default function FamilyRequestResults() {
     if (!id) { setLoading(false); return; }
     const [requestRow, matchedAgencies] = await Promise.all([
       getFamilyRequestById(id),
-      getMatchedAgenciesForRequest(id),
+      getMatchedAgenciesForRequest(id, familyId),
     ]);
     setRequest(requestRow);
     setMatches(matchedAgencies || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); }, [id, familyId]);
 
   const handleCloseRequest = async () => {
     if (!familyId || !id || closingRequest) return;
@@ -68,7 +68,7 @@ export default function FamilyRequestResults() {
     setChooseError('');
     const result = await closeFamilyRequest(id, familyId);
     if (!result.ok) {
-      setChooseError('Unable to close this request right now. Please try again.');
+      setChooseError(result.error || 'Unable to close this request right now. Please try again.');
       setClosingRequest(false);
       return;
     }

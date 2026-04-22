@@ -342,7 +342,8 @@ service cloud.firestore {
         || (isFamily() && resource.data.family_id == request.auth.uid)
         || canAgencyAccessFamilyRequest(requestId);
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid);
     }
 
     match /family_request_assignments/{assignmentId} {
@@ -366,7 +367,8 @@ service cloud.firestore {
             ));
 
       allow update: if isAdmin() || canAgencyAccessAssignment(resource.data);
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (isFamily() && resource.data.family_id == request.auth.uid);
     }
 
     match /conversations/{convId} {
