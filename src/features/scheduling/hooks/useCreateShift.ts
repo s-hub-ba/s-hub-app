@@ -5,9 +5,10 @@
 
 import { useState, useCallback } from 'react';
 import { getAuth } from 'firebase/auth';
+import { getApiBaseUrl } from '../../../lib/apiBase';
 import type { CreateShiftOfferInput } from '../types/scheduling';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = getApiBaseUrl();
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const auth = getAuth();

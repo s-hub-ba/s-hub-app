@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { getAuth } from 'firebase/auth';
+import { getApiBaseUrl } from '../../../lib/apiBase';
 import type { CreateBookingRequestInput } from '../types/scheduling';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = getApiBaseUrl();
 
 interface BookingRequestFormProps {
   agencyId: string;

@@ -13,6 +13,7 @@ import {
   getAgencyTalentPool,
   type InquiryStage
 } from '../../lib/api';
+import { getApiBaseUrl } from '../../lib/apiBase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgencyEntitlements } from '../../lib/entitlements';
 import { formatLimit } from '../../lib/plans';
@@ -42,7 +43,7 @@ type ScheduleEventLite = {
   nannyName?: string;
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = getApiBaseUrl();
 
 async function getSchedulingEvents(): Promise<ScheduleEventLite[]> {
   const auth = getAuth();

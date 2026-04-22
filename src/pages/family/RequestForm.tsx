@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Send, Sparkles, AlertCircle } from 'lucide-react';
+import { Send, Sparkles, AlertCircle, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { getFamilyProfile, submitFamilyRequestAndMatch, type FamilyRequestInput } from '../../lib/api';
+import { closeFamilyRequest, getFamilyProfile, getFamilyRequestsForFamily, submitFamilyRequestAndMatch, type FamilyRequestInput } from '../../lib/api';
 import { isValidEmail, isValidPhone } from '../../lib/validation';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
@@ -27,8 +27,11 @@ export default function FamilyRequestForm() {
   const familyId = user?.uid || null;
 
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [checkingExistingRequest, setCheckingExistingRequest] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [closingExistingRequest, setClosingExistingRequest] = useState(false);
   const [error, setError] = useState('');
+  const [activeRequest, setActiveRequest] = useState<any>(null);
 
   const [form, setForm] = useState<FamilyRequestInput>({
     parent_name: '',
@@ -57,11 +60,20 @@ export default function FamilyRequestForm() {
   useEffect(() => {
     if (!familyId) {
       setLoadingProfile(false);
+      setCheckingExistingRequest(false);
       return;
     }
 
     const loadProfile = async () => {
-      const profile = await getFamilyProfile(familyId);
+      const [profile, requests] = await Promise.all([
+        getFamilyProfile(familyId),
+        getFamilyRequestsForFamily(familyId),
+      ]);
+
+      const currentActiveRequest = (requests || []).find((request: any) =>
+        ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(request?.status || ''))
+      ) || null;
+
       setForm((prev) => ({
         ...prev,
         parent_name: profile?.family_name || profile?.name || prev.parent_name,
@@ -89,11 +101,38 @@ export default function FamilyRequestForm() {
         driver_required: !!profile?.driver_requirement,
         pet_friendly: !!profile?.pet_friendly,
       }));
+      setActiveRequest(currentActiveRequest);
       setLoadingProfile(false);
+      setCheckingExistingRequest(false);
     };
 
-    loadProfile().catch(() => setLoadingProfile(false));
+    loadProfile().catch(() => {
+      setLoadingProfile(false);
+      setCheckingExistingRequest(false);
+    });
   }, [familyId]);
+
+  const handleCloseActiveRequest = async () => {
+    if (!familyId || !activeRequest?.id || closingExistingRequest) return;
+
+    const confirmed = window.confirm('Delete your current childcare request? Agencies that received it will be notified.');
+    if (!confirmed) return;
+
+    setClosingExistingRequest(true);
+    setError('');
+    try {
+      const result = await closeFamilyRequest(activeRequest.id, familyId);
+      if (!result.ok) {
+        setError('Unable to delete your current request right now. Please try again.');
+        return;
+      }
+      setActiveRequest(null);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to delete your current request right now. Please try again.');
+    } finally {
+      setClosingExistingRequest(false);
+    }
+  };
 
   const canSubmit = useMemo(() => {
     const needsDateRange = form.care_type === 'full-time' || form.care_type === 'part-time';
@@ -203,6 +242,10 @@ export default function FamilyRequestForm() {
     return <div className="p-8 text-center text-stone-500">Please sign in to submit a request.</div>;
   }
 
+  if (loadingProfile || checkingExistingRequest) {
+    return <div className="p-8 text-center text-stone-500">Loading your request details...</div>;
+  }
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -226,6 +269,45 @@ export default function FamilyRequestForm() {
         Families stay free. You can keep one active childcare request open at a time so agencies respond to a single clear brief.
       </div>
 
+      {activeRequest ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-amber-900">You already have an active care request</h2>
+            <p className="mt-1 text-sm text-amber-800">
+              You can manage or delete your current request before submitting a new one.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-white px-4 py-4 text-sm text-stone-700">
+            <p className="font-semibold text-stone-900">{activeRequest.care_type || 'Care'} request in {activeRequest.borough || 'NYC'}</p>
+            <p className="mt-1">Status: {String(activeRequest.status || 'submitted').replace(/_/g, ' ')}</p>
+            <p className="mt-1">
+              {activeRequest.start_date
+                ? `Starts ${activeRequest.start_date}${activeRequest.end_date ? ` and ends ${activeRequest.end_date}` : ''}`
+                : 'Dates are still being finalized.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to={`/family/requests/${activeRequest.id}`}
+              className="inline-flex items-center rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-stone-800"
+            >
+              View Active Request
+            </Link>
+            <button
+              type="button"
+              onClick={handleCloseActiveRequest}
+              disabled={closingExistingRequest}
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" />
+              {closingExistingRequest ? 'Deleting...' : 'Delete Current Request'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {error && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-start gap-2">
           <AlertCircle className="h-4 w-4 mt-0.5" />
@@ -233,6 +315,7 @@ export default function FamilyRequestForm() {
         </div>
       )}
 
+      {activeRequest ? null : (
       <form onSubmit={submitRequest} className="space-y-6">
         <section className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <h2 className="md:col-span-2 text-lg font-bold text-stone-900">Parent Contact</h2>
@@ -545,6 +628,7 @@ export default function FamilyRequestForm() {
           </button>
         </div>
       </form>
+      )}
     </div>
   );
 }
