@@ -329,6 +329,7 @@ export default function AgencyJobs() {
         <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm">
           <div className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Drafts</div>
           <div className="text-2xl font-bold text-amber-700 mt-1">{draftJobsCount}</div>
+          <div className="text-xs text-stone-500 mt-1">Draft jobs are hidden from nannies until published.</div>
         </div>
         <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm md:col-span-3">
           <div className="text-xs uppercase tracking-wider text-stone-500 font-semibold">In Session (Active Care)</div>
@@ -488,6 +489,13 @@ export default function AgencyJobs() {
               key={job.id}
               className="bg-white rounded-3xl border border-stone-200 shadow-sm p-5 md:p-6"
             >
+              {(() => {
+                const jobStatus = String(job.status || 'published');
+                const isDraft = jobStatus === 'draft';
+                const isClosed = jobStatus === 'closed';
+                const isPublished = jobStatus === 'published';
+
+                return (
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                 <div className="min-w-0">
                   <h3 className="text-2xl font-bold text-stone-900 leading-tight break-words">{job.title}</h3>
@@ -505,12 +513,32 @@ export default function AgencyJobs() {
 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 lg:justify-end shrink-0">
                   <span className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl text-xs font-bold ${
-                    job.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-700'
+                    isPublished
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : isDraft
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-stone-100 text-stone-700'
                   }`}>
-                    {job.status === 'closed' ? 'Closed' : 'Published'}
+                    {isClosed ? 'Closed' : isDraft ? 'Draft' : 'Published'}
                   </span>
 
-                  {job.status === 'closed' ? (
+                  {isDraft ? (
+                    <>
+                      <Link
+                        to={`/agency/jobs/new?edit=${encodeURIComponent(job.id)}`}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-bold bg-amber-100 text-amber-800 rounded-xl hover:bg-amber-200 transition-colors"
+                      >
+                        Edit Draft
+                      </Link>
+                      <button
+                        onClick={() => handleJobStatus(job.id, 'published')}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-bold bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors"
+                      >
+                        <CalendarPlus className="h-4 w-4" />
+                        Publish Job
+                      </button>
+                    </>
+                  ) : isClosed ? (
                     <button
                       onClick={() => handleJobStatus(job.id, 'published')}
                       className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-bold bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-colors"
@@ -538,6 +566,8 @@ export default function AgencyJobs() {
                   </button>
                 </div>
               </div>
+                );
+              })()}
 
               <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 p-4">
                 <div className="flex items-center justify-between gap-3">

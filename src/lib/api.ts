@@ -205,11 +205,22 @@ export interface Job {
   source_inquiry_id?: string | null;
   linked_from_inquiry?: boolean;
   title: string;
+  job_type?: string;
+  work_type?: string;
   description: string;
   location_borough: string;
   location_neighborhood: string;
+  private_job_address?: string;
+  pay_min?: number | null;
+  pay_max?: number | null;
   salary_range: string;
   schedule_type: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  weekdays?: string[];
+  schedule_summary?: string;
+  schedule?: string;
+  required_experience_years?: number;
   status: 'published' | 'draft' | 'closed';
   selected_nanny_id?: string | null;
   selected_application_id?: string | null;
@@ -1010,6 +1021,43 @@ export const updateJob = async (id: string, updates: any) => {
       ...normalizedUpdates,
       updated_at: serverTimestamp()
     });
+
+    const sourceRequestId = String(normalizedUpdates?.source_inquiry_id || existingData?.source_inquiry_id || '').trim();
+    if (sourceRequestId) {
+      const requestRef = doc(db, 'family_requests', sourceRequestId);
+      const requestDoc = await getDoc(requestRef);
+      if (requestDoc.exists()) {
+        const requestData = requestDoc.data() as any;
+        if (!agencyId || requestData?.chosen_agency_id === agencyId) {
+          const requestUpdates: Record<string, any> = {
+            linked_job_id: id,
+            updated_at: serverTimestamp(),
+          };
+
+          if (nextStatus === 'published') {
+            requestUpdates.job_post_status = 'published';
+            requestUpdates.job_published_at = serverTimestamp();
+          } else if (nextStatus === 'draft') {
+            requestUpdates.job_post_status = 'draft';
+          } else if (nextStatus === 'closed') {
+            requestUpdates.job_post_status = 'closed';
+          }
+
+          await updateDoc(requestRef, requestUpdates);
+
+          if (requestData?.family_id && agencyId) {
+            const conversationId = `${requestData.family_id}_${agencyId}`;
+            await setDoc(doc(db, 'conversations', conversationId), {
+              source_family_request_id: sourceRequestId,
+              linked_job_id: id,
+              family_request_status: nextStatus === 'published' ? 'job_published' : 'family_chosen',
+              updated_at: serverTimestamp(),
+            }, { merge: true });
+          }
+        }
+      }
+    }
+
     const updatedDoc = await getDoc(docRef);
     return { id: updatedDoc.id, ...updatedDoc.data() };
   } catch (error) {
@@ -5456,6 +5504,10 @@ export interface FamilyRequestRecord extends FamilyRequestInput {
   top_match_count?: number;
   chosen_agency_id?: string | null;
   chosen_at?: any;
+  linked_job_id?: string | null;
+  job_post_status?: 'draft' | 'published' | 'closed' | null;
+  job_draft_created_at?: any;
+  job_published_at?: any;
   created_at?: any;
   updated_at?: any;
 }
@@ -5864,6 +5916,14 @@ export const createDraftJobFromFamilyRequest = async (
     throw new Error('This request is not yet approved by the family for your agency.');
   }
 
+  const existingLinkedJobId = String(request.linked_job_id || '').trim();
+  if (existingLinkedJobId) {
+    const existingLinkedJob = await getJobById(existingLinkedJobId);
+    if (existingLinkedJob && existingLinkedJob.agency_id === agencyId) {
+      return { id: existingLinkedJobId };
+    }
+  }
+
   const careLabel = request.care_type
     ? `${String(request.care_type).charAt(0).toUpperCase()}${String(request.care_type).slice(1)}`
     : 'Care';
@@ -5909,6 +5969,13 @@ export const createDraftJobFromFamilyRequest = async (
       linked_job_id: created.id,
       updated_at: serverTimestamp(),
     }, { merge: true });
+
+    await updateDoc(doc(db, 'family_requests', requestId), {
+      linked_job_id: created.id,
+      job_post_status: 'draft',
+      job_draft_created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
   }
 
   return created?.id ? { id: String(created.id) } : null;

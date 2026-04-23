@@ -100,6 +100,17 @@ export default function FamilyRequestResults() {
   const isChosen = !!request?.chosen_agency_id;
   const isClosed = request?.status === 'closed';
   const chosenAgency = isChosen ? matches.find((m) => m.agency_id === request.chosen_agency_id) : null;
+  const linkedJobId = String(request?.linked_job_id || '').trim();
+  const linkedJobPublished = request?.job_post_status === 'published' && !!linkedJobId;
+
+  const formatTimestamp = (value: any) => {
+    if (!value) return '';
+    const date = typeof value?.toDate === 'function'
+      ? value.toDate()
+      : new Date(value);
+    if (!date || Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString();
+  };
 
   if (!loading && !request && !deletedRequest) {
     return (
@@ -219,6 +230,21 @@ export default function FamilyRequestResults() {
                   ? `First date needed: ${request.start_date}`
                   : 'Dates not specified yet'}
           </p>
+
+          {linkedJobPublished && (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-900">Your selected agency published this job</p>
+              <p className="text-sm text-emerald-800 mt-1">
+                Published {formatTimestamp(request?.job_published_at) || 'recently'}.
+              </p>
+              <Link
+                to={`/family/jobs/${linkedJobId}`}
+                className="inline-flex mt-2 text-sm font-semibold text-emerald-800 hover:text-emerald-900 underline"
+              >
+                View Published Job
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
