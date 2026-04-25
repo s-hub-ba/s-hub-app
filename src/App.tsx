@@ -29,6 +29,8 @@ import NannyProfile from './pages/nanny/Profile';
 import NannyCalendar from './pages/nanny/Calendar';
 import NannyOnboarding from './pages/nanny/Onboarding';
 import NannyTalentPools from './pages/nanny/TalentPools';
+import NannyAgencyDirectory from './pages/nanny/AgencyDirectory';
+import FamilyAgencyDirectory from './pages/family/AgencyDirectory';
 
 import AgencyDashboard from './pages/agency/Dashboard';
 import AgencyJobs from './pages/agency/Jobs';
@@ -98,7 +100,7 @@ export default function App() {
               <Route path="dashboard" element={<FamilyDashboard />} />
               <Route path="jobs" element={<JobDiscovery />} />
               <Route path="jobs/:id" element={<JobDetails />} />
-              <Route path="agencies" element={<AgencyDirectory />} />
+              <Route path="agencies" element={<FamilyAgencyDirectory />} />
               <Route path="agencies/:id" element={<AgencyProfile />} />
               <Route path="request-care" element={<FamilyRequestForm />} />
               <Route path="requests/:id" element={<FamilyRequestResults />} />
@@ -128,6 +130,8 @@ export default function App() {
               <Route path="availability" element={<Navigate to="/nanny/calendar" replace />} />
               <Route path="calendar" element={<NannyCalendar />} />
               <Route path="profile" element={<NannyProfile />} />
+              <Route path="agencies" element={<NannyAgencyDirectory />} />
+              <Route path="agencies/:id" element={<AgencyProfile />} />
             </Route>
           </Route>
 

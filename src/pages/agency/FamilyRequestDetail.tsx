@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { CheckCircle2, XCircle, CircleEllipsis, MessageSquare, AlertCircle, ArrowLeft, Trophy, PlusCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  createJob,
+  createDraftJobFromFamilyRequest,
   getAgencyFamilyRequestAssignment,
   resolveAgencyIdForUser,
   respondToFamilyRequestAssignment,
@@ -60,55 +60,12 @@ export default function AgencyFamilyRequestDetail() {
     load();
   }, [user, assignmentId]);
 
-  const createDraftJobFromRequest = async (requestToUse: any, requestId: string) => {
-    if (!requestToUse || !requestId || !agencyId) {
-      throw new Error('Missing request context for draft creation.');
-    }
-
-    const careLabel = requestToUse.care_type
-      ? `${String(requestToUse.care_type).charAt(0).toUpperCase()}${String(requestToUse.care_type).slice(1)}`
-      : 'Care';
-    const scheduleSummary = requestToUse.schedule
-      ? String(requestToUse.schedule)
-      : requestToUse.start_date && requestToUse.end_date
-        ? `Date range: ${requestToUse.start_date} to ${requestToUse.end_date}`
-        : 'Schedule to be confirmed with family';
-
-    await createJob({
-      title: `${careLabel} Nanny - ${requestToUse.borough || 'NYC'}`,
-      job_type: String(requestToUse.care_type || 'full-time'),
-      work_type: String(requestToUse.live_in || 'live-out'),
-      description: [
-        `Care request from: ${requestToUse.parent_name || 'Family'}`,
-        requestToUse.schedule ? `Schedule: ${requestToUse.schedule}` : null,
-        requestToUse.special_requirements ? `Special requirements: ${requestToUse.special_requirements}` : null,
-        requestToUse.notes ? `Notes: ${requestToUse.notes}` : null,
-      ].filter(Boolean).join('\n'),
-      location_borough: String(requestToUse.borough || ''),
-      location_neighborhood: String(requestToUse.neighborhood || ''),
-      pay_min: requestToUse.budget_min ?? 0,
-      pay_max: requestToUse.budget_max ?? 0,
-      schedule_type: requestToUse.start_date && requestToUse.end_date ? 'date_range' : 'weekly_days',
-      start_date: String(requestToUse.start_date || ''),
-      end_date: requestToUse.start_date && requestToUse.end_date ? String(requestToUse.end_date || '') : null,
-      weekdays: [],
-      required_experience_years: 0,
-      schedule_summary: scheduleSummary,
-      schedule: scheduleSummary,
-      status: 'draft',
-      agency_id: agencyId,
-      family_id: requestToUse.family_id || null,
-      source_inquiry_id: requestId,
-      linked_from_inquiry: false,
-    });
-  };
-
   const handleCreateDraftNow = async () => {
     if (!row?.request || !row?.request_id || creatingDraft) return;
     setError('');
     setCreatingDraft(true);
     try {
-      await createDraftJobFromRequest(row.request, row.request_id);
+      await createDraftJobFromFamilyRequest(row.request_id, agencyId);
       navigate('/agency/jobs?status=draft');
     } catch {
       setError('Could not auto-create a draft job right now. Please try again in a moment.');
@@ -133,11 +90,13 @@ export default function AgencyFamilyRequestDetail() {
     setRow(updated);
 
     if (status === 'accepted') {
-      const requestToUse = updated?.request || row?.request;
       const requestId = updated?.request_id || row?.request_id;
 
       try {
-        await createDraftJobFromRequest(requestToUse, requestId);
+        if (!requestId) {
+          throw new Error('Missing request id for draft creation.');
+        }
+        await createDraftJobFromFamilyRequest(requestId, agencyId);
 
         navigate('/agency/jobs?status=draft');
       } catch {

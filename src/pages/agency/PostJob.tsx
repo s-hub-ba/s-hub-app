@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
-import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob, getActiveJobCount, getFamilyRequestById } from '../../lib/api';
+import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob, getActiveJobCount, getFamilyRequestById, getJobById, updateJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgencyEntitlements } from '../../lib/entitlements';
 import { formatLimit } from '../../lib/plans';
@@ -21,6 +21,11 @@ export default function PostJob() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeJobCount, setActiveJobCount] = useState(0);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingJobId, setEditingJobId] = useState('');
+  const [editingJobStatus, setEditingJobStatus] = useState<'draft' | 'published' | 'closed'>('draft');
+  const [submitIntent, setSubmitIntent] = useState<'draft' | 'publish'>('publish');
+  const [sourceRequestId, setSourceRequestId] = useState<string | null>(null);
 
   const { entitlements } = useAgencyEntitlements(resolvedAgencyId);
 
@@ -58,6 +63,62 @@ export default function PostJob() {
       if (agency) {
         const count = await getActiveJobCount(agency);
         setActiveJobCount(count);
+      }
+
+      const editId = searchParams.get('edit');
+      if (editId) {
+        const existingJob = await getJobById(editId);
+        if (!existingJob) {
+          setError('The draft job could not be found.');
+          return;
+        }
+
+        if (agency && existingJob.agency_id !== agency) {
+          setError('You do not have access to edit this job.');
+          return;
+        }
+
+        const normalizedStatus = String(existingJob.status || 'draft').toLowerCase();
+        const safeStatus: 'draft' | 'published' | 'closed' =
+          normalizedStatus === 'published'
+            ? 'published'
+            : normalizedStatus === 'closed'
+              ? 'closed'
+              : 'draft';
+
+        setIsEditMode(true);
+        setEditingJobId(editId);
+        setEditingJobStatus(safeStatus);
+        setSourceRequestId(existingJob.source_inquiry_id ? String(existingJob.source_inquiry_id) : null);
+
+        setFormData((prev) => ({
+          ...prev,
+          title: String(existingJob.title || ''),
+          job_type: String(existingJob.job_type || ''),
+          work_type: String(existingJob.work_type || ''),
+          description: String(existingJob.description || ''),
+          location_borough: String(existingJob.location_borough || ''),
+          location_neighborhood: String(existingJob.location_neighborhood || ''),
+          private_job_address: String(existingJob.private_job_address || ''),
+          pay_min: existingJob.pay_min != null ? String(existingJob.pay_min) : '',
+          pay_max: existingJob.pay_max != null ? String(existingJob.pay_max) : '',
+          schedule_type: String(existingJob.schedule_type || 'weekly_days'),
+          start_date: String(existingJob.start_date || ''),
+          end_date: String(existingJob.end_date || ''),
+          weekdays: Array.isArray(existingJob.weekdays) ? existingJob.weekdays : [],
+          required_experience_years: existingJob.required_experience_years != null
+            ? String(existingJob.required_experience_years)
+            : '',
+          status: safeStatus,
+        }));
+
+        if (existingJob.source_inquiry_id) {
+          const familyReq = await getFamilyRequestById(String(existingJob.source_inquiry_id));
+          if (familyReq) {
+            setFamilyRequestContext(familyReq);
+          }
+        }
+        return;
       }
 
       const inquiryId = searchParams.get('inquiry');
@@ -130,7 +191,7 @@ export default function PostJob() {
     entitlements !== null &&
     !entitlements.canCreateJobPosting(activeJobCount);
 
-  if (jobLimitReached && entitlements) {
+  if (!isEditMode && jobLimitReached && entitlements) {
     const limit = entitlements.activeJobLimit;
     return (
       <div className="max-w-lg mx-auto py-16 text-center px-4">
@@ -233,11 +294,11 @@ export default function PostJob() {
         ? `Date range: ${formData.start_date || 'TBD'} to ${formData.end_date || 'TBD'}`
         : `Weekdays: ${formData.weekdays.join(', ') || 'Not specified'}`;
 
-      const created = await createJob({
+      const payload = {
         ...formData,
         agency_id: resolvedAgencyId,
         family_id: inquiryContext?.family_id || familyRequestContext?.family_id || null,
-        source_inquiry_id: inquiryContext?.id || null,
+        source_inquiry_id: sourceRequestId || inquiryContext?.id || familyRequestContext?.id || null,
         linked_from_inquiry: !!inquiryContext?.id,
         end_date: formData.schedule_type === 'date_range' ? formData.end_date : null,
         weekdays: formData.schedule_type === 'weekly_days' ? formData.weekdays : [],
@@ -245,25 +306,45 @@ export default function PostJob() {
         schedule: scheduleSummary,
         pay_min: payMin,
         pay_max: payMax,
-        required_experience_years: requiredExperienceYears
-      });
+        required_experience_years: requiredExperienceYears,
+      };
 
-      if (created?.id && inquiryContext?.family_id) {
-        await ensureFamilyApplicationForInquiryJob(
-          inquiryContext.family_id,
-          created.id,
-          resolvedAgencyId,
-          inquiryContext.id
-        );
-        if (inquiryContext.id) {
-          await linkInquiryConversationToJob(inquiryContext.id, created.id);
+      let persistedJobId = '';
+      if (isEditMode && editingJobId) {
+        const nextStatus = submitIntent === 'draft' ? 'draft' : 'published';
+        const updated = await updateJob(editingJobId, {
+          ...payload,
+          status: nextStatus,
+        });
+        persistedJobId = String(updated?.id || editingJobId);
+      } else {
+        const created = await createJob({
+          ...payload,
+          status: 'published',
+        });
+        persistedJobId = String(created?.id || '');
+
+        if (persistedJobId && inquiryContext?.family_id) {
+          await ensureFamilyApplicationForInquiryJob(
+            inquiryContext.family_id,
+            persistedJobId,
+            resolvedAgencyId,
+            inquiryContext.id
+          );
+          if (inquiryContext.id) {
+            await linkInquiryConversationToJob(inquiryContext.id, persistedJobId);
+          }
         }
       }
       
       setIsSubmitting(false);
       setIsSuccess(true);
       setTimeout(() => {
-        navigate('/agency/jobs');
+        if (isEditMode && submitIntent === 'draft') {
+          navigate('/agency/jobs?status=draft');
+          return;
+        }
+        navigate('/agency/jobs?status=published');
       }, 2000);
     } catch (err: any) {
       console.error('Error creating job:', err);
@@ -273,6 +354,7 @@ export default function PostJob() {
   };
 
   if (isSuccess) {
+    const finishedAsDraft = isEditMode && submitIntent === 'draft';
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
         <motion.div 
@@ -283,8 +365,14 @@ export default function PostJob() {
           <div className="h-16 w-16 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
             <CheckCircle2 className="h-8 w-8 text-emerald-600" />
           </div>
-          <h2 className="text-2xl font-bold text-emerald-900 mb-2">Job Posted Successfully!</h2>
-          <p className="text-emerald-700">Your job is now live and visible to nannies in the network. Redirecting to jobs dashboard...</p>
+          <h2 className="text-2xl font-bold text-emerald-900 mb-2">
+            {finishedAsDraft ? 'Draft Saved' : isEditMode ? 'Job Updated Successfully!' : 'Job Posted Successfully!'}
+          </h2>
+          <p className="text-emerald-700">
+            {finishedAsDraft
+              ? 'Your draft has been updated. Publish it when you are ready for nannies to see it.'
+              : 'Your job is now live and visible to nannies in the network. Redirecting to jobs dashboard...'}
+          </p>
         </motion.div>
       </div>
     );
@@ -300,7 +388,7 @@ export default function PostJob() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">Post a New Job</h1>
+          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">{isEditMode ? 'Edit Draft Job' : 'Post a New Job'}</h1>
           <p className="text-stone-500 text-sm">Step {step} of 3</p>
         </div>
       </div>
@@ -517,13 +605,43 @@ export default function PostJob() {
               >
                 Cancel
               </button>
-              <button 
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-stone-900 hover:bg-stone-800 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-70"
-              >
-                {step < 3 ? 'Continue' : isSubmitting ? 'Posting...' : 'Post Job'}
-              </button>
+              {step < 3 ? (
+                <button 
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-stone-900 hover:bg-stone-800 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-70"
+                >
+                  Continue
+                </button>
+              ) : isEditMode && editingJobStatus === 'draft' ? (
+                <>
+                  <button
+                    type="submit"
+                    onClick={() => setSubmitIntent('draft')}
+                    disabled={isSubmitting}
+                    className="bg-amber-100 hover:bg-amber-200 text-amber-900 px-6 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-70"
+                  >
+                    {isSubmitting && submitIntent === 'draft' ? 'Saving...' : 'Save Draft'}
+                  </button>
+                  <button
+                    type="submit"
+                    onClick={() => setSubmitIntent('publish')}
+                    disabled={isSubmitting}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-70"
+                  >
+                    {isSubmitting && submitIntent === 'publish' ? 'Publishing...' : 'Publish Job'}
+                  </button>
+                </>
+              ) : (
+                <button 
+                  type="submit"
+                  onClick={() => setSubmitIntent('publish')}
+                  disabled={isSubmitting}
+                  className="bg-stone-900 hover:bg-stone-800 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-70"
+                >
+                  {isSubmitting ? (isEditMode ? 'Updating...' : 'Posting...') : (isEditMode ? 'Update Job' : 'Post Job')}
+                </button>
+              )}
             </div>
           </form>
         </div>
