@@ -26,6 +26,11 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
     Talent: false,
     Account: false,
   });
+  const dashboardPath = role === 'agency' ? '/agency/dashboard'
+    : role === 'admin' ? '/admin/dashboard'
+    : role === 'family' ? '/family/dashboard'
+    : '/nanny/dashboard';
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileMenuCollapsed, setMobileMenuCollapsed] = useState<Record<string, boolean>>({});
 
@@ -39,6 +44,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
     { name: 'Calendar', href: '/nanny/calendar', icon: Calendar },
     { name: 'Jobs', href: '/nanny/jobs', icon: Briefcase },
     { name: 'Applications', href: '/nanny/applications', icon: FileText },
+    { name: 'Browse Agencies', href: '/nanny/agencies', icon: Search },
     { name: 'Talent Pools', href: '/nanny/talent-pools', icon: Users },
     { name: 'Development', href: '/nanny/development', icon: ShieldAlert },
     { name: 'Profile', href: '/nanny/profile', icon: User },
@@ -128,7 +134,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
       {/* Sidebar Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-stone-200 fixed inset-y-0 z-10">
         <div className="h-16 flex items-center px-6 border-b border-stone-200">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={dashboardPath} className="flex items-center gap-2">
             <div className="bg-emerald-600 p-1.5 rounded-lg">
               <Baby className="h-5 w-5 text-white" />
             </div>
@@ -219,7 +225,7 @@ export default function DashboardLayout({ role = 'nanny' }: { role?: 'nanny' | '
         {/* Mobile Header */}
         <header className="md:hidden h-16 bg-white border-b border-stone-200 flex items-center justify-between px-4 sticky top-0 z-30 safe-area-inset-top">
           <div className="w-10" aria-hidden="true" />
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={dashboardPath} className="flex items-center gap-2">
             <div className="bg-emerald-600 p-1.5 rounded-lg">
               <Baby className="h-5 w-5 text-white" />
             </div>

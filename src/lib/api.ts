@@ -3577,7 +3577,7 @@ export const getFamilyFollowedAgencies = async (familyId: string): Promise<strin
 };
 
 export const getNannyFollowedAgencies = async (nannyId: string): Promise<string[]> => {
-  const path = 'family_agency_follows';
+  const path = 'nanny_agency_follows';
   try {
     const q = query(collection(db, path), where('nanny_id', '==', nannyId));
     const snapshot = await getDocs(q);
@@ -3586,6 +3586,44 @@ export const getNannyFollowedAgencies = async (nannyId: string): Promise<string[
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
+  }
+};
+
+export const followAgencyAsNanny = async (nannyId: string, agencyId: string): Promise<string | undefined> => {
+  const path = 'nanny_agency_follows';
+  try {
+    const existingQuery = query(
+      collection(db, path),
+      where('nanny_id', '==', nannyId),
+      where('agency_id', '==', agencyId)
+    );
+    const existingSnap = await getDocs(existingQuery);
+    if (!existingSnap.empty) return existingSnap.docs[0].id;
+    const docRef = await addDoc(collection(db, path), {
+      nanny_id: nannyId,
+      agency_id: agencyId,
+      created_at: serverTimestamp()
+    });
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+};
+
+export const unfollowAgencyAsNanny = async (nannyId: string, agencyId: string): Promise<boolean> => {
+  const path = 'nanny_agency_follows';
+  try {
+    const q = query(
+      collection(db, path),
+      where('nanny_id', '==', nannyId),
+      where('agency_id', '==', agencyId)
+    );
+    const snapshot = await getDocs(q);
+    await Promise.all(snapshot.docs.map(docItem => deleteDoc(docItem.ref)));
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    return false;
   }
 };
 
