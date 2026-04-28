@@ -105,9 +105,14 @@ export default function AgencyApplications() {
           compatibility
         };
       }));
-      setApplications(enrichedApps);
+      const sortedApps = [...enrichedApps].sort((a, b) => {
+        const aCreatedAt = toMillis(a.created_at || a.updated_at);
+        const bCreatedAt = toMillis(b.created_at || b.updated_at);
+        return bCreatedAt - aCreatedAt;
+      });
+      setApplications(sortedApps);
 
-      const candidate = [...enrichedApps]
+      const candidate = [...sortedApps]
         .filter((app) => app.status === 'active' && toPlacementCelebrationMillis(app.active_at || app.updated_at) > 0)
         .sort((a, b) => toPlacementCelebrationMillis(b.active_at || b.updated_at) - toPlacementCelebrationMillis(a.active_at || a.updated_at))[0];
 
@@ -513,7 +518,7 @@ export default function AgencyApplications() {
     if (!searchMatches) return false;
     if (queueFilter === 'followups') return isOverdueCallPendingFollowup(app);
     return isApplicationInPlacementBucket(app, placementFilter);
-  });
+  }).sort((a, b) => toMillis(b.created_at || b.updated_at) - toMillis(a.created_at || a.updated_at));
 
   const placementFilterLabel =
     placementFilter === 'full-time'
@@ -645,9 +650,9 @@ export default function AgencyApplications() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: index * 0.03 }}
                 key={app.id}
-                className="rounded-2xl border border-stone-200 bg-white/95 backdrop-blur-sm shadow-sm p-4 md:p-5"
+                className={`relative overflow-visible rounded-2xl border border-stone-200 bg-white/95 backdrop-blur-sm shadow-sm p-4 ${openDropdownId === app.id ? 'z-30' : 'z-0'}`}
               >
-                <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1.2fr_1.3fr_auto] gap-4 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_auto] gap-3 items-start">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-stone-200 to-stone-300 flex items-center justify-center text-stone-600 font-bold border border-stone-300 shrink-0">
                       {app.nanny_name?.charAt(0) || '?'}
@@ -685,7 +690,7 @@ export default function AgencyApplications() {
                       <FileText className="h-4 w-4 text-stone-400 mt-0.5 shrink-0" />
                       <p className="text-stone-800 font-semibold leading-snug break-words">{app.job_title}</p>
                     </div>
-                    <div className="text-xs text-stone-500 mt-2">Applied {toDate(app.created_at)?.toLocaleDateString() || '—'}</div>
+                    <div className="text-xs text-stone-500 mt-1.5">Applied {toDate(app.created_at)?.toLocaleDateString() || '—'}</div>
                   </div>
 
                   <div>
@@ -729,7 +734,7 @@ export default function AgencyApplications() {
                     )}
                   </div>
 
-                  <div className="flex flex-col sm:flex-row xl:flex-col items-stretch gap-2 xl:items-end">
+                  <div className="flex flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
                     {app.status !== 'completed' && app.status !== 'rejected' && app.status !== 'withdrawn' && (
                       <button
                         onClick={() => handleAssignApplication(app)}
@@ -768,7 +773,7 @@ export default function AgencyApplications() {
                       </button>
                     )}
 
-                    <div ref={dropdownRef} className="relative self-end">
+                    <div ref={dropdownRef} className="relative self-end lg:self-auto">
                       <button
                         onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === app.id ? null : app.id); }}
                         className="p-1.5 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
@@ -778,7 +783,7 @@ export default function AgencyApplications() {
                       {openDropdownId === app.id && (
                         <div
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-full mt-1 w-48 bg-white border border-stone-200 rounded-xl shadow-lg z-50 overflow-hidden"
+                          className="absolute right-0 top-full mt-1 w-48 bg-white border border-stone-200 rounded-xl shadow-lg z-[80] overflow-hidden"
                         >
                           <button
                             onClick={() => handleAssignApplication(app)}
