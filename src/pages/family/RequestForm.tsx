@@ -3,21 +3,24 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Send, Sparkles, AlertCircle, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { closeFamilyRequest, getFamilyProfile, getFamilyRequestsForFamily, submitFamilyRequestAndMatch, type FamilyRequestInput } from '../../lib/api';
+import { formatCareTypeLabel } from '../../lib/jobTypes';
 import { isValidEmail, isValidPhone } from '../../lib/validation';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
 const AGE_GROUPS = ['newborn', 'infant', 'toddler', 'preschool', 'school-age', 'teen'];
 const CARE_TYPES: Array<{ value: FamilyRequestInput['care_type']; label: string; description: string }> = [
-  { value: 'full-time', label: 'Full-Time', description: 'Ongoing daily care with a defined placement window.' },
-  { value: 'part-time', label: 'Part-Time', description: 'Recurring weekly support with a defined start and end.' },
-  { value: 'occasional', label: 'Occasional / Last-Minute', description: 'Backup care, date nights, weekends, or urgent coverage.' },
+  { value: 'full-time', label: 'Full-Time', description: 'Longer-term placement with a deliberate interview and matching process.' },
+  { value: 'part-time', label: 'Part-Time', description: 'Recurring weekly schedule with time to interview and coordinate fit.' },
+  { value: 'occasional', label: 'Occasional', description: 'Flexible or recurring backup care when coverage is helpful but not urgent.' },
+  { value: 'last-minute', label: 'Last Minute', description: 'Urgent coverage needed quickly, often with short notice.' },
 ];
 const LANGUAGE_CHOICES = ['English', 'Spanish', 'French', 'Mandarin', 'Cantonese', 'Russian', 'Hebrew', 'Arabic'];
 
 const normalizeProfileCareType = (value: unknown): FamilyRequestInput['care_type'] => {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
-  if (normalized === 'temporary' || normalized === 'occasional' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  if (normalized === 'last-minute' || normalized === 'last minute') return 'last-minute';
+  if (normalized === 'temporary' || normalized === 'occasional') return 'occasional';
   return 'full-time';
 };
 
@@ -279,7 +282,7 @@ export default function FamilyRequestForm() {
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-white px-4 py-4 text-sm text-stone-700">
-            <p className="font-semibold text-stone-900">{activeRequest.care_type || 'Care'} request in {activeRequest.borough || 'NYC'}</p>
+            <p className="font-semibold text-stone-900">{formatCareTypeLabel(activeRequest.care_type || 'Care')} request in {activeRequest.borough || 'NYC'}</p>
             <p className="mt-1">Status: {String(activeRequest.status || 'submitted').replace(/_/g, ' ')}</p>
             <p className="mt-1">
               {activeRequest.start_date
@@ -388,7 +391,12 @@ export default function FamilyRequestForm() {
         <section className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 space-y-4">
           <h2 className="text-lg font-bold text-stone-900">Care Preferences</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+            <p className="font-semibold text-stone-900">How to choose the right care type</p>
+            <p className="mt-1">Choose Full-Time or Part-Time when you expect a more deliberate interview and placement process. Choose Occasional for flexible backup or repeating ad hoc support, and Last Minute when you need urgent coverage fast.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
             {CARE_TYPES.map((careType) => (
               <button
                 type="button"
@@ -396,7 +404,7 @@ export default function FamilyRequestForm() {
                 onClick={() => setForm((prev) => ({
                   ...prev,
                   care_type: careType.value,
-                  end_date: careType.value === 'occasional' ? '' : prev.end_date,
+                  end_date: careType.value === 'occasional' || careType.value === 'last-minute' ? '' : prev.end_date,
                 }))}
                 className={`px-4 py-3 rounded-2xl border text-left transition-colors ${form.care_type === careType.value ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-200 text-stone-700 hover:bg-stone-50'}`}
               >
@@ -409,12 +417,14 @@ export default function FamilyRequestForm() {
           <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-stone-900">
-                {needsDateRange ? 'Placement Dates' : 'Occasional Care Timing'}
+                {needsDateRange ? 'Placement Dates' : form.care_type === 'last-minute' ? 'Urgent Care Timing' : 'Occasional Care Timing'}
               </h3>
               <p className="text-sm text-stone-500 mt-1">
                 {needsDateRange
                   ? 'For full-time and part-time care, add a start and end date or mark the request as flexible.'
-                  : 'Use this for backup care, last-minute help, weekends, or date nights.'}
+                  : form.care_type === 'last-minute'
+                    ? 'Use this when coverage is urgent and you need fast coordination from agencies.'
+                    : 'Use this for flexible or recurring backup care, weekends, or date nights.'}
               </p>
             </div>
 

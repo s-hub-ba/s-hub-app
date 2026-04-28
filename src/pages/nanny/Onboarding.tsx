@@ -345,7 +345,7 @@ export default function NannyOnboarding() {
                 <div>
                   <label className="block text-sm font-bold text-stone-900 mb-2">Preferred Job Types</label>
                   <div className="grid grid-cols-2 gap-3">
-                    {['Full-Time', 'Part-Time', 'Temporary', 'Overnight', 'Live-In', 'Live-Out'].map(type => (
+                    {['Full-Time', 'Part-Time', 'Occasional', 'Last Minute', 'Overnight', 'Live-In', 'Live-Out'].map(type => (
                       <label key={type} className="flex items-center gap-2 p-3 border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50">
                         <input 
                           type="checkbox" 

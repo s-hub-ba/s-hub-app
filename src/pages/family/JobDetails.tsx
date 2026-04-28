@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, Briefcase, Clock, DollarSign, Heart, Baby, Calendar, CheckCircle2, ArrowLeft, Send } from 'lucide-react';
 import { getJobById, saveJob, unsaveJob, getSavedJobs, applyToJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobTypeLabel } from '../../lib/jobTypes';
 import { formatJobSchedule, toDate } from '../../lib/utils';
 
 export default function JobDetails() {
@@ -164,7 +165,7 @@ export default function JobDetails() {
                 <Briefcase className="h-5 w-5 text-stone-400 shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-stone-900">Job Type</p>
-                  <p className="text-sm text-stone-600">{job.job_type}</p>
+                  <p className="text-sm text-stone-600">{formatJobTypeLabel(job.job_type)}</p>
                 </div>
               </div>
               

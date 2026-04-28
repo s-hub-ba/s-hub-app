@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { addAgencyNotification, addFamilyNotification, getApplicationsForNanny, getFamilyProfile, getJobById, respondToApplicationCall, updateApplicationStatus } from '../../lib/api';
 import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { getApiBaseUrl } from '../../lib/apiBase';
+import { formatJobTypeLabel } from '../../lib/jobTypes';
 import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
@@ -603,7 +604,7 @@ export default function NannyApplications() {
                       </div>
                       <div className="rounded-2xl bg-white p-4 border border-stone-200">
                         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Job Type</p>
-                        <p className="mt-2 text-sm font-semibold text-stone-900">{app.jobs?.job_type || 'Care role'}</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-900">{formatJobTypeLabel(app.jobs?.job_type || 'Care role')}</p>
                       </div>
                     </div>
 

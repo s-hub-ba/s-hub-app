@@ -14,7 +14,7 @@ type FamilyRequestPayload = {
   neighborhood?: string;
   children_count: number;
   child_age_groups: string[];
-  care_type: 'full-time' | 'part-time' | 'occasional';
+  care_type: 'full-time' | 'part-time' | 'occasional' | 'last-minute';
   live_in: 'live-in' | 'live-out' | 'either';
   start_date?: string;
   end_date?: string;
@@ -35,7 +35,8 @@ const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
 const normalizeCareType = (value: unknown): FamilyRequestPayload['care_type'] => {
   const normalized = normalize(value);
   if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
-  if (normalized === 'occasional' || normalized === 'temporary' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  if (normalized === 'last-minute' || normalized === 'last minute') return 'last-minute';
+  if (normalized === 'occasional' || normalized === 'temporary') return 'occasional';
   return 'full-time';
 };
 
@@ -93,8 +94,13 @@ const scoreAgency = (request: FamilyRequestPayload, capability: any) => {
 
   const supportedCareTypes = toSet(capability?.supported_care_types || []);
   const requestCareType = normalizeCareType(request.care_type);
-  const supportsOccasional = supportedCareTypes.has('occasional') || supportedCareTypes.has('temporary') || supportedCareTypes.has('last-minute') || supportedCareTypes.has('last minute');
-  const careType = supportedCareTypes.has(requestCareType) || (requestCareType === 'occasional' && supportsOccasional) ? 20 : 0;
+  const supportsOccasional = supportedCareTypes.has('occasional') || supportedCareTypes.has('temporary');
+  const supportsLastMinute = supportedCareTypes.has('last-minute') || supportedCareTypes.has('last minute');
+  const careType = supportedCareTypes.has(requestCareType)
+    || (requestCareType === 'occasional' && supportsOccasional)
+    || (requestCareType === 'last-minute' && supportsLastMinute)
+    ? 20
+    : 0;
 
   const requestAges = toSet(normalizeStringList(request.child_age_groups || []));
   const supportedAges = toSet(capability?.supported_age_groups || []);

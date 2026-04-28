@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { addFamilyNotification, addNannyNotification, assignNannyToJob, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
 import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
+import { classifyPlacementBucket } from '../../lib/jobTypes';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_COLORS = {
@@ -492,18 +493,16 @@ export default function AgencyApplications() {
     const activePlacementStatuses = new Set(['accepted', 'hired', 'active', 'pending_family_approval']);
     if (!activePlacementStatuses.has(String(app?.status || ''))) return false;
 
-    const scheduleType = String(app?.jobs?.schedule_type || '').toLowerCase();
-    const content = `${scheduleType} ${String(app?.job_title || '')} ${String(app?.jobs?.title || '')} ${String(app?.jobs?.description || '')}`.toLowerCase();
+    const placementBucket = classifyPlacementBucket({
+      scheduleType: app?.jobs?.schedule_type,
+      jobType: app?.jobs?.job_type,
+      title: app?.job_title || app?.jobs?.title,
+      description: app?.jobs?.description,
+    });
 
-    const includesAny = (tokens: string[]) => tokens.some((token) => content.includes(token));
-
-    const hasFullTime = includesAny(['full-time', 'full time', 'fulltime']);
-    const hasPartTime = includesAny(['part-time', 'part time', 'parttime']);
-    const hasRecurring = includesAny(['weekly_days', 'recurring', 'recurrence', 'weekly', 'repeating', 'repeat']);
-
-    if (bucket === 'full-time') return hasFullTime;
-    if (bucket === 'part-time') return hasPartTime;
-    return hasRecurring && !hasFullTime && !hasPartTime;
+    if (bucket === 'full-time') return placementBucket === 'full-time';
+    if (bucket === 'part-time') return placementBucket === 'part-time';
+    return placementBucket === 'recurring';
   };
 
   const filteredApps = applications.filter((app) => {

@@ -259,7 +259,8 @@ export default function FamilyProfile() {
                   <option value="">Select care type</option>
                   <option value="Full-Time">Full-Time</option>
                   <option value="Part-Time">Part-Time</option>
-                  <option value="Occasional">Occasional / Last-Minute</option>
+                  <option value="Occasional">Occasional</option>
+                  <option value="Last-Minute">Last Minute</option>
                 </select>
               </div>
             </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Briefcase, MapPin, DollarSign, Clock, CheckCircle2, MessageSquare, XCircle, Star, X } from 'lucide-react';
 import { getFamilyApplications, addAgencyReview, updateApplicationStatus, recordCareHistoryFromApplication, addNannyNotification } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobTypeLabel } from '../../lib/jobTypes';
 
 export default function FamilyApplications() {
   const { user } = useAuth();
@@ -177,7 +178,7 @@ export default function FamilyApplications() {
                     <div className="flex flex-wrap gap-4 text-sm text-stone-600">
                       <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-stone-400" /> {app.jobs?.location_neighborhood || 'N/A'}, {app.jobs?.location_borough || 'N/A'}</span>
                       <span className="flex items-center gap-1.5"><DollarSign className="h-4 w-4 text-stone-400" /> ${app.jobs?.pay_min ?? 'N/A'}-${app.jobs?.pay_max ?? 'N/A'}/hr</span>
-                      <span className="flex items-center gap-1.5"><Briefcase className="h-4 w-4 text-stone-400" /> {app.jobs?.job_type || 'N/A'}</span>
+                      <span className="flex items-center gap-1.5"><Briefcase className="h-4 w-4 text-stone-400" /> {formatJobTypeLabel(app.jobs?.job_type || 'N/A')}</span>
                     </div>
                   </div>
                   

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, MapPin, Briefcase, Clock, DollarSign, Heart, Baby, Filter, Star } from 'lucide-react';
 import { getJobs, saveJob, unsaveJob, getSavedJobs } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobTypeLabel } from '../../lib/jobTypes';
 import { formatJobSchedule, toDate } from '../../lib/utils';
 
 export default function JobDiscovery() {
@@ -14,6 +15,18 @@ export default function JobDiscovery() {
   const [selectedSchedule, setSelectedSchedule] = useState('All');
   
   const familyId = user?.uid || '';
+
+  const normalizeJobType = (value: unknown) => String(value || '').trim().toLowerCase();
+
+  const matchesScheduleType = (jobType: unknown, schedule: string) => {
+    if (schedule === 'All') return true;
+    const normalizedType = normalizeJobType(jobType);
+    if (schedule === 'Full-Time') return normalizedType === 'full-time' || normalizedType === 'full time';
+    if (schedule === 'Part-Time') return normalizedType === 'part-time' || normalizedType === 'part time';
+    if (schedule === 'Occasional') return normalizedType === 'occasional' || normalizedType === 'temporary';
+    if (schedule === 'Last-Minute') return normalizedType === 'last-minute' || normalizedType === 'last minute';
+    return normalizedType === normalizeJobType(schedule);
+  };
 
   if (!familyId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to search jobs.</div>;
@@ -54,7 +67,7 @@ export default function JobDiscovery() {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           job.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesBorough = selectedBorough === 'All' || job.location_borough === selectedBorough;
-    const matchesSchedule = selectedSchedule === 'All' || job.job_type === selectedSchedule;
+    const matchesSchedule = matchesScheduleType(job.job_type, selectedSchedule);
     
     return matchesSearch && matchesBorough && matchesSchedule;
   });
@@ -112,7 +125,8 @@ export default function JobDiscovery() {
             <option value="All">All Schedules</option>
             <option value="Full-Time">Full-Time</option>
             <option value="Part-Time">Part-Time</option>
-            <option value="Temporary">Occasional / Last-Minute</option>
+            <option value="Occasional">Occasional</option>
+            <option value="Last-Minute">Last Minute</option>
             <option value="Live-In">Live-In</option>
           </select>
         </div>
@@ -171,7 +185,7 @@ export default function JobDiscovery() {
                 </span>
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-stone-100 text-stone-700">
                   <Briefcase className="h-3.5 w-3.5 mr-1" />
-                  {job.job_type}
+                  {formatJobTypeLabel(job.job_type)}
                 </span>
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-stone-100 text-stone-700">
                   <DollarSign className="h-3.5 w-3.5 mr-1" />

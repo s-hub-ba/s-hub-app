@@ -25,6 +25,7 @@ import {
   type AddonCode,
   type PlanCode,
 } from './plans';
+import { formatCareTypeLabel } from './jobTypes';
 import { scoreAgencyForFamilyRequest, MATCH_THRESHOLD, type MatchTier } from './familyMatching';
 import {
   EMPTY_NANNY_REVIEW_AGGREGATE,
@@ -5666,7 +5667,7 @@ export type FamilyRequestStatus =
   | 'family_chosen'
   | 'closed';
 
-export type FamilyRequestCareType = 'full-time' | 'part-time' | 'occasional';
+export type FamilyRequestCareType = 'full-time' | 'part-time' | 'occasional' | 'last-minute';
 export type FamilyRequestLiveIn = 'live-in' | 'live-out' | 'either';
 export type FamilyRequestAssignmentStatus = 'new' | 'accepted' | 'declined' | 'more_details';
 
@@ -5757,7 +5758,8 @@ export interface FamilyRequestMatchRow {
 const normalizeFamilyRequestCareType = (value: unknown): FamilyRequestCareType => {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
-  if (normalized === 'occasional' || normalized === 'temporary' || normalized === 'last-minute' || normalized === 'last minute') return 'occasional';
+  if (normalized === 'last-minute' || normalized === 'last minute') return 'last-minute';
+  if (normalized === 'occasional' || normalized === 'temporary') return 'occasional';
   return 'full-time';
 };
 
@@ -5775,7 +5777,10 @@ const careTypeMatchesCapability = (requestCareType: string, supportedCareTypes: 
   const supported = new Set((supportedCareTypes || []).map((item) => String(item || '').trim().toLowerCase()));
   if (supported.has(requestType)) return true;
   if (requestType === 'occasional') {
-    return supported.has('temporary') || supported.has('last-minute') || supported.has('last minute');
+    return supported.has('temporary');
+  }
+  if (requestType === 'last-minute') {
+    return supported.has('last-minute') || supported.has('last minute');
   }
   return false;
 };
@@ -6122,7 +6127,7 @@ export const createDraftJobFromFamilyRequest = async (
   }
 
   const careLabel = request.care_type
-    ? `${String(request.care_type).charAt(0).toUpperCase()}${String(request.care_type).slice(1)}`
+    ? formatCareTypeLabel(request.care_type)
     : 'Care';
   const scheduleSummary = request.schedule
     ? String(request.schedule)
