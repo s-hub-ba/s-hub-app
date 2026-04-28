@@ -3090,28 +3090,31 @@ export const updateNannyDocumentStatus = async ({
 
 // --- AGENCIES ---
 export const getAgencies = async (): Promise<AgencyProfile[]> => {
+  // Use the server-side public list as primary source so this works for
+  // unauthenticated visitors without relying on Firestore security rules.
+  try {
+    const response = await fetch(buildApiUrl('/api/agency/public-list'));
+    if (response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const agencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
+      return agencies.map((agency: any) => ({ ...agency, users: null })) as AgencyProfile[];
+    }
+  } catch {
+    // fall through to Firestore below
+  }
+
+  // Firestore fallback (requires rules to allow unauthenticated reads).
   const path = 'agency_profiles';
   try {
     const snapshot = await getDocs(collection(db, path));
-    const agencies = snapshot.docs.map((d) => ({
+    return snapshot.docs.map((d) => ({
       id: d.id,
       ...d.data(),
       users: null,
     } as AgencyProfile));
-    return agencies;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
-
-    try {
-      const response = await fetch(buildApiUrl('/api/agency/public-list'));
-      if (!response.ok) return [];
-      const payload = await response.json().catch(() => ({}));
-      const agencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
-      return agencies.map((agency: any) => ({ ...agency, users: null })) as AgencyProfile[];
-    } catch (fallbackError) {
-      console.error('[getAgencies] fallback failed', fallbackError);
-      return [];
-    }
+    return [];
   }
 };
 
