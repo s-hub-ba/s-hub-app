@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, MapPin, RotateCcw } from 'lucide-react';
 import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
+import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
+import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
 
@@ -17,6 +19,8 @@ export default function FamilyPlacements() {
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [celebrationApp, setCelebrationApp] = useState<any>(null);
+  const [celebrationCompact, setCelebrationCompact] = useState(false);
 
   const familyId = user?.uid || '';
 
@@ -31,6 +35,18 @@ export default function FamilyPlacements() {
     try {
       const apps = await getFamilyPlacementApplications(familyId);
       setApplications(apps);
+
+      const candidate = [...apps]
+        .filter((app) => app.status === 'active' && toPlacementCelebrationMillis(app.active_at || app.updated_at) > 0)
+        .sort((a, b) => toPlacementCelebrationMillis(b.active_at || b.updated_at) - toPlacementCelebrationMillis(a.active_at || a.updated_at))[0];
+
+      if (candidate) {
+        const key = buildPlacementCelebrationKey('family', familyId, candidate.id, candidate.active_at || candidate.updated_at);
+        if (consumePlacementCelebrationKey(key)) {
+          setCelebrationCompact(false);
+          setCelebrationApp(candidate);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -174,7 +190,21 @@ export default function FamilyPlacements() {
     <div key={app.id} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">{STATUS_LABELS[app.status] || app.status}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">{STATUS_LABELS[app.status] || app.status}</p>
+            {app.status === 'active' && hasSeenPlacementCelebration(buildPlacementCelebrationKey('family', familyId, app.id, app.active_at || app.updated_at)) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setCelebrationCompact(true);
+                  setCelebrationApp(app);
+                }}
+                className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700 transition-colors hover:bg-emerald-100"
+              >
+                Placement sealed
+              </button>
+            ) : null}
+          </div>
           <h3 className="mt-1 text-xl font-bold text-stone-900">{app.jobs?.title || 'Placement'}</h3>
           <p className="text-sm text-stone-600 mt-1">{app.jobs?.agency_profiles?.company_name || 'Agency partner'}</p>
           <div className="mt-3 space-y-1 text-sm text-stone-600">
@@ -219,6 +249,19 @@ export default function FamilyPlacements() {
 
   return (
     <div className="space-y-8 pb-12">
+      <PlacementHandshakeModal
+        open={!!celebrationApp}
+        onClose={() => {
+          setCelebrationApp(null);
+          setCelebrationCompact(false);
+        }}
+        jobTitle={celebrationApp?.jobs?.title}
+        agencyName={celebrationApp?.jobs?.agency_profiles?.company_name || celebrationApp?.agency_name}
+        familyName={user?.email || 'Family'}
+        nannyName={celebrationApp?.nanny_profiles?.first_name ? `${celebrationApp.nanny_profiles.first_name} ${celebrationApp.nanny_profiles?.last_name || ''}`.trim() : 'Nanny'}
+        compact={celebrationCompact}
+      />
+
       <div>
         <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Placement Approvals</h1>
         <p className="mt-1 text-stone-500">Review nanny completion requests and manage active placements on the shared lifecycle.</p>

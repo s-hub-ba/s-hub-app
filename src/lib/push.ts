@@ -1,6 +1,7 @@
 import { app } from './firebase';
 
-const VAPID_KEY = String(import.meta.env.VITE_FIREBASE_VAPID_KEY || '').trim();
+const DEFAULT_VAPID_KEY = 'BANoMmpeuOTAK5zhi4NxLvy7a7cJrvLQ0Bxu_CnT0abaD2yW4ejqSLGdtEVp4lQlBaNjtVnqU_Vd4VW0jugAa0o';
+const VAPID_KEY = String(import.meta.env.VITE_FIREBASE_VAPID_KEY || DEFAULT_VAPID_KEY).trim();
 
 function resolveMessagingSwUrl(): string {
   const base = String(import.meta.env.BASE_URL || '/');

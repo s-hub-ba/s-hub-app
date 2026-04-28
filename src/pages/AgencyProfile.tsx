@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ShieldCheck, MapPin, Globe, Calendar, CheckCircle2, Star, MessageSquare } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { createAgencyInquiryConversation, getAgencyById, getAgencyReviewStats, getAgencyPosts, followAgency, unfollowAgency, getFamilyFollowedAgencies, getFamilyProfile, AgencyProfile as AgencyProfileType, AgencyPost, FamilyProfile } from '../lib/api';
+import { addAgencyReview, AgencyReview, createAgencyInquiryConversation, getAgencyById, getAgencyReviewStats, getAgencyPosts, followAgency, unfollowAgency, getFamilyAgencyExistingReview, getFamilyAgencyReviewEligibility, getFamilyFollowedAgencies, getFamilyProfile, AgencyProfile as AgencyProfileType, AgencyPost, FamilyProfile } from '../lib/api';
 
 
 export default function AgencyProfile() {
@@ -22,6 +22,14 @@ export default function AgencyProfile() {
   const [inquiryEndDate, setInquiryEndDate] = useState('');
   const [inquiryWeekdays, setInquiryWeekdays] = useState<string[]>([]);
   const [inquiryError, setInquiryError] = useState<string | null>(null);
+  const [reviewEligibilityMessage, setReviewEligibilityMessage] = useState('Parents can leave a review after an inquiry, application, or placement with this agency.');
+  const [canLeaveReview, setCanLeaveReview] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [existingReview, setExistingReview] = useState<AgencyReview | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,6 +82,34 @@ export default function AgencyProfile() {
 
     loadFamilyProfile();
   }, [role, user]);
+
+  useEffect(() => {
+    const loadReviewEligibility = async () => {
+      if (!id || !user || role !== 'family') {
+        setCanLeaveReview(false);
+        setExistingReview(null);
+        setReviewEligibilityMessage('Parents can leave a review after an inquiry, application, or placement with this agency.');
+        return;
+      }
+
+      try {
+        const [eligibility, review] = await Promise.all([
+          getFamilyAgencyReviewEligibility(user.uid, id),
+          getFamilyAgencyExistingReview(id, user.uid)
+        ]);
+        setExistingReview(review);
+        setCanLeaveReview(eligibility.allowed && !review);
+        setReviewEligibilityMessage(review ? 'You already left a review for this agency.' : eligibility.message);
+      } catch (error) {
+        console.error('Error checking agency review eligibility:', error);
+        setCanLeaveReview(false);
+        setExistingReview(null);
+        setReviewEligibilityMessage('We could not verify your interaction history with this agency yet.');
+      }
+    };
+
+    loadReviewEligibility();
+  }, [id, role, user]);
 
   const handleToggleWeekday = (day: string) => {
     setInquiryWeekdays(prev => prev.includes(day) ? prev.filter(item => item !== day) : [...prev, day]);
@@ -150,6 +186,47 @@ export default function AgencyProfile() {
     }
   };
 
+  const handleSubmitReview = async () => {
+    if (!user || role !== 'family' || !id) {
+      navigate('/login');
+      return;
+    }
+
+    const trimmedComment = reviewComment.trim();
+    if (!trimmedComment) {
+      setReviewError('Please add a few details about your experience with this agency.');
+      return;
+    }
+
+    setSubmittingReview(true);
+    setReviewError(null);
+    setReviewSuccess(null);
+
+    try {
+      const savedReview = await addAgencyReview({
+        agency_id: id,
+        reviewer_id: user.uid,
+        reviewer_role: 'family',
+        rating: reviewRating,
+        comment: trimmedComment,
+        submission_source: 'agency_profile'
+      });
+
+      const updatedStats = await getAgencyReviewStats(id);
+      setReviewStats(updatedStats || { avg: 0, count: 0 });
+      setExistingReview(savedReview || null);
+      setCanLeaveReview(false);
+      setReviewComment('');
+      setReviewRating(5);
+      setReviewSuccess('Your review was submitted.');
+    } catch (error: any) {
+      console.error('Error submitting agency review:', error);
+      setReviewError(error?.message || 'We could not submit your review right now.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-stone-500">Loading agency profile...</div>
@@ -161,6 +238,10 @@ export default function AgencyProfile() {
       <div className="min-h-screen flex items-center justify-center text-stone-500">Agency not found.</div>
     );
   }
+
+  const existingReviewDate = existingReview?.created_at
+    ? new Date(typeof existingReview.created_at?.toDate === 'function' ? existingReview.created_at.toDate() : existingReview.created_at)
+    : null;
 
   return (
     <div className="min-h-screen bg-stone-50 pb-20">
@@ -403,7 +484,69 @@ export default function AgencyProfile() {
                     <span className="text-stone-500 text-sm">({reviewStats.count})</span>
                   </div>
                 </div>
-                <p className="text-stone-500 italic text-sm">Detailed reviews are available to registered users.</p>
+                {user && role === 'family' ? (
+                  <div className="space-y-4">
+                    <p className={`text-sm ${canLeaveReview ? 'text-emerald-700' : 'text-stone-500 italic'}`}>{reviewEligibilityMessage}</p>
+                    {existingReview ? (
+                      <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">Your review</p>
+                            <div className="mt-2 flex items-center gap-2 text-amber-500">
+                              {Array.from({ length: 5 }, (_, index) => (
+                                <span key={index} className={index < Number(existingReview.rating || 0) ? 'text-amber-400' : 'text-stone-300'}>★</span>
+                              ))}
+                            </div>
+                          </div>
+                          <span className="text-xs text-stone-500">{existingReviewDate && !Number.isNaN(existingReviewDate.getTime()) ? existingReviewDate.toLocaleDateString() : 'Submitted'}</span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-stone-700">{existingReview.comment}</p>
+                      </div>
+                    ) : null}
+                    {canLeaveReview ? (
+                      <>
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-[0.18em] text-stone-500 mb-2">Your rating</label>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setReviewRating(value)}
+                                className={`text-2xl transition-transform ${value <= reviewRating ? 'text-amber-400 scale-105' : 'text-stone-300 hover:text-amber-300'}`}
+                                aria-label={`Rate ${value} stars`}
+                              >
+                                ★
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-[0.18em] text-stone-500 mb-2">Your review</label>
+                          <textarea
+                            value={reviewComment}
+                            onChange={(e) => setReviewComment(e.currentTarget.value)}
+                            rows={4}
+                            placeholder="Share what working with this agency was like."
+                            className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-800 outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        {reviewError && <p className="text-sm text-rose-600">{reviewError}</p>}
+                        {reviewSuccess && <p className="text-sm text-emerald-700">{reviewSuccess}</p>}
+                        <button
+                          type="button"
+                          onClick={handleSubmitReview}
+                          disabled={submittingReview}
+                          className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {submittingReview ? 'Submitting review...' : 'Leave a Review'}
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-stone-500 italic text-sm">Sign in as a parent, then interact with this agency through an inquiry, application, or placement to leave a review.</p>
+                )}
               </div>
 
               {/* Agency Posts */}

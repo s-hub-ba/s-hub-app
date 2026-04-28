@@ -3,6 +3,8 @@ import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, Bo
 import { motion } from 'motion/react';
 import { useSearchParams } from 'react-router-dom';
 import { addFamilyNotification, addNannyNotification, assignNannyToJob, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
+import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
+import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_COLORS = {
@@ -67,6 +69,8 @@ export default function AgencyApplications() {
   const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState(false);
   const [talentPoolActionError, setTalentPoolActionError] = useState<string | null>(null);
   const [assigningApplicationId, setAssigningApplicationId] = useState<string | null>(null);
+  const [celebrationApp, setCelebrationApp] = useState<any>(null);
+  const [celebrationCompact, setCelebrationCompact] = useState(false);
 
   useEffect(() => {
     const resolveAgency = async () => {
@@ -101,6 +105,18 @@ export default function AgencyApplications() {
         };
       }));
       setApplications(enrichedApps);
+
+      const candidate = [...enrichedApps]
+        .filter((app) => app.status === 'active' && toPlacementCelebrationMillis(app.active_at || app.updated_at) > 0)
+        .sort((a, b) => toPlacementCelebrationMillis(b.active_at || b.updated_at) - toPlacementCelebrationMillis(a.active_at || a.updated_at))[0];
+
+      if (candidate) {
+        const key = buildPlacementCelebrationKey('agency', agencyId, candidate.id, candidate.active_at || candidate.updated_at);
+        if (consumePlacementCelebrationKey(key)) {
+          setCelebrationCompact(false);
+          setCelebrationApp(candidate);
+        }
+      }
       setTalentPoolIds(new Set(
         poolItems
           .filter((p: any) => (p.invitation_status || 'accepted') === 'pending' || (p.invitation_status || 'accepted') === 'accepted')
@@ -536,6 +552,19 @@ export default function AgencyApplications() {
 
   return (
     <div className="space-y-8 pb-12">
+      <PlacementHandshakeModal
+        open={!!celebrationApp}
+        onClose={() => {
+          setCelebrationApp(null);
+          setCelebrationCompact(false);
+        }}
+        jobTitle={celebrationApp?.job_title}
+        agencyName={user?.email || 'Agency'}
+        familyName={celebrationApp?.family_name || celebrationApp?.family_profile?.family_name || celebrationApp?.family_profile?.name || 'Family'}
+        nannyName={celebrationApp?.nanny_name || 'Nanny'}
+        compact={celebrationCompact}
+      />
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Applications</h1>
@@ -673,6 +702,18 @@ export default function AgencyApplications() {
                         ))}
                       </select>
                     </div>
+                    {app.status === 'active' && hasSeenPlacementCelebration(buildPlacementCelebrationKey('agency', agencyId, app.id, app.active_at || app.updated_at)) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCelebrationCompact(true);
+                          setCelebrationApp(app);
+                        }}
+                        className="mt-2 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        Placement sealed
+                      </button>
+                    ) : null}
 
                     {app.call_status && (
                       <p className={`mt-2 text-xs font-semibold ${app.call_status === 'confirmed' ? 'text-emerald-700' : app.call_status === 'declined' ? 'text-red-600' : 'text-orange-700'}`}>
