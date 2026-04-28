@@ -61,13 +61,14 @@ jobs:
           fi
 
           echo "VITE_API_BASE_URL=$RESOLVED_API_BASE_URL" >> "$GITHUB_ENV"
-      
+
       - name: Build
         run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
           VITE_USE_HASH_ROUTER: 'true'
           VITE_API_BASE_URL: ${{ env.VITE_API_BASE_URL }}
+          VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
       
       - name: Setup Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

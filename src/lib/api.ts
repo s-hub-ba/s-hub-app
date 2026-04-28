@@ -258,6 +258,7 @@ export interface Application {
   nanny_id: string;
   agency_id: string;
   family_id?: string | null;
+  family_name?: string;
   status: ApplicationStatus;
   cover_letter: string;
   call_status?: 'pending_nanny' | 'confirmed' | 'declined' | null;
@@ -291,6 +292,7 @@ export interface Application {
   updated_at: any;
   jobs?: Job | null;
   nanny_profiles?: any;
+  family_profile?: any;
 }
 
 export interface NannyProfile {
@@ -1086,20 +1088,39 @@ export const getApplicationsForAgency = async (agencyId: string): Promise<Applic
     const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snapshot = await getDocs(q);
     const apps = await Promise.all(snapshot.docs.map(async (d) => {
-      const appData = d.data();
+      const appData = d.data() as Partial<Application> & Record<string, any>;
       const jobDoc = await getDoc(doc(db, 'jobs', appData.job_id));
       const nannyDoc = await getDoc(doc(db, 'nanny_profiles', appData.nanny_id));
-      const agencyDoc = jobDoc.exists() ? await getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : null;
-      return {
-        id: d.id,
+      const familyId = appData.family_id || (jobDoc.exists() ? (jobDoc.data() as any).family_id : null);
+      const [agencyDoc, familyProfile] = await Promise.all([
+        jobDoc.exists() ? getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : Promise.resolve(null as any),
+        familyId ? getFamilyProfile(familyId) : Promise.resolve(null)
+      ]);
+
+      const normalizedApp: Application = {
         ...appData,
+        id: d.id,
+        job_id: String(appData.job_id || ''),
+        nanny_id: String(appData.nanny_id || ''),
+        agency_id: String(appData.agency_id || ''),
+        status: (appData.status || 'applied') as ApplicationStatus,
+        cover_letter: typeof appData.cover_letter === 'string' ? appData.cover_letter : '',
+        created_at: appData.created_at ?? null,
+        updated_at: appData.updated_at ?? null,
+      };
+
+      return {
+        ...normalizedApp,
+        ...(familyId ? { family_id: familyId } : {}),
+        ...(familyProfile?.family_name ? { family_name: familyProfile.family_name } : {}),
         jobs: jobDoc.exists() ? {
           id: jobDoc.id,
           ...jobDoc.data(),
           agency_profiles: agencyDoc?.exists() ? agencyDoc.data() : { company_name: 'Agency' }
         } as Job : null,
-        nanny_profiles: nannyDoc.exists() ? nannyDoc.data() : null
-      } as Application;
+        nanny_profiles: nannyDoc.exists() ? nannyDoc.data() : null,
+        family_profile: familyProfile
+      };
     }));
     return apps;
   } catch (error) {
@@ -1114,18 +1135,37 @@ export const getApplicationsForNanny = async (nannyId: string): Promise<Applicat
     const q = query(collection(db, path), where('nanny_id', '==', nannyId));
     const snapshot = await getDocs(q);
     const apps = await Promise.all(snapshot.docs.map(async (d) => {
-      const appData = d.data();
+      const appData = d.data() as Partial<Application> & Record<string, any>;
       const jobDoc = await getDoc(doc(db, 'jobs', appData.job_id));
-      const agencyDoc = jobDoc.exists() ? await getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : null;
-      return {
-        id: d.id,
+      const familyId = appData.family_id || (jobDoc.exists() ? (jobDoc.data() as any).family_id : null);
+      const [agencyDoc, familyProfile] = await Promise.all([
+        jobDoc.exists() ? getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : Promise.resolve(null as any),
+        familyId ? getFamilyProfile(familyId) : Promise.resolve(null)
+      ]);
+
+      const normalizedApp: Application = {
         ...appData,
+        id: d.id,
+        job_id: String(appData.job_id || ''),
+        nanny_id: String(appData.nanny_id || ''),
+        agency_id: String(appData.agency_id || ''),
+        status: (appData.status || 'applied') as ApplicationStatus,
+        cover_letter: typeof appData.cover_letter === 'string' ? appData.cover_letter : '',
+        created_at: appData.created_at ?? null,
+        updated_at: appData.updated_at ?? null,
+      };
+
+      return {
+        ...normalizedApp,
+        ...(familyId ? { family_id: familyId } : {}),
+        ...(familyProfile?.family_name ? { family_name: familyProfile.family_name } : {}),
         jobs: jobDoc.exists() ? {
           id: jobDoc.id,
           ...jobDoc.data(),
           agency_profiles: agencyDoc?.exists() ? agencyDoc.data() : { company_name: 'Agency' }
-        } as Job : null
-      } as Application;
+        } as Job : null,
+        family_profile: familyProfile
+      };
     }));
     return apps;
   } catch (error) {
@@ -3759,7 +3799,14 @@ export interface AgencyReview {
   reviewer_role: 'family' | 'agency' | 'nanny';
   rating: number;
   comment: string;
+  submission_source?: 'agency_profile' | 'care_history';
   created_at?: any;
+}
+
+export interface AgencyReviewEligibility {
+  allowed: boolean;
+  reason: 'care_history' | 'application' | 'conversation' | 'none';
+  message: string;
 }
 
 const normalizeReviewScore = (value: unknown, fallback = 5) => {
@@ -3842,6 +3889,67 @@ const getFamilyNannyReviewEligibility = async (review: StructuredNannyReview) =>
   return { allowed: true };
 };
 
+export const getFamilyAgencyReviewEligibility = async (
+  familyId: string,
+  agencyId: string
+): Promise<AgencyReviewEligibility> => {
+  if (!familyId || !agencyId) {
+    return {
+      allowed: false,
+      reason: 'none',
+      message: 'Missing family or agency information.',
+    };
+  }
+
+  const careHistoryQuery = query(
+    collection(db, 'care_history'),
+    where('family_id', '==', familyId),
+    where('agency_id', '==', agencyId)
+  );
+  const careHistorySnapshot = await getDocs(careHistoryQuery);
+  if (!careHistorySnapshot.empty) {
+    return {
+      allowed: true,
+      reason: 'care_history',
+      message: 'Your family has completed care with this agency and can leave a review.',
+    };
+  }
+
+  const familyApplicationsQuery = query(
+    collection(db, 'family_applications'),
+    where('family_id', '==', familyId),
+    where('agency_id', '==', agencyId)
+  );
+  const familyApplicationsSnapshot = await getDocs(familyApplicationsQuery);
+  if (!familyApplicationsSnapshot.empty) {
+    return {
+      allowed: true,
+      reason: 'application',
+      message: 'Your family has applied to this agency and can leave a review.',
+    };
+  }
+
+  const conversationsQuery = query(
+    collection(db, 'conversations'),
+    where('family_id', '==', familyId),
+    where('agency_id', '==', agencyId)
+  );
+  const conversationsSnapshot = await getDocs(conversationsQuery);
+  if (!conversationsSnapshot.empty) {
+    return {
+      allowed: true,
+      reason: 'conversation',
+      message: 'Your family has already interacted with this agency and can leave a review.',
+    };
+  }
+
+  return {
+    allowed: false,
+    reason: 'none',
+    message: 'A parent can review an agency only after an inquiry, application, or completed placement with that agency.',
+  };
+};
+
 export const getNannyReviews = async (nannyId: string): Promise<NannyReview[]> => {
   const path = 'nanny_reviews';
   try {
@@ -3891,6 +3999,39 @@ export const getAgencyReviews = async (agencyId: string): Promise<AgencyReview[]
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
+  }
+};
+
+export const getFamilyAgencyExistingReview = async (
+  agencyId: string,
+  familyId: string
+): Promise<AgencyReview | null> => {
+  const path = 'agency_reviews';
+  try {
+    const q = query(
+      collection(db, path),
+      where('agency_id', '==', agencyId),
+      where('reviewer_id', '==', familyId)
+    );
+    const snapshot = await getDocs(q);
+    const reviews = snapshot.docs
+      .map((entry) => ({ id: entry.id, ...entry.data() } as AgencyReview))
+      .filter((review) => review.reviewer_role === 'family');
+
+    if (reviews.length === 0) return null;
+
+    const toMillis = (value: any): number => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    return reviews.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at))[0] || null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return null;
   }
 };
 
@@ -3946,6 +4087,20 @@ export const addNannyReview = async (review: NannyReviewInput) => {
 export const addAgencyReview = async (review: AgencyReview) => {
   const path = 'agency_reviews';
   try {
+    if (review.reviewer_role === 'family') {
+      const eligibility = await getFamilyAgencyReviewEligibility(review.reviewer_id, review.agency_id);
+      if (!eligibility.allowed) {
+        throw new Error(eligibility.message);
+      }
+
+      if (review.submission_source === 'agency_profile') {
+        const existingReview = await getFamilyAgencyExistingReview(review.agency_id, review.reviewer_id);
+        if (existingReview) {
+          throw new Error('You already left a review for this agency.');
+        }
+      }
+    }
+
     const docRef = await addDoc(collection(db, path), {
       ...review,
       created_at: serverTimestamp()
@@ -4002,7 +4157,8 @@ export const submitCareHistoryReview = async ({
         reviewer_id: familyId,
         reviewer_role: 'family',
         rating,
-        comment
+        comment,
+        submission_source: 'care_history'
       });
       await updateDoc(doc(db, 'care_history', careHistoryId), {
         ...(phase === 'week_one'

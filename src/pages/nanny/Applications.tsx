@@ -3,7 +3,9 @@ import { getAuth } from 'firebase/auth';
 import { Briefcase, Calendar, CheckCircle2, Clock, FileText, MapPin, Phone, ShieldCheck, UserRound, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { addAgencyNotification, addFamilyNotification, getApplicationsForNanny, getFamilyProfile, getJobById, respondToApplicationCall, updateApplicationStatus } from '../../lib/api';
+import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { getApiBaseUrl } from '../../lib/apiBase';
+import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
 
@@ -43,6 +45,8 @@ export default function NannyApplications() {
   const [shiftOffers, setShiftOffers] = useState<any[]>([]);
   const [commitments, setCommitments] = useState<Record<string, { confirm24h?: boolean; confirm3h?: boolean }>>({});
   const [placementActionError, setPlacementActionError] = useState<string | null>(null);
+  const [celebrationApp, setCelebrationApp] = useState<any>(null);
+  const [celebrationCompact, setCelebrationCompact] = useState(false);
 
   const nannyId = user?.uid || '';
 
@@ -76,6 +80,18 @@ export default function NannyApplications() {
       );
 
       setApplications(enrichedApps);
+
+      const candidate = [...enrichedApps]
+        .filter((app) => app.status === 'active' && toPlacementCelebrationMillis(app.active_at || app.updated_at) > 0)
+        .sort((a, b) => toPlacementCelebrationMillis(b.active_at || b.updated_at) - toPlacementCelebrationMillis(a.active_at || a.updated_at))[0];
+
+      if (candidate) {
+        const key = buildPlacementCelebrationKey('nanny', nannyId, candidate.id, candidate.active_at || candidate.updated_at);
+        if (consumePlacementCelebrationKey(key)) {
+          setCelebrationCompact(false);
+          setCelebrationApp(candidate);
+        }
+      }
 
       const auth = getAuth();
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -305,6 +321,19 @@ export default function NannyApplications() {
 
   return (
     <div className="space-y-8 pb-12">
+      <PlacementHandshakeModal
+        open={!!celebrationApp}
+        onClose={() => {
+          setCelebrationApp(null);
+          setCelebrationCompact(false);
+        }}
+        jobTitle={celebrationApp?.job_title}
+        agencyName={celebrationApp?.agency_name}
+        familyName={celebrationApp?.family_name || celebrationApp?.family_profile?.family_name || celebrationApp?.family_profile?.name || 'Family'}
+        nannyName={user?.email || 'Nanny'}
+        compact={celebrationCompact}
+      />
+
       {placementActionError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           {placementActionError}
@@ -438,6 +467,18 @@ export default function NannyApplications() {
                         <StatusIcon className="h-3.5 w-3.5 mr-1.5" />
                         {statusConfig.label}
                       </span>
+                      {app.status === 'active' && hasSeenPlacementCelebration(buildPlacementCelebrationKey('nanny', nannyId, app.id, app.active_at || app.updated_at)) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCelebrationCompact(true);
+                            setCelebrationApp(app);
+                          }}
+                          className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700 transition-colors hover:bg-emerald-100"
+                        >
+                          Placement sealed
+                        </button>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500">
                       <span className="font-medium text-stone-700">{app.agency_name}</span>
@@ -554,7 +595,7 @@ export default function NannyApplications() {
                       </div>
                       <div className="rounded-2xl bg-white p-4 border border-stone-200">
                         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Family</p>
-                        <p className="mt-2 text-sm font-semibold text-stone-900">{app.family_profile?.family_name || app.family_profile?.name || 'Family details shared through agency'}</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-900">{app.family_name || app.family_profile?.family_name || app.family_profile?.name || 'Family details shared through agency'}</p>
                       </div>
                       <div className="rounded-2xl bg-white p-4 border border-stone-200">
                         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Pay Range</p>
