@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, MapPin, RotateCcw } from 'lucide-react';
 import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
+import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { useAuth } from '../../contexts/AuthContext';
+import { getDisplayCvid } from '../../lib/nannyIdentity';
 import { formatJobSchedule } from '../../lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -21,6 +23,8 @@ export default function FamilyPlacements() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [celebrationApp, setCelebrationApp] = useState<any>(null);
   const [celebrationCompact, setCelebrationCompact] = useState(false);
+  const [cvidCardOpen, setCvidCardOpen] = useState(false);
+  const [selectedNannyForCvid, setSelectedNannyForCvid] = useState<any>(null);
 
   const familyId = user?.uid || '';
 
@@ -186,6 +190,33 @@ export default function FamilyPlacements() {
     }
   };
 
+  const openCvidCard = (app: any) => {
+    const profile = app?.nanny_profiles;
+    const nannyId = String(app?.nanny_id || profile?.id || '').trim();
+    if (!nannyId && !profile) return;
+
+    setSelectedNannyForCvid({
+      id: nannyId || 'nanny',
+      first_name: profile?.first_name || '',
+      last_name: profile?.last_name || '',
+      photo_url: profile?.photo_url,
+      location_borough: profile?.location_borough,
+      years_experience: profile?.years_experience,
+      expected_pay_min: profile?.expected_pay_min,
+      expected_pay_max: profile?.expected_pay_max,
+      approved_certifications: profile?.approved_certifications || profile?.certifications || [],
+      preferred_job_types: profile?.preferred_job_types || [],
+      bio: profile?.bio,
+      cvid: getDisplayCvid({
+        id: nannyId || 'nanny',
+        first_name: profile?.first_name,
+        last_name: profile?.last_name,
+        cvid: profile?.cvid,
+      }),
+    });
+    setCvidCardOpen(true);
+  };
+
   const renderPlacementCard = (app: any, actionMode: 'none' | 'start' | 'completion' = 'none') => (
     <div key={app.id} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -210,7 +241,16 @@ export default function FamilyPlacements() {
           <div className="mt-3 space-y-1 text-sm text-stone-600">
             <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-stone-400" />{app.jobs?.location_neighborhood || 'N/A'}, {app.jobs?.location_borough || 'N/A'}</p>
             <p>Schedule: {app.jobs ? formatJobSchedule(app.jobs) : 'TBD'}</p>
-            <p>Nanny: {app.nanny_profiles?.first_name || ''} {app.nanny_profiles?.last_name || ''}</p>
+            <p>
+              Nanny: {app.nanny_profiles?.first_name || ''} {app.nanny_profiles?.last_name || ''}
+              <button
+                type="button"
+                onClick={() => openCvidCard(app)}
+                className="ml-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700 hover:bg-stone-100"
+              >
+                View CVID Card
+              </button>
+            </p>
             <p>Updated: {formatTimestamp(app.updated_at)}</p>
           </div>
         </div>
@@ -249,6 +289,15 @@ export default function FamilyPlacements() {
 
   return (
     <div className="space-y-8 pb-12">
+      <NannyCvidCardModal
+        isOpen={cvidCardOpen}
+        nanny={selectedNannyForCvid}
+        onClose={() => {
+          setCvidCardOpen(false);
+          setSelectedNannyForCvid(null);
+        }}
+      />
+
       <PlacementHandshakeModal
         open={!!celebrationApp}
         onClose={() => {
