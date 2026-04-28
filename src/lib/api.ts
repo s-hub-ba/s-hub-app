@@ -3559,10 +3559,28 @@ export const getFamilyCareHistory = async (familyId: string): Promise<CareHistor
   const path = 'care_history';
   try {
     const q = query(collection(db, path), where('family_id', '==', familyId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs
-      .map(d => ({ id: d.id, ...d.data() } as CareHistory))
-      .sort((a, b) => toMillisSafe(b.updated_at || b.end_date || b.start_date) - toMillisSafe(a.updated_at || a.end_date || a.start_date));
+    let snapshot = await getDocs(q);
+    let history = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CareHistory));
+
+    const historyApplicationIds = new Set(
+      history
+        .map((item) => String(item.agency_application_id || item.family_application_id || '').trim())
+        .filter(Boolean)
+    );
+
+    const placementApps = await getFamilyPlacementApplications(familyId);
+    const missingCompletedApps = placementApps.filter((app) => {
+      const appId = String(app.id || '').trim();
+      return app.status === 'completed' && !!appId && !historyApplicationIds.has(appId);
+    });
+
+    if (missingCompletedApps.length > 0) {
+      await Promise.all(missingCompletedApps.map((app) => recordCareHistoryFromApplication(String(app.id), 'completed')));
+      snapshot = await getDocs(q);
+      history = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as CareHistory));
+    }
+
+    return history.sort((a, b) => toMillisSafe(b.updated_at || b.end_date || b.start_date) - toMillisSafe(a.updated_at || a.end_date || a.start_date));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];

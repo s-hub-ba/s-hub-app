@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, MapPin, RotateCcw } from 'lucide-react';
+import { CheckCircle2, Clock, MapPin, RotateCcw, Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
 import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
@@ -217,7 +218,11 @@ export default function FamilyPlacements() {
     setCvidCardOpen(true);
   };
 
-  const renderPlacementCard = (app: any, actionMode: 'none' | 'start' | 'completion' = 'none') => (
+  const renderPlacementCard = (
+    app: any,
+    actionMode: 'none' | 'start' | 'completion' = 'none',
+    showReviewAction = false
+  ) => (
     <div key={app.id} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
@@ -277,6 +282,16 @@ export default function FamilyPlacements() {
                 Request Follow-up
               </button>
             ) : null}
+          </div>
+        ) : showReviewAction ? (
+          <div className="flex flex-col gap-2 md:min-w-[220px]">
+            <Link
+              to="/family/saved"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-100"
+            >
+              <Star className="h-4 w-4 text-amber-500" />
+              Leave Nanny Care Review
+            </Link>
           </div>
         ) : null}
       </div>
@@ -353,6 +368,26 @@ export default function FamilyPlacements() {
           <div className="rounded-3xl border border-stone-200 bg-white p-6 text-sm text-stone-500">No active placements right now.</div>
         ) : (
           <div className="space-y-4">{activePlacements.map((app) => renderPlacementCard(app, 'none'))}</div>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-bold text-stone-900">Past Care</h2>
+          {completedPlacements.length > 0 ? (
+            <Link
+              to="/family/saved"
+              className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-stone-700 hover:bg-stone-100"
+            >
+              <Star className="h-3.5 w-3.5 text-amber-500" />
+              Leave Reviews
+            </Link>
+          ) : null}
+        </div>
+        {completedPlacements.length === 0 ? (
+          <div className="rounded-3xl border border-stone-200 bg-white p-6 text-sm text-stone-500">No completed placements yet.</div>
+        ) : (
+          <div className="space-y-4">{completedPlacements.map((app) => renderPlacementCard(app, 'none', true))}</div>
         )}
       </section>
     </div>
