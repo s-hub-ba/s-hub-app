@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { CheckCircle2, XCircle, CircleEllipsis, MessageSquare, AlertCircle, ArrowLeft, Trophy, PlusCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, CircleEllipsis, MessageSquare, AlertCircle, ArrowLeft, PlusCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   createDraftJobFromFamilyRequest,
@@ -9,6 +9,7 @@ import {
   respondToFamilyRequestAssignment,
   type FamilyRequestAssignmentStatus,
 } from '../../lib/api';
+import { formatCareTypeLabel } from '../../lib/jobTypes';
 
 const STATUS_LABEL: Record<string, string> = {
   new: 'New',
@@ -35,8 +36,15 @@ export default function AgencyFamilyRequestDetail() {
   const [message, setMessage] = useState('');
   const [row, setRow] = useState<any>(null);
   const [error, setError] = useState('');
+  const [draftActionError, setDraftActionError] = useState('');
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [confirmDecline, setConfirmDecline] = useState(false);
+
+  const canCreateDraftFromAssignment = (assignment: any) => {
+    const request = assignment?.request;
+    if (!request || !agencyId) return false;
+    return request.chosen_agency_id === agencyId && request.status === 'family_chosen';
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -63,12 +71,13 @@ export default function AgencyFamilyRequestDetail() {
   const handleCreateDraftNow = async () => {
     if (!row?.request || !row?.request_id || creatingDraft) return;
     setError('');
+    setDraftActionError('');
     setCreatingDraft(true);
     try {
       await createDraftJobFromFamilyRequest(row.request_id, agencyId);
       navigate('/agency/jobs?status=draft');
     } catch {
-      setError('Could not auto-create a draft job right now. Please try again in a moment.');
+      setDraftActionError('Could not create a draft job right now. Please try again in a moment.');
     } finally {
       setCreatingDraft(false);
     }
@@ -77,6 +86,7 @@ export default function AgencyFamilyRequestDetail() {
   const handleResponse = async (status: FamilyRequestAssignmentStatus) => {
     if (!assignmentId || !agencyId || saving) return;
     setError('');
+    setDraftActionError('');
     setSaving(status);
     const result = await respondToFamilyRequestAssignment(assignmentId, agencyId, status, message);
     setSaving(null);
@@ -90,6 +100,10 @@ export default function AgencyFamilyRequestDetail() {
     setRow(updated);
 
     if (status === 'accepted') {
+      if (!canCreateDraftFromAssignment(updated)) {
+        return;
+      }
+
       const requestId = updated?.request_id || row?.request_id;
 
       try {
@@ -100,7 +114,7 @@ export default function AgencyFamilyRequestDetail() {
 
         navigate('/agency/jobs?status=draft');
       } catch {
-        setError('Request accepted, but draft auto-creation failed. Use "Create Draft Job Now" below to retry.');
+        setDraftActionError('Request accepted, but draft auto-creation did not finish. Use "Create Draft Job" below to retry.');
       }
       return;
     }
@@ -136,6 +150,7 @@ export default function AgencyFamilyRequestDetail() {
   const request = row.request;
   const status: FamilyRequestAssignmentStatus = row.status;
   const isResponded = status !== 'new';
+  const canCreateDraft = status === 'accepted' && canCreateDraftFromAssignment(row);
 
   return (
     <div className="space-y-6 pb-12">
@@ -166,48 +181,63 @@ export default function AgencyFamilyRequestDetail() {
         </div>
       )}
 
-      {/* Family chose your agency banner */}
-      {request.chosen_agency_id === row.agency_id && (
-        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex items-start gap-3 flex-1">
-            <Trophy className="h-5 w-5 text-emerald-700 mt-0.5 shrink-0" />
+      {/* Responded state */}
+      {status === 'accepted' && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 space-y-4">
+          <div className="flex items-start gap-2 text-emerald-900">
+            <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
-              <p className="font-bold text-emerald-900 text-sm">This family chose your agency!</p>
-              <p className="text-sm text-emerald-800 mt-0.5">
-                Post a job to the nanny marketplace so nannies can apply and you can find the right match for this family.
+              <p className="text-sm font-semibold">Request accepted. Continue with these next steps:</p>
+              <p className="mt-1 text-sm text-emerald-800">
+                {canCreateDraft
+                  ? 'Message the family to coordinate details, then create a draft job so nannies can apply.'
+                  : 'Message the family to coordinate details. Draft job creation will unlock once this request is family-approved for your agency.'}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleCreateDraftNow}
-            disabled={creatingDraft}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold whitespace-nowrap transition-colors shrink-0"
-          >
-            <PlusCircle className="h-4 w-4" />
-            {creatingDraft ? 'Creating Draft...' : 'Create Draft Job Now'}
-          </button>
+
+          {draftActionError && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              {draftActionError}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/agency/messages"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Continue in Messages
+            </Link>
+            {canCreateDraft && (
+              <button
+                type="button"
+                onClick={handleCreateDraftNow}
+                disabled={creatingDraft}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              >
+                <PlusCircle className="h-4 w-4" />
+                {creatingDraft ? 'Creating Draft...' : 'Create Draft Job'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Already responded banner */}
-      {isResponded && (
-        <div className={`rounded-2xl border p-4 text-sm font-medium flex items-center gap-2 ${
-          status === 'accepted' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
-          status === 'declined' ? 'border-rose-200 bg-rose-50 text-rose-800' :
-          'border-amber-200 bg-amber-50 text-amber-800'
-        }`}>
-          {status === 'accepted' && <CheckCircle2 className="h-4 w-4 shrink-0" />}
-          {status === 'declined' && <XCircle className="h-4 w-4 shrink-0" />}
-          {status === 'more_details' && <CircleEllipsis className="h-4 w-4 shrink-0" />}
-          <span>
-            {status === 'accepted' && 'You accepted this request. Check your messages to continue coordination.'}
-            {status === 'declined' && 'You declined this request.'}
-            {status === 'more_details' && 'You requested more details. Check your messages to continue the conversation.'}
-          </span>
-          {(status === 'accepted' || status === 'more_details') && (
-            <Link to="/agency/messages" className="ml-auto underline font-semibold whitespace-nowrap">Open Messages →</Link>
-          )}
+      {status === 'declined' && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800 flex items-center gap-2">
+          <XCircle className="h-4 w-4 shrink-0" />
+          You declined this request.
+        </div>
+      )}
+
+      {status === 'more_details' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800 flex items-center gap-2">
+          <CircleEllipsis className="h-4 w-4 shrink-0" />
+          <span>You requested more details. Continue in messages with the family.</span>
+          <Link to="/agency/messages" className="ml-auto underline font-semibold whitespace-nowrap">Open Messages →</Link>
         </div>
       )}
 
@@ -218,7 +248,7 @@ export default function AgencyFamilyRequestDetail() {
           <Info label="Parent" value={request.parent_name} />
           <Info label="Contact Email" value={request.email} />
           <Info label="Phone" value={request.phone || 'Not provided'} />
-          <Info label="Care Type" value={request.care_type} />
+          <Info label="Care Type" value={formatCareTypeLabel(request.care_type)} />
           <Info label="Children" value={`${request.children_count}`} />
           <Info label="Age Groups" value={(request.child_age_groups || []).join(', ') || 'Not provided'} />
           <Info label="Live-In Preference" value={request.live_in} />
@@ -300,19 +330,6 @@ export default function AgencyFamilyRequestDetail() {
               Decline
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Messages shortcut for responded requests */}
-      {isResponded && (status === 'accepted' || status === 'more_details') && (
-        <div className="flex justify-end">
-          <Link
-            to="/agency/messages"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-900 text-white font-semibold hover:bg-stone-800"
-          >
-            <MessageSquare className="h-4 w-4" />
-            Continue in Messages
-          </Link>
         </div>
       )}
 

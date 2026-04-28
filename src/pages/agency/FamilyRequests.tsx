@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Inbox, ChevronRight, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAgencyFamilyRequestInbox, resolveAgencyIdForUser } from '../../lib/api';
+import { formatCareTypeLabel } from '../../lib/jobTypes';
 
 const STATUS_STYLES: Record<string, string> = {
   new: 'bg-blue-100 text-blue-700',
@@ -107,7 +108,7 @@ export default function AgencyFamilyRequests() {
                     )}
                   </div>
                   <p className="text-sm text-stone-500 mt-1">
-                    {row.request?.care_type} care · {row.request?.children_count || 1} child · score {row.score}/100
+                    {formatCareTypeLabel(row.request?.care_type)} care · {row.request?.children_count || 1} child · score {row.score}/100
                   </p>
                   <p className="text-xs text-stone-500 mt-1 line-clamp-2">
                     {(row.reasons || []).join(' • ')}

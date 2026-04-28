@@ -81,7 +81,7 @@ export default function ForNannies() {
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-3">Control Your Schedule</h3>
               <p className="text-stone-600 leading-relaxed">
-                Set your availability and let jobs come to you. Whether you want full-time, part-time, or occasional date nights, you're in charge.
+                Set your availability and let jobs come to you. Whether you want full-time, part-time, occasional coverage, or last-minute shifts, you're in charge.
               </p>
             </div>
             <div className="bg-stone-50 p-8 rounded-3xl border border-stone-100">

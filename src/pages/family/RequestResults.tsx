@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getFamilyRequestById, getMatchedAgenciesForRequest, chooseFamilyRequestAgency, closeFamilyRequest } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatCareTypeLabel } from '../../lib/jobTypes';
 
 const TIER_LABELS: Record<string, string> = {
   best_match: 'Best Match',
@@ -218,7 +219,7 @@ export default function FamilyRequestResults() {
             )}
           </div>
           <p className="text-sm text-stone-500 mt-1">
-            {request.care_type} care in {request.neighborhood || 'your area'}, {request.borough} · {request.children_count} child{request.children_count > 1 ? 'ren' : ''}
+            {formatCareTypeLabel(request.care_type)} care in {request.neighborhood || 'your area'}, {request.borough} · {request.children_count} child{request.children_count > 1 ? 'ren' : ''}
             {request.budget_min || request.budget_max ? ` · $${request.budget_min ?? '–'}–$${request.budget_max ?? '–'}/hr` : ''}
           </p>
           <p className="text-sm text-stone-500 mt-2">

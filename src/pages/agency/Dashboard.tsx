@@ -16,6 +16,7 @@ import {
 import { getApiBaseUrl } from '../../lib/apiBase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgencyEntitlements } from '../../lib/entitlements';
+import { classifyPlacementBucket } from '../../lib/jobTypes';
 import { formatLimit } from '../../lib/plans';
 
 const INQUIRY_STAGE_LABELS: Record<InquiryStage, string> = {
@@ -256,21 +257,17 @@ export default function AgencyDashboard() {
   const longTermPlacementSummary = useMemo(() => {
     const activePlacementStatuses = new Set(['accepted', 'hired', 'active', 'pending_family_approval']);
 
-    const includesAny = (value: string, tokens: string[]) => tokens.some((token) => value.includes(token));
-
     const classifyPlacement = (app: any): 'fullTime' | 'partTime' | 'recurring' | null => {
-      const scheduleType = String(app?.jobs?.schedule_type || '').toLowerCase();
-      const content = `${scheduleType} ${String(app?.jobs?.title || '')} ${String(app?.jobs?.description || '')}`.toLowerCase();
+      const bucket = classifyPlacementBucket({
+        scheduleType: app?.jobs?.schedule_type,
+        jobType: app?.jobs?.job_type,
+        title: app?.jobs?.title,
+        description: app?.jobs?.description,
+      });
 
-      const hasFullTime = includesAny(content, ['full-time', 'full time', 'fulltime']);
-      const hasPartTime = includesAny(content, ['part-time', 'part time', 'parttime']);
-      const hasRecurring = includesAny(content, ['weekly_days', 'recurring', 'recurrence', 'weekly', 'repeating', 'repeat']);
-      const isTemporaryOnly = includesAny(content, ['temporary', 'one-time', 'one time', 'temp']) && !hasRecurring && !hasFullTime && !hasPartTime;
-
-      if (isTemporaryOnly) return null;
-      if (hasFullTime) return 'fullTime';
-      if (hasPartTime) return 'partTime';
-      if (hasRecurring) return 'recurring';
+      if (bucket === 'full-time') return 'fullTime';
+      if (bucket === 'part-time') return 'partTime';
+      if (bucket === 'recurring') return 'recurring';
       return null;
     };
 

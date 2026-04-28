@@ -4,7 +4,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getAgencyCapabilities, resolveAgencyIdForUser, upsertAgencyCapabilities } from '../../lib/api';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
-const CARE_TYPES = ['full-time', 'part-time', 'occasional'];
+const CARE_TYPES: Array<{ value: string; label: string }> = [
+  { value: 'full-time', label: 'Full-Time' },
+  { value: 'part-time', label: 'Part-Time' },
+  { value: 'occasional', label: 'Occasional' },
+  { value: 'last-minute', label: 'Last Minute' },
+];
 const AGE_GROUPS = ['newborn', 'infant', 'toddler', 'preschool', 'school-age', 'teen'];
 
 const parseCsv = (value: string) => value.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
@@ -160,11 +165,11 @@ export default function AgencyRequestSettings() {
             {CARE_TYPES.map((careType) => (
               <button
                 type="button"
-                key={careType}
-                onClick={() => toggleInList(careType, careTypes, setCareTypes)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${careTypes.includes(careType) ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-white text-stone-600 border-stone-200'}`}
+                key={careType.value}
+                onClick={() => toggleInList(careType.value, careTypes, setCareTypes)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${careTypes.includes(careType.value) ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-white text-stone-600 border-stone-200'}`}
               >
-                {careType}
+                {careType.label}
               </button>
             ))}
           </div>

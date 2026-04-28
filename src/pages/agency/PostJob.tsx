@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { createJob, resolveAgencyIdForUser, getConversationById, ensureFamilyApplicationForInquiryJob, linkInquiryConversationToJob, getActiveJobCount, getFamilyRequestById, getJobById, updateJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgencyEntitlements } from '../../lib/entitlements';
+import { formatCareTypeLabel } from '../../lib/jobTypes';
 import { formatLimit } from '../../lib/plans';
 
 export default function PostJob() {
@@ -130,7 +131,7 @@ export default function PostJob() {
           if (familyReq) {
             setFamilyRequestContext(familyReq);
             const careLabel = familyReq.care_type
-              ? `${familyReq.care_type.charAt(0).toUpperCase()}${familyReq.care_type.slice(1)}`
+              ? formatCareTypeLabel(familyReq.care_type)
               : '';
             const desc = [
               `Care request from: ${familyReq.parent_name || 'Family'}`,
@@ -441,10 +442,12 @@ export default function PostJob() {
                       <option value="">Select Type</option>
                       <option value="Full-Time">Full-Time</option>
                       <option value="Part-Time">Part-Time</option>
-                      <option value="Temporary">Occasional / Last-Minute</option>
+                      <option value="Occasional">Occasional</option>
+                      <option value="Last-Minute">Last Minute</option>
                       <option value="Overnight">Overnight</option>
                       <option value="Date Night">Date Night</option>
                     </select>
+                    <p className="mt-2 text-xs text-stone-500">Use Full-Time or Part-Time for longer interview-led placements. Use Occasional for flexible backup care and Last Minute for urgent short-notice coverage.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-stone-900 mb-2">Work Type</label>

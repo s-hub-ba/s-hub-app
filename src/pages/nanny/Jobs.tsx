@@ -3,6 +3,7 @@ import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, BookmarkPlus, Che
 import { motion } from 'motion/react';
 import { getJobs, createApplication, getApplicationsForNanny, getNannyApplicationQuota } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatJobTypeLabel } from '../../lib/jobTypes';
 import { formatJobSchedule, toDate } from '../../lib/utils';
 
 export default function NannyJobs() {
@@ -161,7 +162,7 @@ export default function NannyJobs() {
                     </div>
                     <div className="flex gap-2">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-100 text-stone-600 uppercase tracking-wider">
-                        {job.job_type}
+                        {formatJobTypeLabel(job.job_type)}
                       </span>
                       {job.work_type && (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-100 text-stone-600 uppercase tracking-wider">
