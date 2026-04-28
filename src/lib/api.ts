@@ -258,6 +258,7 @@ export interface Application {
   nanny_id: string;
   agency_id: string;
   family_id?: string | null;
+  family_name?: string;
   status: ApplicationStatus;
   cover_letter: string;
   call_status?: 'pending_nanny' | 'confirmed' | 'declined' | null;
@@ -291,6 +292,7 @@ export interface Application {
   updated_at: any;
   jobs?: Job | null;
   nanny_profiles?: any;
+  family_profile?: any;
 }
 
 export interface NannyProfile {
@@ -1086,7 +1088,7 @@ export const getApplicationsForAgency = async (agencyId: string): Promise<Applic
     const q = query(collection(db, path), where('agency_id', '==', agencyId));
     const snapshot = await getDocs(q);
     const apps = await Promise.all(snapshot.docs.map(async (d) => {
-      const appData = d.data();
+      const appData = d.data() as Partial<Application> & Record<string, any>;
       const jobDoc = await getDoc(doc(db, 'jobs', appData.job_id));
       const nannyDoc = await getDoc(doc(db, 'nanny_profiles', appData.nanny_id));
       const familyId = appData.family_id || (jobDoc.exists() ? (jobDoc.data() as any).family_id : null);
@@ -1094,9 +1096,21 @@ export const getApplicationsForAgency = async (agencyId: string): Promise<Applic
         jobDoc.exists() ? getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : Promise.resolve(null as any),
         familyId ? getFamilyProfile(familyId) : Promise.resolve(null)
       ]);
-      return {
-        id: d.id,
+
+      const normalizedApp: Application = {
         ...appData,
+        id: d.id,
+        job_id: String(appData.job_id || ''),
+        nanny_id: String(appData.nanny_id || ''),
+        agency_id: String(appData.agency_id || ''),
+        status: (appData.status || 'applied') as ApplicationStatus,
+        cover_letter: typeof appData.cover_letter === 'string' ? appData.cover_letter : '',
+        created_at: appData.created_at ?? null,
+        updated_at: appData.updated_at ?? null,
+      };
+
+      return {
+        ...normalizedApp,
         ...(familyId ? { family_id: familyId } : {}),
         ...(familyProfile?.family_name ? { family_name: familyProfile.family_name } : {}),
         jobs: jobDoc.exists() ? {
@@ -1106,7 +1120,7 @@ export const getApplicationsForAgency = async (agencyId: string): Promise<Applic
         } as Job : null,
         nanny_profiles: nannyDoc.exists() ? nannyDoc.data() : null,
         family_profile: familyProfile
-      } as Application;
+      };
     }));
     return apps;
   } catch (error) {
@@ -1121,16 +1135,28 @@ export const getApplicationsForNanny = async (nannyId: string): Promise<Applicat
     const q = query(collection(db, path), where('nanny_id', '==', nannyId));
     const snapshot = await getDocs(q);
     const apps = await Promise.all(snapshot.docs.map(async (d) => {
-      const appData = d.data();
+      const appData = d.data() as Partial<Application> & Record<string, any>;
       const jobDoc = await getDoc(doc(db, 'jobs', appData.job_id));
       const familyId = appData.family_id || (jobDoc.exists() ? (jobDoc.data() as any).family_id : null);
       const [agencyDoc, familyProfile] = await Promise.all([
         jobDoc.exists() ? getDoc(doc(db, 'agency_profiles', jobDoc.data().agency_id)) : Promise.resolve(null as any),
         familyId ? getFamilyProfile(familyId) : Promise.resolve(null)
       ]);
-      return {
-        id: d.id,
+
+      const normalizedApp: Application = {
         ...appData,
+        id: d.id,
+        job_id: String(appData.job_id || ''),
+        nanny_id: String(appData.nanny_id || ''),
+        agency_id: String(appData.agency_id || ''),
+        status: (appData.status || 'applied') as ApplicationStatus,
+        cover_letter: typeof appData.cover_letter === 'string' ? appData.cover_letter : '',
+        created_at: appData.created_at ?? null,
+        updated_at: appData.updated_at ?? null,
+      };
+
+      return {
+        ...normalizedApp,
         ...(familyId ? { family_id: familyId } : {}),
         ...(familyProfile?.family_name ? { family_name: familyProfile.family_name } : {}),
         jobs: jobDoc.exists() ? {
@@ -1139,7 +1165,7 @@ export const getApplicationsForNanny = async (nannyId: string): Promise<Applicat
           agency_profiles: agencyDoc?.exists() ? agencyDoc.data() : { company_name: 'Agency' }
         } as Job : null,
         family_profile: familyProfile
-      } as Application;
+      };
     }));
     return apps;
   } catch (error) {
