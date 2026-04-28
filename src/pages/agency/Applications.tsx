@@ -73,6 +73,14 @@ export default function AgencyApplications() {
   const [celebrationApp, setCelebrationApp] = useState<any>(null);
   const [celebrationCompact, setCelebrationCompact] = useState(false);
 
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
   useEffect(() => {
     const resolveAgency = async () => {
       if (!user?.uid) return;
