@@ -380,17 +380,18 @@ export default function NannyProfile() {
 
       <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
         {/* Header/Photo Section */}
-        <div className="p-6 md:p-8 border-b border-stone-100 flex flex-col md:flex-row items-center md:items-start gap-6">
-          <div className="relative group">
+        <div className="p-5 sm:p-6 md:p-8 border-b border-stone-100 grid grid-cols-1 lg:grid-cols-[auto_1fr] items-start gap-5 md:gap-6">
+          <div className="inline-flex flex-col items-center lg:items-start w-fit mx-auto lg:mx-0">
+            <div className="relative group">
             {(isEditing ? formData?.photo_url : profile?.photo_url) ? (
               <img 
                 src={isEditing ? formData.photo_url : profile.photo_url}
                 alt="Profile" 
-                className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
+                className="h-28 w-28 sm:h-32 sm:w-32 rounded-full object-cover border-4 border-white shadow-md"
                
               />
             ) : (
-              <div className="w-32 h-32 rounded-full border-4 border-white shadow-md bg-stone-100 flex items-center justify-center text-4xl font-bold text-stone-600">
+              <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-full border-4 border-white shadow-md bg-stone-100 flex items-center justify-center text-4xl font-bold text-stone-600">
                 {(profile?.first_name?.charAt(0) || 'N').toUpperCase()}
               </div>
             )}
@@ -417,19 +418,20 @@ export default function NannyProfile() {
                 />
               </>
             )}
+            </div>
             {isEditing && (
-              <p className="mt-2 text-center text-xs text-stone-500">Click the photo to upload</p>
+              <p className="mt-2 text-center lg:text-left text-xs text-stone-500">Click the photo to upload</p>
             )}
             {photoUploadError && (
-              <p className="mt-2 text-center text-xs text-red-600">{photoUploadError}</p>
+              <p className="mt-2 text-center lg:text-left text-xs text-red-600 max-w-[220px]">{photoUploadError}</p>
             )}
             {isEditing && formData?.photo_url && !photoUploadError && (
-              <p className="mt-2 text-center text-xs text-emerald-700">Photo ready. Save changes to publish.</p>
+              <p className="mt-2 text-center lg:text-left text-xs text-emerald-700 max-w-[220px]">Photo ready. Save changes to publish.</p>
             )}
           </div>
           
-          <div className="flex-1 text-center md:text-left space-y-4 w-full">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="text-center lg:text-left space-y-4 w-full min-w-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               <div>
                 <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1">First Name</label>
                 {isEditing ? (
@@ -448,12 +450,12 @@ export default function NannyProfile() {
               </div>
             </div>
             
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex items-center gap-2 text-stone-600">
+            <div className="flex flex-col md:flex-row md:flex-wrap gap-3 md:gap-4">
+              <div className="flex items-center justify-center lg:justify-start gap-2 text-stone-600 min-w-0">
                 <Mail className="h-4 w-4 text-stone-400" />
-                <span className="text-sm">{user?.email || 'No email available'}</span>
+                <span className="text-sm truncate">{user?.email || 'No email available'}</span>
               </div>
-              <div className="flex items-center gap-2 text-stone-600">
+              <div className="flex items-center justify-center lg:justify-start gap-2 text-stone-600">
                 <MapPin className="h-4 w-4 text-stone-400" />
                 {isEditing ? (
                   <select name="location_borough" value={formData.location_borough || ''} onChange={handleChange} className="text-sm border border-stone-200 rounded-lg px-2 py-1 outline-none">
