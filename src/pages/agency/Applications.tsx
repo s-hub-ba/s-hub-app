@@ -7,6 +7,7 @@ import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { classifyPlacementBucket } from '../../lib/jobTypes';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
 
 const STATUS_COLORS = {
   applied: 'bg-stone-100 text-stone-700',
@@ -140,6 +141,14 @@ export default function AgencyApplications() {
       console.error('Error loading applications:', error);
     }
   };
+
+  useBackgroundRefresh(
+    () => {
+      if (!agencyId) return;
+      return loadData();
+    },
+    { enabled: !!agencyId, intervalMs: 30_000 }
+  );
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

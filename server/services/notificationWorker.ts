@@ -16,8 +16,8 @@ const STATUS_SENT = 'sent';
 const STATUS_FAILED = 'failed';
 const STATUS_RETRY = 'retry';
 const PLACEMENT_ENDING_SWEEP_MIN_INTERVAL_MS = Math.max(
-  5 * 60 * 1000,
-  Number(process.env.PLACEMENT_ENDING_SWEEP_INTERVAL_MS || 60 * 60 * 1000),
+  60 * 1000,
+  Number(process.env.PLACEMENT_ENDING_SWEEP_INTERVAL_MS || 5 * 60 * 1000),
 );
 
 // ─── Role routing maps ────────────────────────────────────────────────────────

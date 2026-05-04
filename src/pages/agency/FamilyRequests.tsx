@@ -4,6 +4,7 @@ import { Inbox, ChevronRight, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAgencyFamilyRequestInbox, resolveAgencyIdForUser } from '../../lib/api';
 import { formatCareTypeLabel } from '../../lib/jobTypes';
+import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
 
 const STATUS_STYLES: Record<string, string> = {
   new: 'bg-blue-100 text-blue-700',
@@ -21,25 +22,35 @@ export default function AgencyFamilyRequests() {
 
   const showDeclinedBanner = searchParams.get('declined') === '1';
 
-  useEffect(() => {
-    const init = async () => {
-      if (!user?.uid) {
-        setLoading(false);
-        return;
-      }
-      const resolvedAgencyId = await resolveAgencyIdForUser(user.uid);
-      if (!resolvedAgencyId) {
-        setLoading(false);
-        return;
-      }
-      setAgencyId(resolvedAgencyId);
-      const inboxRows = await getAgencyFamilyRequestInbox(resolvedAgencyId);
-      setRows(inboxRows);
+  const loadData = async () => {
+    if (!user?.uid) {
       setLoading(false);
-    };
+      return;
+    }
 
-    init();
+    const resolvedAgencyId = await resolveAgencyIdForUser(user.uid);
+    if (!resolvedAgencyId) {
+      setLoading(false);
+      return;
+    }
+
+    setAgencyId(resolvedAgencyId);
+    const inboxRows = await getAgencyFamilyRequestInbox(resolvedAgencyId);
+    setRows(inboxRows);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void loadData();
   }, [user]);
+
+  useBackgroundRefresh(
+    () => {
+      if (!user?.uid) return;
+      return loadData();
+    },
+    { enabled: !!user?.uid, intervalMs: 30_000 }
+  );
 
   if (!user?.uid) {
     return <div className="p-8 text-center text-stone-500">Please sign in to see requests.</div>;

@@ -1254,21 +1254,70 @@ export const updateApplicationStatus = async (
   }
 ) => {
   const path = `applications/${id}`;
+
+  const normalizeCareTypeValue = (value: unknown): 'full-time' | 'part-time' | 'occasional' | 'last-minute' | 'other' => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return 'other';
+    if (normalized.includes('full')) return 'full-time';
+    if (normalized.includes('part')) return 'part-time';
+    if (normalized.includes('occasional')) return 'occasional';
+    if (normalized.includes('last')) return 'last-minute';
+    return 'other';
+  };
+
+  const hasDateAndTime = (value: unknown): boolean => {
+    if (!value) return false;
+    if (typeof value === 'string') {
+      // Require explicit time component, not date-only strings.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false;
+      const parsed = new Date(value);
+      return !Number.isNaN(parsed.getTime());
+    }
+    if (typeof (value as any)?.toDate === 'function') {
+      const date = (value as any).toDate();
+      return date instanceof Date && !Number.isNaN(date.getTime());
+    }
+    if (typeof (value as any)?.seconds === 'number') return true;
+    const parsed = new Date(value as any);
+    return !Number.isNaN(parsed.getTime());
+  };
+
   try {
     const docRef = doc(db, 'applications', id);
     const existingDoc = await getDoc(docRef);
     const existingData = existingDoc.exists() ? existingDoc.data() : {};
     let derivedFamilyId = existingData.family_id || null;
+    let jobData: any = null;
     if (!derivedFamilyId && existingData.job_id) {
       try {
         const jobDoc = await getDoc(doc(db, 'jobs', existingData.job_id));
         if (jobDoc.exists()) {
-          derivedFamilyId = (jobDoc.data() as any).family_id || null;
+          jobData = jobDoc.data() as any;
+          derivedFamilyId = jobData.family_id || null;
         }
       } catch {
         // Preserve existing status behavior if the job lookup fails.
       }
     }
+
+    if (status === 'active') {
+      const careType = normalizeCareTypeValue(existingData?.job_type || jobData?.job_type);
+      const isOccasional = careType === 'occasional' || careType === 'last-minute';
+      if (isOccasional) {
+        const hasStartDateTime = hasDateAndTime(existingData?.care_started_at || existingData?.start_date || jobData?.start_date);
+        const hasEndDateTime = hasDateAndTime(
+          existingData?.care_expected_end_at
+          || existingData?.care_extended_to
+          || existingData?.end_date
+          || jobData?.end_date
+        );
+
+        if (!hasStartDateTime || !hasEndDateTime) {
+          throw new Error('Occasional care requires both start and end date-time before starting placement. Please set exact date and time first.');
+        }
+      }
+    }
+
     const existingHistory = Array.isArray(existingData.status_history)
       ? existingData.status_history
       : [];

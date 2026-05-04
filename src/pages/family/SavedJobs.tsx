@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Heart, MapPin, DollarSign, Briefcase, Star, CheckCircle2, Clock, X } from 'lucide-react';
-import { getFamilyCareHistory, submitCareHistoryReview } from '../../lib/api';
+import { getFamilyCareHistory, getFamilyPlacementApplications, recordCareHistoryFromApplication, submitCareHistoryReview } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
 
 export default function SavedJobs() {
   const { user } = useAuth();
   const [careHistory, setCareHistory] = useState<any[]>([]);
+  const [completedPlacements, setCompletedPlacements] = useState<any[]>([]);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   const [reviewTarget, setReviewTarget] = useState<'agency' | 'nanny'>('agency');
@@ -25,21 +27,85 @@ export default function SavedJobs() {
 
   const familyId = user?.uid || '';
 
+  const loadData = async () => {
+    if (!familyId) return;
+
+    try {
+      const [history, placements] = await Promise.all([
+        getFamilyCareHistory(familyId),
+        getFamilyPlacementApplications(familyId),
+      ]);
+
+      const completedApps = placements.filter((app: any) => app.status === 'completed');
+      setCompletedPlacements(completedApps);
+
+      const linkedApplicationIds = new Set(
+        history
+          .map((item: any) => String(item.agency_application_id || item.family_application_id || '').trim())
+          .filter(Boolean)
+      );
+
+      const missingCompleted = completedApps.filter((app: any) => {
+        const appId = String(app.id || '').trim();
+        return appId && !linkedApplicationIds.has(appId);
+      });
+
+      if (missingCompleted.length > 0) {
+        await Promise.all(missingCompleted.map((app: any) => recordCareHistoryFromApplication(String(app.id), 'completed')));
+        const refreshed = await getFamilyCareHistory(familyId);
+        setCareHistory(refreshed);
+        return;
+      }
+
+      setCareHistory(history);
+    } catch (error) {
+      console.error('Error loading care history:', error);
+    }
+  };
+
   if (!familyId) {
     return <div className="p-8 text-center text-stone-500">Please sign in to view saved jobs.</div>;
   }
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const history = await getFamilyCareHistory(familyId);
-        setCareHistory(history);
-      } catch (error) {
-        console.error('Error loading care history:', error);
-      }
-    };
-    loadData();
+    void loadData();
   }, [familyId]);
+
+  useBackgroundRefresh(
+    () => {
+      if (!familyId) return;
+      return loadData();
+    },
+    { enabled: !!familyId, intervalMs: 30_000 }
+  );
+
+  const fallbackCareHistory = completedPlacements.map((app: any) => ({
+    id: `app-${String(app.id || '')}`,
+    synthetic_source_application_id: String(app.id || ''),
+    placement_status: 'completed',
+    agency_application_id: app.id,
+    family_application_id: app.id,
+    job_title: app.jobs?.title || 'Past Care Role',
+    job_type: app.jobs?.job_type,
+    location_borough: app.jobs?.location_borough,
+    location_neighborhood: app.jobs?.location_neighborhood,
+    agency_name: app.jobs?.agency_profiles?.company_name || 'Agency',
+    nanny_name: `${app.nanny_profiles?.first_name || ''} ${app.nanny_profiles?.last_name || ''}`.trim() || 'Unknown',
+    nanny_id: app.nanny_id,
+    agency_id: app.agency_id || app.jobs?.agency_id,
+    start_date: app.active_at || app.created_at,
+    end_date: app.completed_at || app.updated_at,
+    summary: app.call_note || 'Care placement completed.',
+    reviewed_agency_by_family: false,
+    reviewed_nanny_by_family: false,
+    reviewed_agency_week_one_by_family: false,
+    reviewed_nanny_week_one_by_family: false,
+    reviewed_agency_completion_by_family: false,
+    reviewed_nanny_completion_by_family: false,
+    source_inquiry_id: app.source_inquiry_id || app.jobs?.source_inquiry_id,
+  }));
+
+  const displayCareHistory = careHistory.length > 0 ? careHistory : fallbackCareHistory;
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -77,13 +143,36 @@ export default function SavedJobs() {
     setIsSubmittingReview(true);
 
     try {
+      let targetHistory = selectedHistory;
+
+      if (targetHistory.synthetic_source_application_id) {
+        const sourceApplicationId = String(targetHistory.synthetic_source_application_id || '').trim();
+        if (sourceApplicationId) {
+          await recordCareHistoryFromApplication(sourceApplicationId, 'completed');
+          const refreshed = await getFamilyCareHistory(familyId);
+          setCareHistory(refreshed);
+
+          const matched = refreshed.find((item: any) => {
+            const agencyAppId = String(item.agency_application_id || '').trim();
+            const familyAppId = String(item.family_application_id || '').trim();
+            return agencyAppId === sourceApplicationId || familyAppId === sourceApplicationId;
+          });
+
+          if (!matched) {
+            throw new Error('Unable to open review because care history could not be synced yet. Please try again.');
+          }
+
+          targetHistory = matched;
+        }
+      }
+
       const ok = await submitCareHistoryReview({
-        careHistoryId: selectedHistory.id,
+        careHistoryId: targetHistory.id,
         familyId,
         target: reviewTarget,
         phase: reviewPhase,
-        agencyId: selectedHistory.agency_id,
-        nannyId: selectedHistory.nanny_id,
+        agencyId: targetHistory.agency_id,
+        nannyId: targetHistory.nanny_id,
         rating,
         comment,
         review: reviewTarget === 'nanny'
@@ -101,7 +190,7 @@ export default function SavedJobs() {
       if (!ok) return;
 
       setCareHistory(prev => prev.map(item => {
-        if (item.id !== selectedHistory.id) return item;
+        if (item.id !== targetHistory.id) return item;
         return {
           ...item,
           reviewed_agency_by_family: reviewTarget === 'agency' && reviewPhase === 'completion' ? true : item.reviewed_agency_by_family,
@@ -147,19 +236,19 @@ export default function SavedJobs() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6 border-b border-stone-100 bg-stone-50/60">
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             <p className="text-xs uppercase tracking-wider text-stone-500 font-bold">Total Placements</p>
-            <p className="text-2xl font-black text-stone-900 mt-1">{careHistory.length}</p>
+            <p className="text-2xl font-black text-stone-900 mt-1">{displayCareHistory.length}</p>
           </div>
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             <p className="text-xs uppercase tracking-wider text-stone-500 font-bold">Agency Reviews Left</p>
-            <p className="text-2xl font-black text-stone-900 mt-1">{careHistory.filter(i => i.reviewed_agency_by_family).length}</p>
+            <p className="text-2xl font-black text-stone-900 mt-1">{displayCareHistory.filter(i => i.reviewed_agency_by_family).length}</p>
           </div>
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             <p className="text-xs uppercase tracking-wider text-stone-500 font-bold">Nanny Reviews Left</p>
-            <p className="text-2xl font-black text-stone-900 mt-1">{careHistory.filter(i => i.reviewed_nanny_by_family).length}</p>
+            <p className="text-2xl font-black text-stone-900 mt-1">{displayCareHistory.filter(i => i.reviewed_nanny_by_family).length}</p>
           </div>
         </div>
         <div className="divide-y divide-stone-100">
-          {careHistory.length === 0 ? (
+          {displayCareHistory.length === 0 ? (
             <div className="p-12 text-center">
               <Heart className="h-12 w-12 text-stone-300 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-stone-900">No past care records</h3>
@@ -172,7 +261,7 @@ export default function SavedJobs() {
               </Link>
             </div>
           ) : (
-            careHistory.map(item => (
+            displayCareHistory.map(item => (
               <div key={item.id} className="p-6 md:p-8 hover:bg-stone-50 transition-colors">
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                   <div className="flex-1">

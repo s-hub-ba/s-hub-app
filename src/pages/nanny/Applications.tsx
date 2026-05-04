@@ -9,6 +9,7 @@ import { formatJobTypeLabel } from '../../lib/jobTypes';
 import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatJobSchedule } from '../../lib/utils';
+import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
 
 const API_BASE = getApiBaseUrl();
 
@@ -118,6 +119,14 @@ export default function NannyApplications() {
       console.error('Error loading applications:', error);
     }
   };
+
+  useBackgroundRefresh(
+    () => {
+      if (!nannyId) return;
+      return loadData();
+    },
+    { enabled: !!nannyId, intervalMs: 30_000 }
+  );
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -232,6 +241,46 @@ export default function NannyApplications() {
       if (app.family_start_approved === false) {
         setPlacementActionError('This placement is awaiting family approval before it can be started.');
         return;
+      }
+
+      const careType = String(app?.jobs?.job_type || '').trim().toLowerCase();
+      const isOccasional = careType.includes('occasional') || careType.includes('last');
+
+      if (isOccasional) {
+        const currentStart = app?.care_started_at ? new Date(app.care_started_at) : null;
+        const currentEnd = app?.care_expected_end_at
+          ? new Date(app.care_expected_end_at)
+          : app?.care_extended_to
+            ? new Date(app.care_extended_to)
+            : null;
+
+        const startDefault = currentStart && !Number.isNaN(currentStart.getTime())
+          ? currentStart.toISOString().slice(0, 16)
+          : new Date().toISOString().slice(0, 16);
+        const endDefault = currentEnd && !Number.isNaN(currentEnd.getTime())
+          ? currentEnd.toISOString().slice(0, 16)
+          : '';
+
+        const startInput = window.prompt('Occasional care requires exact start date and time (YYYY-MM-DDTHH:mm).', startDefault);
+        if (!startInput) return;
+        const endInput = window.prompt('Occasional care requires exact end date and time (YYYY-MM-DDTHH:mm).', endDefault);
+        if (!endInput) return;
+
+        const startAt = new Date(startInput);
+        const endAt = new Date(endInput);
+        if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+          setPlacementActionError('Please enter valid start and end date-time values for occasional care.');
+          return;
+        }
+        if (endAt.getTime() <= startAt.getTime()) {
+          setPlacementActionError('End date-time must be after start date-time for occasional care.');
+          return;
+        }
+
+        await updateApplicationCareSession(app.id, {
+          care_started_at: startAt.toISOString(),
+          care_expected_end_at: endAt.toISOString(),
+        });
       }
 
       await updateApplicationStatus(app.id, 'active', { actorRole: 'nanny' });
