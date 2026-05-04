@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, MapPin, RotateCcw, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
+import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
 import NannyCvidCardModal from '../../components/NannyCvidCardModal';
 import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { buildPlacementCelebrationKey, consumePlacementCelebrationKey, hasSeenPlacementCelebration, toPlacementCelebrationMillis } from '../../lib/placementCelebration';
@@ -56,6 +57,14 @@ export default function FamilyPlacements() {
       setLoading(false);
     }
   };
+
+  useBackgroundRefresh(
+    () => {
+      if (!familyId) return;
+      return loadData();
+    },
+    { enabled: !!familyId, intervalMs: 30_000 }
+  );
 
   useEffect(() => {
     loadData();

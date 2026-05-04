@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Bell, MessageSquare, Briefcase, Star } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import {
@@ -37,6 +37,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const previousSignatureRef = useRef<string>('');
 
   const createNotificationId = () => {
     if (typeof globalThis.crypto?.randomUUID === 'function') {
@@ -55,15 +56,42 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
   useEffect(() => {
+    let cancelled = false;
+
     const loadNotifications = async () => {
       if (!user?.uid) return;
+
+      const applyAndBroadcast = (items: Notification[], signatureSource: any[]) => {
+        if (cancelled) return;
+
+        const signature = signatureSource
+          .slice(0, 20)
+          .map((item) => `${String(item?.id || '')}:${toMillis(item?.created_at)}:${item?.read ? '1' : '0'}`)
+          .join('|');
+
+        if (previousSignatureRef.current && previousSignatureRef.current !== signature) {
+          window.dispatchEvent(new CustomEvent('shub:workflow-refresh', {
+            detail: { role, source: 'notifications' },
+          }));
+        }
+        previousSignatureRef.current = signature;
+        setNotifications(items);
+      };
 
       if (role === 'family') {
         try {
           const familyNotifs = await getFamilyNotifications(user.uid);
           if (familyNotifs?.length) {
-            setNotifications(familyNotifs.map((notif) => ({
+            const mapped = familyNotifs.map((notif) => ({
               id: notif.id || createNotificationId(),
               type: notif.type,
               title: notif.title,
@@ -71,19 +99,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
               read: notif.read ?? false,
               link: notif.link
-            })));
+            }));
+            applyAndBroadcast(mapped, familyNotifs);
           } else {
-            setNotifications([]);
+            applyAndBroadcast([], []);
           }
         } catch (error) {
           console.error('Error loading family notifications:', error);
-          setNotifications([]);
+          if (!cancelled) setNotifications([]);
         }
       } else if (role === 'agency_admin' || role === 'agency_recruiter') {
         try {
           const agencyIds = await resolveAgencyIdsForUser(user.uid);
           if (agencyIds.length === 0) {
-            setNotifications([]);
+            applyAndBroadcast([], []);
             return;
           }
 
@@ -113,18 +142,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
             });
 
-            setNotifications(normalized);
+            applyAndBroadcast(normalized, agencyNotifs);
           } else {
-            setNotifications([]);
+            applyAndBroadcast([], []);
           }
         } catch (error) {
           console.error('Error loading agency notifications:', error);
+          if (!cancelled) setNotifications([]);
         }
       } else if (role === 'nanny') {
         try {
           const nannyNotifs = await getNannyNotifications(user.uid);
           if (nannyNotifs?.length) {
-            setNotifications(nannyNotifs.map((notif) => ({
+            const mapped = nannyNotifs.map((notif) => ({
               id: notif.id || createNotificationId(),
               type: notif.type,
               title: notif.title,
@@ -132,18 +162,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
               read: notif.read ?? false,
               link: notif.link
-            })));
+            }));
+            applyAndBroadcast(mapped, nannyNotifs);
           } else {
-            setNotifications([]);
+            applyAndBroadcast([], []);
           }
         } catch (error) {
           console.error('Error loading nanny notifications:', error);
+          if (!cancelled) setNotifications([]);
         }
       } else if (role === 'superadmin') {
         try {
           const adminNotifs = await getAdminNotifications(user.uid);
           if (adminNotifs?.length) {
-            setNotifications(adminNotifs.map((notif) => ({
+            const mapped = adminNotifs.map((notif) => ({
               id: notif.id || createNotificationId(),
               type: notif.type,
               title: notif.title,
@@ -151,16 +183,34 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               time: notif.created_at ? new Date(notif.created_at.toDate ? notif.created_at.toDate() : notif.created_at).toLocaleString() : 'Just now',
               read: notif.read ?? false,
               link: notif.link,
-            })));
+            }));
+            applyAndBroadcast(mapped, adminNotifs);
           } else {
-            setNotifications([]);
+            applyAndBroadcast([], []);
           }
         } catch (error) {
           console.error('Error loading admin notifications:', error);
+          if (!cancelled) setNotifications([]);
         }
       }
     };
-    loadNotifications();
+    void loadNotifications();
+
+    const timer = window.setInterval(() => {
+      void loadNotifications();
+    }, 30_000);
+
+    const onFocus = () => {
+      void loadNotifications();
+    };
+
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [role, user]);
 
   useEffect(() => {

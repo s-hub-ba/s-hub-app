@@ -63,6 +63,7 @@ import FamilyMessages from './pages/family/Messages';
 import FamilyPlacements from './pages/family/Placements';
 import FamilyProfile from './pages/family/Profile';
 import FamilyRequestForm from './pages/family/RequestForm';
+import FamilyExtensionFlow from './pages/family/ExtensionFlow';
 import FamilyRequestResults from './pages/family/RequestResults';
 import FamilyCalendar from './pages/family/Calendar';
 import Notifications from './pages/Notifications';
@@ -103,6 +104,7 @@ export default function App() {
               <Route path="agencies" element={<FamilyAgencyDirectory />} />
               <Route path="agencies/:id" element={<AgencyProfile />} />
               <Route path="request-care" element={<FamilyRequestForm />} />
+              <Route path="extensions/new" element={<FamilyExtensionFlow />} />
               <Route path="requests/:id" element={<FamilyRequestResults />} />
               <Route path="onboarding" element={<FamilyOnboarding />} />
 

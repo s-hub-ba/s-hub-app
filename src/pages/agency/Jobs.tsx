@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getJobs, deleteJob, getApplicationsForAgency, notifyApplicationCareMilestone, resolveAgencyIdForUser, updateApplicationCareSession, updateApplicationStatus, updateJob } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { toDate } from '../../lib/utils';
+import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
 
 export default function AgencyJobs() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -82,6 +83,14 @@ export default function AgencyJobs() {
       console.error('Error loading jobs:', error);
     }
   };
+
+  useBackgroundRefresh(
+    () => {
+      if (!agencyId) return;
+      return loadJobs();
+    },
+    { enabled: !!agencyId, intervalMs: 30_000 }
+  );
 
   const getCareTimeline = (app: any) => {
     const start = toDate(app.care_started_at || app.active_at || app.start_date || app.jobs?.start_date || app.created_at) || new Date();
