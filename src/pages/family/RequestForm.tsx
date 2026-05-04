@@ -24,6 +24,40 @@ const normalizeProfileCareType = (value: unknown): FamilyRequestInput['care_type
   return 'full-time';
 };
 
+const parseDateAtBoundary = (value: unknown, boundary: 'start' | 'end'): Date | null => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    const suffix = boundary === 'end' ? 'T23:59:59.999' : 'T00:00:00.000';
+    const parsedDay = new Date(`${normalized}${suffix}`);
+    return Number.isNaN(parsedDay.getTime()) ? null : parsedDay;
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const normalizeRequestCareType = (value: unknown): FamilyRequestInput['care_type'] => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'part-time' || normalized === 'part time') return 'part-time';
+  if (normalized === 'last-minute' || normalized === 'last minute') return 'last-minute';
+  if (normalized === 'occasional' || normalized === 'temporary') return 'occasional';
+  return 'full-time';
+};
+
+const isRequestExpired = (request: any): boolean => {
+  const careType = normalizeRequestCareType(request?.care_type);
+  const endDate = parseDateAtBoundary(request?.end_date, 'end');
+  const startDate = parseDateAtBoundary(request?.start_date, 'end');
+  const expiry = careType === 'occasional' || careType === 'last-minute'
+    ? (endDate || startDate)
+    : endDate;
+
+  if (!expiry) return false;
+  return expiry.getTime() < Date.now();
+};
+
 export default function FamilyRequestForm() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -75,6 +109,7 @@ export default function FamilyRequestForm() {
 
       const currentActiveRequest = (requests || []).find((request: any) =>
         ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(request?.status || ''))
+        && !isRequestExpired(request)
       ) || null;
 
       setForm((prev) => ({

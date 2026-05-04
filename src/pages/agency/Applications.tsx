@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, BookmarkPlus, Check, Phone } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, FileText, Star, ShieldCheck, Eye, X, BookmarkPlus, Check, Phone, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useSearchParams } from 'react-router-dom';
 import { addFamilyNotification, addNannyNotification, assignNannyToJob, getApplicationsForAgency, updateApplicationStatus, addNannyReview, recordCareHistoryFromApplication, resolveAgencyIdForUser, addNannyToAgencyTalentPool, getAgencyTalentPool, scheduleApplicationCall, computeNannyJobCompatibility, getNannyReviewStats, updateApplicationCallOutcome } from '../../lib/api';
@@ -73,6 +73,7 @@ export default function AgencyApplications() {
   const [assigningApplicationId, setAssigningApplicationId] = useState<string | null>(null);
   const [celebrationApp, setCelebrationApp] = useState<any>(null);
   const [celebrationCompact, setCelebrationCompact] = useState(false);
+  const [expandedCompletedIds, setExpandedCompletedIds] = useState<Set<string>>(new Set());
 
   const toMillis = (value: any): number => {
     if (!value) return 0;
@@ -552,6 +553,18 @@ export default function AgencyApplications() {
     setSearchParams(next);
   };
 
+  const toggleCompletedDetails = (appId: string) => {
+    setExpandedCompletedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(appId)) {
+        next.delete(appId);
+      } else {
+        next.add(appId);
+      }
+      return next;
+    });
+  };
+
   const toDate = (value: any): Date | null => {
     if (!value) return null;
     if (typeof value?.toDate === 'function') return value.toDate();
@@ -662,13 +675,65 @@ export default function AgencyApplications() {
         ) : (
           <div className="p-4 md:p-5 space-y-3">
             {filteredApps.map((app, index) => (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: index * 0.03 }}
-                key={app.id}
-                className={`relative overflow-visible rounded-2xl border border-stone-200 bg-white/95 backdrop-blur-sm shadow-sm p-4 ${openDropdownId === app.id ? 'z-30' : 'z-0'}`}
-              >
+              (() => {
+                const isCompletedPlacement = app.status === 'completed';
+                const showCompletedDetails = expandedCompletedIds.has(String(app.id));
+
+                if (isCompletedPlacement && !showCompletedDetails) {
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: index * 0.03 }}
+                      key={app.id}
+                      className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-5 py-4 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-base font-bold text-stone-900 truncate">{app.job_title}</h3>
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                              <Check className="mr-1 h-3.5 w-3.5" />
+                              Completed
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-stone-600 truncate">{app.nanny_name || 'Applicant'} • {app.nanny_profiles?.location_borough || 'Location not set'}</p>
+                          <p className="mt-1 text-xs text-stone-500 truncate">
+                            Completed {toDate(app.completed_at || app.updated_at)?.toLocaleDateString() || 'recently'} • Applied {toDate(app.created_at)?.toLocaleDateString() || '—'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openReviewModal(app)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100"
+                          >
+                            <Star className="h-3 w-3" />
+                            Review
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleCompletedDetails(String(app.id))}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                          >
+                            View details
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                }
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: index * 0.03 }}
+                    key={app.id}
+                    className={`relative overflow-visible rounded-2xl border border-stone-200 bg-white/95 backdrop-blur-sm shadow-sm p-4 ${openDropdownId === app.id ? 'z-30' : 'z-0'}`}
+                  >
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_auto] gap-3 items-start">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-stone-200 to-stone-300 flex items-center justify-center text-stone-600 font-bold border border-stone-300 shrink-0">
@@ -749,6 +814,17 @@ export default function AgencyApplications() {
                         Call outcome: {app.call_outcome === 'happened' ? 'Happened' : app.call_outcome === 'no_show' ? 'No-show' : 'Cancelled'}
                       </p>
                     )}
+
+                    {isCompletedPlacement ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleCompletedDetails(String(app.id))}
+                        className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-stone-600 hover:bg-stone-100"
+                      >
+                        Hide details
+                        <ChevronUp className="ml-1 h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
@@ -831,7 +907,9 @@ export default function AgencyApplications() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+                  </motion.div>
+                );
+              })()
             ))}
           </div>
         )}

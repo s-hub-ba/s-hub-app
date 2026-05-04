@@ -247,15 +247,42 @@ const NannyCalendar: React.FC = () => {
 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Start</label>
-                <input type="datetime-local" value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.currentTarget.value }))} className={inputCls} required />
+                <input
+                  type="datetime-local"
+                  value={form.startAt}
+                  onChange={(e) => {
+                    const value = e.currentTarget.value;
+                    setForm((f) => ({ ...f, startAt: value }));
+                  }}
+                  className={inputCls}
+                  required
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">End</label>
-                <input type="datetime-local" value={form.endAt} onChange={(e) => setForm((f) => ({ ...f, endAt: e.currentTarget.value }))} className={inputCls} required />
+                <input
+                  type="datetime-local"
+                  value={form.endAt}
+                  onChange={(e) => {
+                    const value = e.currentTarget.value;
+                    setForm((f) => ({ ...f, endAt: value }));
+                  }}
+                  className={inputCls}
+                  required
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Note (optional)</label>
-                <input type="text" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.currentTarget.value }))} maxLength={100} className={inputCls} />
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => {
+                    const value = e.currentTarget.value;
+                    setForm((f) => ({ ...f, title: value }));
+                  }}
+                  maxLength={100}
+                  className={inputCls}
+                />
               </div>
 
               {formError && (
