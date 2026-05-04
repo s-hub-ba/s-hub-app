@@ -94,6 +94,7 @@ export default function FamilyExtensionFlow() {
           getFamilyCareHistory(familyId),
           getFamilyPlacementApplications(familyId),
         ]);
+        const profileExtras = (profile || {}) as Record<string, any>;
 
         const activeRequest = (requests || []).find((request: any) =>
           ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(request?.status || ''))
@@ -122,7 +123,7 @@ export default function FamilyExtensionFlow() {
                 job_title: app.jobs?.title || 'Care Placement',
                 job_type: app.jobs?.job_type,
                 start_date: app.active_at || app.created_at,
-                end_date: app.care_expected_end_at || app.care_extended_to || app.end_date || app.jobs?.end_date || app.updated_at,
+                end_date: app.care_expected_end_at || app.care_extended_to || app.jobs?.end_date || app.updated_at,
                 location_borough: app.jobs?.location_borough,
                 location_neighborhood: app.jobs?.location_neighborhood,
                 summary: app.call_note || 'Requesting extension of existing care placement.',
@@ -172,13 +173,13 @@ export default function FamilyExtensionFlow() {
           start_date: suggestedStart,
           end_date: suggestedEnd,
           schedule: matchedPlacement?.summary || prev.schedule,
-          budget_min: profile?.budget_min ?? prev.budget_min,
-          budget_max: profile?.budget_max ?? prev.budget_max,
+          budget_min: profileExtras.budget_min ?? prev.budget_min,
+          budget_max: profileExtras.budget_max ?? prev.budget_max,
           languages: Array.isArray(profile?.languages) ? profile.languages : prev.languages,
           driver_required: !!profile?.driver_requirement,
           pet_friendly: !!profile?.pet_friendly,
-          special_needs: !!profile?.special_needs,
-          special_requirements: profile?.special_requirements || '',
+          special_needs: !!profileExtras.special_needs,
+          special_requirements: profileExtras.special_requirements || '',
           notes: [
             `Extension request for existing placement${matchedPlacement?.job_title ? `: ${matchedPlacement.job_title}` : ''}.`,
             matchedPlacement?.agency_name ? `Preferred agency continuation: ${matchedPlacement.agency_name}.` : null,

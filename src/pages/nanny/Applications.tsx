@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAuth } from 'firebase/auth';
 import { Briefcase, Calendar, CheckCircle2, Clock, FileText, MapPin, Phone, ShieldCheck, UserRound, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
-import { addAgencyNotification, addFamilyNotification, getApplicationsForNanny, getFamilyProfile, getJobById, respondToApplicationCall, updateApplicationStatus } from '../../lib/api';
+import { addAgencyNotification, addFamilyNotification, getApplicationsForNanny, getFamilyProfile, getJobById, respondToApplicationCall, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
 import PlacementHandshakeModal from '../../components/PlacementHandshakeModal';
 import { getApiBaseUrl } from '../../lib/apiBase';
 import { formatJobTypeLabel } from '../../lib/jobTypes';
