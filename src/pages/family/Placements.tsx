@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, MapPin, RotateCcw, Star } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Clock, MapPin, RotateCcw, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { addAgencyNotification, addNannyNotification, getFamilyPlacementApplications, recordCareHistoryFromApplication, updateApplicationCareSession, updateApplicationStatus } from '../../lib/api';
 import { useBackgroundRefresh } from '../../hooks/useBackgroundRefresh';
@@ -27,6 +27,7 @@ export default function FamilyPlacements() {
   const [celebrationCompact, setCelebrationCompact] = useState(false);
   const [cvidCardOpen, setCvidCardOpen] = useState(false);
   const [selectedNannyForCvid, setSelectedNannyForCvid] = useState<any>(null);
+  const [expandedCompletedIds, setExpandedCompletedIds] = useState<Set<string>>(new Set());
 
   const familyId = user?.uid || '';
 
@@ -92,6 +93,18 @@ export default function FamilyPlacements() {
     () => applications.filter((app) => app.status === 'completed'),
     [applications]
   );
+
+  const toggleCompletedDetails = (appId: string) => {
+    setExpandedCompletedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(appId)) {
+        next.delete(appId);
+      } else {
+        next.add(appId);
+      }
+      return next;
+    });
+  };
 
   const toDate = (value: any): Date | null => {
     if (!value) return null;
@@ -301,6 +314,14 @@ export default function FamilyPlacements() {
               <Star className="h-4 w-4 text-amber-500" />
               Leave Nanny Care Review
             </Link>
+            <button
+              type="button"
+              onClick={() => toggleCompletedDetails(String(app.id))}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-stone-600 hover:bg-stone-100"
+            >
+              Hide details
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
           </div>
         ) : null}
       </div>
@@ -396,7 +417,46 @@ export default function FamilyPlacements() {
         {completedPlacements.length === 0 ? (
           <div className="rounded-3xl border border-stone-200 bg-white p-6 text-sm text-stone-500">No completed placements yet.</div>
         ) : (
-          <div className="space-y-4">{completedPlacements.map((app) => renderPlacementCard(app, 'none', true))}</div>
+          <div className="space-y-4">
+            {completedPlacements.map((app) => {
+              const showDetails = expandedCompletedIds.has(String(app.id));
+              if (!showDetails) {
+                return (
+                  <div
+                    key={app.id}
+                    className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-5 py-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-bold text-stone-900 truncate">{app.jobs?.title || 'Placement'}</h3>
+                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                            <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                            Completed
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-stone-600 truncate">{app.jobs?.agency_profiles?.company_name || 'Agency partner'}</p>
+                        <p className="mt-1 text-xs text-stone-500 truncate">
+                          Completed {toDate(app.completed_at || app.updated_at)?.toLocaleDateString() || 'recently'} • Schedule: {app.jobs ? formatJobSchedule(app.jobs) : 'TBD'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleCompletedDetails(String(app.id))}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        View details
+                        <ChevronDown className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return renderPlacementCard(app, 'none', true);
+            })}
+          </div>
         )}
       </section>
     </div>

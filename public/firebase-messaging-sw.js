@@ -13,16 +13,36 @@ importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-com
 
 let messaging = null;
 
+async function loadFirebaseConfig() {
+  const scopeUrl = new URL(self.registration.scope);
+  const scopePath = scopeUrl.pathname.replace(/\/$/, '');
+  const candidates = [
+    new URL('firebase-applet-config.json', self.registration.scope).toString(),
+    `${scopeUrl.origin}/firebase-applet-config.json`,
+    `${scopeUrl.origin}${scopePath}/firebase-applet-config.json`,
+  ];
+
+  let lastError = null;
+  for (const url of [...new Set(candidates)]) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) {
+        lastError = new Error(`HTTP ${response.status} from ${url}`);
+        continue;
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(`Failed to load Firebase config. ${String(lastError || 'No config URL resolved')}`);
+}
+
 async function initMessaging() {
   if (messaging) return messaging;
 
-  const configUrl = new URL('firebase-applet-config.json', self.registration.scope).toString();
-  const response = await fetch(configUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to load Firebase config (${response.status})`);
-  }
-
-  const config = await response.json();
+  const config = await loadFirebaseConfig();
   const app = firebase.initializeApp({
     apiKey: config.apiKey,
     authDomain: config.authDomain,
@@ -42,11 +62,12 @@ initMessaging()
       const title = payload?.notification?.title || payload?.data?.title || 'Shift Me Up';
       const body = payload?.notification?.body || payload?.data?.body || 'You have a new update.';
       const link = payload?.data?.link || '/';
+      const iconUrl = new URL('favicon.ico', self.registration.scope).toString();
 
       self.registration.showNotification(title, {
         body,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
+        icon: iconUrl,
+        badge: iconUrl,
         data: { link },
       });
     });

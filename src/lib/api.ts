@@ -1288,12 +1288,17 @@ export const updateApplicationStatus = async (
     const existingData = existingDoc.exists() ? existingDoc.data() : {};
     let derivedFamilyId = existingData.family_id || null;
     let jobData: any = null;
-    if (!derivedFamilyId && existingData.job_id) {
+
+    // Always try to load the linked job so validation logic can rely on canonical job fields
+    // even when application-level denormalized fields are missing.
+    if (existingData.job_id) {
       try {
         const jobDoc = await getDoc(doc(db, 'jobs', existingData.job_id));
         if (jobDoc.exists()) {
           jobData = jobDoc.data() as any;
-          derivedFamilyId = jobData.family_id || null;
+          if (!derivedFamilyId) {
+            derivedFamilyId = jobData.family_id || null;
+          }
         }
       } catch {
         // Preserve existing status behavior if the job lookup fails.
@@ -3695,7 +3700,9 @@ export const getNannyFollowedAgencies = async (nannyId: string): Promise<string[
     const ids = snapshot.docs.map(d => d.data().agency_id as string).filter(Boolean);
     return Array.from(new Set(ids));
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, path);
+    if ((error as any)?.code !== 'permission-denied') {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
     return [];
   }
 };
@@ -3763,8 +3770,28 @@ export const recordCareHistoryFromApplication = async (
   applicationId: string,
   placementStatus: 'active' | 'completed' = 'completed'
 ) => {
-  const appPath = `application/${applicationId}`;
+  const appPath = `applications/${applicationId}`;
   try {
+    // Prefer privileged backend sync so family users are not blocked by client Firestore write rules.
+    if (applicationId) {
+      try {
+        const headers = await buildApiHeaders();
+        const response = await fetch(buildApiUrl('/api/family/care-history/sync'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ applicationId, placementStatus }),
+        });
+
+        if (response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          const syncedId = String(payload?.id || '').trim();
+          if (syncedId) return { id: syncedId };
+        }
+      } catch {
+        // Fall back to client write path when backend is unavailable.
+      }
+    }
+
     const familyAppDoc = await getDoc(doc(db, 'family_applications', applicationId));
     const agencyAppDoc = familyAppDoc.exists() ? null : await getDoc(doc(db, 'applications', applicationId));
 

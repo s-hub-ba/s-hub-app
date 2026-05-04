@@ -207,6 +207,59 @@ const getBearerToken = (req: any): string => {
   return authHeader.slice(7).trim();
 };
 
+const parseDateAtBoundary = (value: unknown, boundary: 'start' | 'end'): Date | null => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    const suffix = boundary === 'end' ? 'T23:59:59.999' : 'T00:00:00.000';
+    const parsedDay = new Date(`${normalized}${suffix}`);
+    return Number.isNaN(parsedDay.getTime()) ? null : parsedDay;
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getRequestExpiryDate = (request: any): Date | null => {
+  const careType = normalizeCareType(request?.care_type);
+  const endDate = parseDateAtBoundary(request?.end_date, 'end');
+  const startDate = parseDateAtBoundary(request?.start_date, 'end');
+
+  if (careType === 'occasional' || careType === 'last-minute') {
+    return endDate || startDate;
+  }
+
+  return endDate;
+};
+
+const isFamilyRequestStillActive = (request: any, now: Date): boolean => {
+  const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen']);
+  const status = String(request?.status || 'submitted');
+  if (!activeStatuses.has(status)) return false;
+
+  const expiry = getRequestExpiryDate(request);
+  if (!expiry) return true;
+  return expiry.getTime() >= now.getTime();
+};
+
+const autoCloseExpiredFamilyRequests = async (snapshot: any, now: Date) => {
+  const expiredDocs = snapshot.docs.filter((docSnap: any) => {
+    const data = docSnap.data() || {};
+    return !isFamilyRequestStillActive(data, now)
+      && ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(data?.status || ''));
+  });
+
+  if (expiredDocs.length === 0) return;
+
+  const nowIso = now.toISOString();
+  await Promise.all(expiredDocs.map((docSnap: any) => docSnap.ref.set({
+    status: 'closed',
+    closed_reason: 'date_elapsed',
+    updated_at: nowIso,
+  }, { merge: true })));
+};
+
 const requireFamilyAuth = async (req: any, res: any, next: any) => {
   const fallbackUserId = getHeaderValue(req.headers['x-user-id']);
   const token = getBearerToken(req);
@@ -254,12 +307,14 @@ router.post('/requests/eligibility', requireFamilyAuth, async (req: any, res: an
   }
 
   try {
-    const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen']);
+    const now = new Date();
     const snapshot = await db.collection('family_requests')
       .where('family_id', '==', familyId)
       .get();
 
-    const activeRequestCount = snapshot.docs.filter((docSnap) => activeStatuses.has(String(docSnap.data()?.status || 'submitted'))).length;
+    await autoCloseExpiredFamilyRequests(snapshot, now);
+
+    const activeRequestCount = snapshot.docs.filter((docSnap) => isFamilyRequestStillActive(docSnap.data() || {}, now)).length;
     const allowed = activeRequestCount < FAMILY_FREE_ACTIVE_REQUEST_LIMIT;
 
     return res.json({
@@ -293,9 +348,10 @@ router.post('/requests/submit', requireFamilyAuth, async (req: any, res: any) =>
   }
 
   try {
-    const activeStatuses = new Set(['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen']);
+    const now = new Date();
     const existing = await db.collection('family_requests').where('family_id', '==', familyId).get();
-    const activeCount = existing.docs.filter((docSnap) => activeStatuses.has(String(docSnap.data()?.status || 'submitted'))).length;
+    await autoCloseExpiredFamilyRequests(existing, now);
+    const activeCount = existing.docs.filter((docSnap) => isFamilyRequestStillActive(docSnap.data() || {}, now)).length;
 
     if (activeCount >= FAMILY_FREE_ACTIVE_REQUEST_LIMIT) {
       return res.status(403).json({
@@ -510,6 +566,134 @@ const handleCloseFamilyRequest = async (req: any, res: any) => {
     return res.status(500).json({ error: error.message || 'Failed to close care request' });
   }
 };
+
+// POST /api/family/care-history/sync - Create or update care_history from a placement application.
+router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) => {
+  const callerFamilyId = String(req.userId || '').trim();
+  const applicationId = String(req.body?.applicationId || '').trim();
+  const placementStatusRaw = String(req.body?.placementStatus || 'completed').trim().toLowerCase();
+  const placementStatus: 'active' | 'completed' = placementStatusRaw === 'active' ? 'active' : 'completed';
+
+  if (!applicationId) {
+    return res.status(400).json({ error: 'applicationId is required' });
+  }
+
+  const toIso = (value: any): string | null => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') {
+      const date = value.toDate();
+      return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
+    }
+    if (typeof value?.seconds === 'number') {
+      const date = new Date(value.seconds * 1000);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  };
+
+  const addDaysIso = (value: string, days: number) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return new Date().toISOString();
+    date.setDate(date.getDate() + days);
+    return date.toISOString();
+  };
+
+  try {
+    const familyAppDoc = await db.collection('family_applications').doc(applicationId).get();
+    const agencyAppDoc = familyAppDoc.exists ? null : await db.collection('applications').doc(applicationId).get();
+
+    if (!familyAppDoc.exists && !agencyAppDoc?.exists) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const fromFamilyApplication = familyAppDoc.exists;
+    const app = (fromFamilyApplication ? familyAppDoc.data() : agencyAppDoc!.data()) as any;
+    const jobId = String(app?.job_id || '').trim();
+    const nannyId = String(app?.nanny_id || '').trim();
+    if (!jobId || !nannyId) {
+      return res.status(400).json({ error: 'Application is missing job or nanny data' });
+    }
+
+    const jobDoc = await db.collection('jobs').doc(jobId).get();
+    const jobData = jobDoc.exists ? (jobDoc.data() as any) : null;
+    const agencyId = String(app?.agency_id || jobData?.agency_id || '').trim();
+    const familyId = String(app?.family_id || jobData?.family_id || '').trim();
+
+    if (!agencyId || !familyId) {
+      return res.status(400).json({ error: 'Unable to resolve family or agency for this application' });
+    }
+
+    if (familyId !== callerFamilyId) {
+      return res.status(403).json({ error: 'Forbidden: application does not belong to this family' });
+    }
+
+    const existingSnap = await db.collection('care_history')
+      .where('family_id', '==', familyId)
+      .where('job_id', '==', jobId)
+      .where('nanny_id', '==', nannyId)
+      .limit(1)
+      .get();
+
+    const existingDoc = existingSnap.empty ? null : existingSnap.docs[0];
+    const existingHistory = existingDoc ? (existingDoc.data() as any) : null;
+
+    const agencyDoc = await db.collection('agency_profiles').doc(agencyId).get();
+    const nannyDoc = await db.collection('nanny_profiles').doc(nannyId).get();
+    const derivedStartDate =
+      existingHistory?.start_date
+      || toIso(app?.start_date)
+      || toIso(app?.active_at)
+      || new Date().toISOString();
+    const weekOneReviewAvailableAt = existingHistory?.week_one_review_available_at || addDaysIso(derivedStartDate, 7);
+    const completedAt = new Date().toISOString();
+
+    const history = {
+      family_id: familyId,
+      job_id: jobId,
+      agency_id: agencyId,
+      nanny_id: nannyId,
+      family_application_id: fromFamilyApplication ? applicationId : undefined,
+      agency_application_id: fromFamilyApplication ? undefined : applicationId,
+      source_inquiry_id: app?.source_inquiry_id || jobData?.source_inquiry_id || undefined,
+      job_title: jobData?.title,
+      job_type: jobData?.job_type,
+      location_borough: jobData?.location_borough,
+      location_neighborhood: jobData?.location_neighborhood,
+      agency_name: agencyDoc.exists ? String((agencyDoc.data() as any)?.company_name || '') : undefined,
+      nanny_name: nannyDoc.exists
+        ? `${String((nannyDoc.data() as any)?.first_name || '').trim()} ${String((nannyDoc.data() as any)?.last_name || '').trim()}`.trim()
+        : undefined,
+      placement_status: placementStatus,
+      start_date: derivedStartDate,
+      end_date: placementStatus === 'completed' ? (existingHistory?.end_date || completedAt) : existingHistory?.end_date,
+      week_one_review_available_at: weekOneReviewAvailableAt,
+      summary: String(app?.call_note || (placementStatus === 'completed' ? 'Care placement completed.' : 'Placement started and is in progress.')),
+      reviewed_agency_by_family: !!existingHistory?.reviewed_agency_by_family,
+      reviewed_nanny_by_family: !!existingHistory?.reviewed_nanny_by_family,
+      reviewed_agency_week_one_by_family: !!existingHistory?.reviewed_agency_week_one_by_family,
+      reviewed_nanny_week_one_by_family: !!existingHistory?.reviewed_nanny_week_one_by_family,
+      reviewed_agency_completion_by_family: !!existingHistory?.reviewed_agency_completion_by_family,
+      reviewed_nanny_completion_by_family: !!existingHistory?.reviewed_nanny_completion_by_family,
+      rating: Number(existingHistory?.rating || 0),
+      review: String(existingHistory?.review || ''),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingDoc) {
+      await existingDoc.ref.set(history, { merge: true });
+      return res.json({ ok: true, id: existingDoc.id, synced: true, existing: true });
+    }
+
+    const createdRef = await db.collection('care_history').add({
+      ...history,
+      created_at: new Date().toISOString(),
+    });
+    return res.json({ ok: true, id: createdRef.id, synced: true, existing: false });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to sync care history' });
+  }
+});
 
 // Preferred route used by the frontend.
 router.post('/requests/:requestId/close', requireFamilyAuth, handleCloseFamilyRequest);
