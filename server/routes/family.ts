@@ -599,15 +599,20 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
     return date.toISOString();
   };
 
+  const withoutUndefined = <T extends Record<string, any>>(value: T): Partial<T> => {
+    const entries = Object.entries(value).filter(([, entryValue]) => entryValue !== undefined);
+    return Object.fromEntries(entries) as Partial<T>;
+  };
+
   try {
     const familyAppDoc = await db.collection('family_applications').doc(applicationId).get();
-    const agencyAppDoc = familyAppDoc.exists() ? null : await db.collection('applications').doc(applicationId).get();
+    const agencyAppDoc = familyAppDoc.exists ? null : await db.collection('applications').doc(applicationId).get();
 
-    if (!familyAppDoc.exists() && !agencyAppDoc?.exists()) {
+    if (!familyAppDoc.exists && !agencyAppDoc?.exists) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    const fromFamilyApplication = familyAppDoc.exists();
+    const fromFamilyApplication = familyAppDoc.exists;
     const app = (fromFamilyApplication ? familyAppDoc.data() : agencyAppDoc!.data()) as any;
     const jobId = String(app?.job_id || '').trim();
     const nannyId = String(app?.nanny_id || '').trim();
@@ -616,7 +621,7 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
     }
 
     const jobDoc = await db.collection('jobs').doc(jobId).get();
-    const jobData = jobDoc.exists() ? (jobDoc.data() as any) : null;
+    const jobData = jobDoc.exists ? (jobDoc.data() as any) : null;
     const agencyId = String(app?.agency_id || jobData?.agency_id || '').trim();
     const familyId = String(app?.family_id || jobData?.family_id || '').trim();
 
@@ -652,7 +657,7 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
     const weekOneReviewAvailableAt = existingHistory?.week_one_review_available_at || addDaysIso(derivedStartDate, 7);
     const completedAt = new Date().toISOString();
 
-    const history = {
+    const history = withoutUndefined({
       family_id: familyId,
       job_id: jobId,
       agency_id: agencyId,
@@ -664,8 +669,8 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
       job_type: jobData?.job_type,
       location_borough: jobData?.location_borough,
       location_neighborhood: jobData?.location_neighborhood,
-      agency_name: agencyDoc.exists() ? String((agencyDoc.data() as any)?.company_name || '') : undefined,
-      nanny_name: nannyDoc.exists()
+      agency_name: agencyDoc.exists ? String((agencyDoc.data() as any)?.company_name || '') : undefined,
+      nanny_name: nannyDoc.exists
         ? `${String((nannyDoc.data() as any)?.first_name || '').trim()} ${String((nannyDoc.data() as any)?.last_name || '').trim()}`.trim()
         : undefined,
       placement_status: placementStatus,
@@ -682,7 +687,7 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
       rating: Number(existingHistory?.rating || 0),
       review: String(existingHistory?.review || ''),
       updated_at: new Date().toISOString(),
-    };
+    });
 
     if (existingDoc) {
       console.log(`[care-history/sync] Updating existing doc ${existingDoc.id}...`);
@@ -692,10 +697,10 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
     }
 
     console.log(`[care-history/sync] Creating new care_history doc...`);
-    const createdRef = await db.collection('care_history').add({
+    const createdRef = await db.collection('care_history').add(withoutUndefined({
       ...history,
       created_at: new Date().toISOString(),
-    });
+    }));
     console.log(`[care-history/sync] Successfully created doc ${createdRef.id}`);
     return res.json({ ok: true, id: createdRef.id, synced: true, existing: false });
   } catch (error: any) {
