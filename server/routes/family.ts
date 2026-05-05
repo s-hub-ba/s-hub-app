@@ -599,6 +599,11 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
     return date.toISOString();
   };
 
+  const withoutUndefined = <T extends Record<string, any>>(value: T): Partial<T> => {
+    const entries = Object.entries(value).filter(([, entryValue]) => entryValue !== undefined);
+    return Object.fromEntries(entries) as Partial<T>;
+  };
+
   try {
     const familyAppDoc = await db.collection('family_applications').doc(applicationId).get();
     const agencyAppDoc = familyAppDoc.exists ? null : await db.collection('applications').doc(applicationId).get();
@@ -628,6 +633,9 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
       return res.status(403).json({ error: 'Forbidden: application does not belong to this family' });
     }
 
+    console.log(`[care-history/sync] Processing sync for appId=${applicationId}, familyId=${familyId}, jobId=${jobId}, nannyId=${nannyId}`);
+
+    console.log(`[care-history/sync] Querying existing care_history...`);
     const existingSnap = await db.collection('care_history')
       .where('family_id', '==', familyId)
       .where('job_id', '==', jobId)
@@ -637,6 +645,7 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
 
     const existingDoc = existingSnap.empty ? null : existingSnap.docs[0];
     const existingHistory = existingDoc ? (existingDoc.data() as any) : null;
+    console.log(`[care-history/sync] Found existing doc: ${existingDoc ? existingDoc.id : 'none'}`);
 
     const agencyDoc = await db.collection('agency_profiles').doc(agencyId).get();
     const nannyDoc = await db.collection('nanny_profiles').doc(nannyId).get();
@@ -648,7 +657,7 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
     const weekOneReviewAvailableAt = existingHistory?.week_one_review_available_at || addDaysIso(derivedStartDate, 7);
     const completedAt = new Date().toISOString();
 
-    const history = {
+    const history = withoutUndefined({
       family_id: familyId,
       job_id: jobId,
       agency_id: agencyId,
@@ -678,19 +687,24 @@ router.post('/care-history/sync', requireFamilyAuth, async (req: any, res: any) 
       rating: Number(existingHistory?.rating || 0),
       review: String(existingHistory?.review || ''),
       updated_at: new Date().toISOString(),
-    };
+    });
 
     if (existingDoc) {
+      console.log(`[care-history/sync] Updating existing doc ${existingDoc.id}...`);
       await existingDoc.ref.set(history, { merge: true });
+      console.log(`[care-history/sync] Successfully updated existing doc ${existingDoc.id}`);
       return res.json({ ok: true, id: existingDoc.id, synced: true, existing: true });
     }
 
-    const createdRef = await db.collection('care_history').add({
+    console.log(`[care-history/sync] Creating new care_history doc...`);
+    const createdRef = await db.collection('care_history').add(withoutUndefined({
       ...history,
       created_at: new Date().toISOString(),
-    });
+    }));
+    console.log(`[care-history/sync] Successfully created doc ${createdRef.id}`);
     return res.json({ ok: true, id: createdRef.id, synced: true, existing: false });
   } catch (error: any) {
+    console.error(`[care-history/sync] ERROR: ${error.message}`, error);
     return res.status(500).json({ error: error.message || 'Failed to sync care history' });
   }
 });
