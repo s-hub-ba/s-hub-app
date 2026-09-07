@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { CheckCircle2, ChevronRight, Upload, Camera } from 'lucide-react';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { updateNannyProfile, getNannyById } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { storage } from '../../lib/firebase';
+import { fileToBase64 } from '../../lib/utils';
 
 const CHILDCARE_PHILOSOPHY_OPTIONS = [
   'Montessori-inspired',
@@ -103,16 +102,11 @@ export default function NannyOnboarding() {
     setIsUploadingPhoto(true);
     setPhotoUploadError(null);
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const safeExt = ext.replace(/[^a-z0-9]/g, '') || 'jpg';
-      const storagePath = `nanny-documents/${user.uid}/profile-photo-${Date.now()}.${safeExt}`;
-      const fileRef = ref(storage, storagePath);
-      await uploadBytes(fileRef, file);
-      const photoUrl = await getDownloadURL(fileRef);
+      const photoUrl = await fileToBase64(file);
       setFormData((prev: any) => ({ ...prev, photo_url: photoUrl }));
     } catch (uploadErr: any) {
-      console.error('Error uploading onboarding profile photo:', uploadErr);
-      setPhotoUploadError(uploadErr?.message || 'Unable to upload photo right now. Please try again.');
+      console.error('Error converting onboarding profile photo:', uploadErr);
+      setPhotoUploadError(uploadErr?.message || 'Unable to process photo right now. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
     }

@@ -249,6 +249,27 @@ export default function FamilyRequestResults() {
         </div>
       )}
 
+      {/* Prompt to edit when agencies ask for more details */}
+      {matches.some((m) => m.status === 'more_details') && !isChosen && (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-700 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <h2 className="text-lg font-bold text-amber-900">Agency Asked for More Details</h2>
+              <p className="text-sm text-amber-800 mt-1">
+                One or more agencies would like you to provide more information about your care request to improve the match.
+              </p>
+              <Link
+                to="/family/request-care"
+                className="inline-flex mt-3 items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-700 text-white text-sm font-semibold hover:bg-amber-800"
+              >
+                Edit Your Request
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Agency list */}
       {matches.length === 0 ? (
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-8 text-center">

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Mail, MapPin, Briefcase, GraduationCap, Camera, Save, Star, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import {
   createNannyDocument,
   getNannyById,
@@ -14,7 +13,7 @@ import {
   updateNannyReferenceSharing,
 } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { storage } from '../../lib/firebase';
+import { fileToBase64 } from '../../lib/utils';
 
 export default function NannyProfile() {
   const { user } = useAuth();
@@ -205,26 +204,11 @@ export default function NannyProfile() {
     setIsUploadingPhoto(true);
     setPhotoUploadError(null);
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const safeExt = ext.replace(/[^a-z0-9]/g, '') || 'jpg';
-      const storagePath = `nanny-documents/${nannyId}/profile-photo-${Date.now()}.${safeExt}`;
-      const fileRef = ref(storage, storagePath);
-      await uploadBytes(fileRef, file);
-      const photoUrl = await getDownloadURL(fileRef);
-
+      const photoUrl = await fileToBase64(file);
       setFormData((prev: any) => ({ ...prev, photo_url: photoUrl }));
     } catch (uploadErr: any) {
-      console.error('Failed to upload profile photo:', uploadErr);
-      const errorCode = String(uploadErr?.code || '');
-      if (errorCode.includes('storage/unauthorized')) {
-        setPhotoUploadError('Storage permissions blocked this upload. The image path has been corrected, so please try again.');
-      } else if (errorCode.includes('storage/unauthenticated')) {
-        setPhotoUploadError('Please sign in again before uploading a profile photo.');
-      } else if (errorCode.includes('storage/quota-exceeded')) {
-        setPhotoUploadError('Storage quota was exceeded. Please try again later.');
-      } else {
-        setPhotoUploadError(uploadErr?.message || 'Unable to upload profile photo right now. Please try again.');
-      }
+      console.error('Failed to convert profile photo:', uploadErr);
+      setPhotoUploadError(uploadErr?.message || 'Unable to process profile photo right now. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -286,10 +270,7 @@ export default function NannyProfile() {
     try {
       let fileUrl = docUrl.trim();
       if (docFile) {
-        const storagePath = `nanny-documents/${nannyId}/${Date.now()}-${docFile.name}`;
-        const fileRef = ref(storage, storagePath);
-        await uploadBytes(fileRef, docFile);
-        fileUrl = await getDownloadURL(fileRef);
+        fileUrl = await fileToBase64(docFile);
       }
 
       const created = await createNannyDocument({
@@ -329,7 +310,7 @@ export default function NannyProfile() {
       }
     } catch (uploadErr) {
       console.error('Document upload failed:', uploadErr);
-      setUploadError('Unable to upload file right now. Please try again.');
+      setUploadError('Unable to process file right now. Please try again.');
     } finally {
       setIsUploadingDoc(false);
     }
