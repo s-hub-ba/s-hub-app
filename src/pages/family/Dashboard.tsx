@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, Heart, MessageSquare, Clock, MapPin, AlertCircle } from 'lucide-react';
+import { Briefcase, Heart, MessageSquare, Clock, MapPin, AlertCircle, ClipboardList, UsersRound, CalendarCheck2, ArrowRight, Star } from 'lucide-react';
 import { getFamilyProfile, getFamilyCareHistory, getSavedJobs, getConversations, getFamilyFollowedAgencies, getFamilyPlacementApplications } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -200,6 +200,49 @@ export default function FamilyDashboard() {
         {/* Main Content Area */}
         <div className="lg:col-span-2 space-y-8">
 
+          {/* Scheduling Guide */}
+          <section className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-6 md:p-8">
+            <div className="max-w-2xl">
+              <p className="text-sm font-bold uppercase tracking-wider text-emerald-700">Your next steps</p>
+              <h2 className="mt-2 text-2xl font-bold tracking-tight text-stone-900">How to schedule care</h2>
+              <p className="mt-2 text-sm leading-6 text-stone-600">Tell us what your family needs, review the right matches, and confirm care when you are ready.</p>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <Link to="/family/request-care" className="group rounded-2xl border border-white bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                    <ClipboardList className="h-5 w-5" />
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-stone-300 transition-colors group-hover:text-emerald-600" />
+                </div>
+                <p className="mt-4 text-sm font-bold text-stone-900">1. Request care</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">Share your dates, schedule, and family preferences.</p>
+              </Link>
+
+              <Link to="/family/placements" className="group rounded-2xl border border-white bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                    <UsersRound className="h-5 w-5" />
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-stone-300 transition-colors group-hover:text-emerald-600" />
+                </div>
+                <p className="mt-4 text-sm font-bold text-stone-900">2. Review matches</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">Compare agency responses and discuss the best fit.</p>
+              </Link>
+
+              <Link to="/family/calendar" className="group rounded-2xl border border-white bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                    <CalendarCheck2 className="h-5 w-5" />
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-stone-300 transition-colors group-hover:text-emerald-600" />
+                </div>
+                <p className="mt-4 text-sm font-bold text-stone-900">3. Confirm your schedule</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">Approve the placement and keep every care date in view.</p>
+              </Link>
+            </div>
+          </section>
 
           {/* Next Care */}
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
@@ -260,6 +303,24 @@ export default function FamilyDashboard() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-rose-100 bg-rose-50/70 p-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-rose-500 shadow-sm">
+                <Star className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-rose-950">Your review helps care get better</h3>
+                <p className="mt-2 text-sm leading-6 text-rose-900/75">
+                  After a placement, review both the agency and nanny. Your experience helps future families choose with confidence and gives great care partners the recognition they deserve.
+                </p>
+                <Link to="/family/saved" className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-rose-700 hover:text-rose-800">
+                  Review past care
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
           </div>
 

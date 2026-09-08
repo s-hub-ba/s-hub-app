@@ -7,6 +7,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useCallback } from 'react';
+import { CalendarDays, LockKeyhole, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import CalendarShell from '../../features/scheduling/components/CalendarShell';
 
 const FamilyCalendar: React.FC = () => {
@@ -17,20 +19,33 @@ const FamilyCalendar: React.FC = () => {
   }, []);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold text-gray-900">My Schedule</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Track your booking requests and confirmed care sessions</p>
+    <div className="family-calendar-page max-w-5xl mx-auto space-y-6 pb-12">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+            <CalendarDays className="h-4 w-4" />
+            <span>Family schedule</span>
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight text-stone-900">Your care schedule</h1>
+            <p className="text-sm text-stone-500">Keep track of requests, confirmed care, and what is coming next.</p>
+          </div>
+        </div>
+        <Link
+          to="/family/request-care"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
+        >
+          <Plus className="h-4 w-4" />
+          Request care
+        </Link>
       </div>
 
-      {/* Info strip: exact address privacy note */}
-      <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
-        <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-        </svg>
-        <p>
-          Your exact address is only shared with your nanny once a booking is confirmed.
-          Until then, only the general neighborhood is visible.
+      <div className="flex items-start gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-sm text-stone-600 shadow-sm">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+          <LockKeyhole className="h-4 w-4" />
+        </div>
+        <p className="leading-6">
+          Your exact address stays private until a booking is confirmed. Before then, agencies and nannies only see your general neighborhood.
         </p>
       </div>
 
@@ -39,6 +54,7 @@ const FamilyCalendar: React.FC = () => {
         defaultView="listWeek"
         visibleTypes={['booking_request', 'booking_confirmed']}
         onEventMutated={handleActionSuccess}
+        className="family-calendar-shell"
       />
     </div>
   );

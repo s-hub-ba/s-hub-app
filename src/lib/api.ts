@@ -5759,7 +5759,8 @@ export type FamilyRequestStatus =
   | 'in_progress'
   | 'accepted'
   | 'family_chosen'
-  | 'closed';
+  | 'closed'
+  | 'expired';
 
 export type FamilyRequestCareType = 'full-time' | 'part-time' | 'occasional' | 'last-minute';
 export type FamilyRequestLiveIn = 'live-in' | 'live-out' | 'either';
@@ -5855,6 +5856,29 @@ const normalizeFamilyRequestCareType = (value: unknown): FamilyRequestCareType =
   if (normalized === 'last-minute' || normalized === 'last minute') return 'last-minute';
   if (normalized === 'occasional' || normalized === 'temporary') return 'occasional';
   return 'full-time';
+};
+
+const getFamilyRequestExpiryDate = (request: any): Date | null => {
+  const parseDate = (value: unknown, endOfDay = false): Date | null => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return null;
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+      ? new Date(`${normalized}${endOfDay ? 'T23:59:59.999' : 'T00:00:00.000'}`)
+      : new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const endDate = parseDate(request?.end_date, true);
+  const startDate = parseDate(request?.start_date, true);
+  const careType = normalizeFamilyRequestCareType(request?.care_type);
+  return careType === 'occasional' || careType === 'last-minute' ? (endDate || startDate) : endDate;
+};
+
+const isFamilyRequestActiveForEligibility = (request: any): boolean => {
+  const activeStatuses = ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'];
+  if (!activeStatuses.includes(String(request?.status || 'submitted'))) return false;
+  const expiry = getFamilyRequestExpiryDate(request);
+  return !expiry || expiry.getTime() >= Date.now();
 };
 
 const normalizeRequestStringList = (value: unknown): string[] => {
@@ -6097,7 +6121,11 @@ export const submitFamilyRequestAndMatch = async (
 
       const activeStatuses: FamilyRequestStatus[] = ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'];
       const existingRequests = await getDocs(query(collection(db, path), where('family_id', '==', familyId)));
-      const activeRequestCount = existingRequests.docs.filter((entry) => activeStatuses.includes((entry.data().status || 'submitted') as FamilyRequestStatus)).length;
+      const activeRequestCount = existingRequests.docs.filter((entry) => {
+        const data = entry.data();
+        return activeStatuses.includes((data.status || 'submitted') as FamilyRequestStatus)
+          && isFamilyRequestActiveForEligibility(data);
+      }).length;
 
       if (activeRequestCount >= FAMILY_FREE_ACTIVE_REQUEST_LIMIT) {
         throw new Error('Families can have one active childcare request at a time. Close your existing request before submitting another.');

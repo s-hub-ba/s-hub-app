@@ -100,6 +100,7 @@ export default function FamilyRequestResults() {
 
   const isChosen = !!request?.chosen_agency_id;
   const isClosed = request?.status === 'closed';
+  const isExpired = request?.status === 'expired' || request?.expired_reason === 'date_elapsed' || (isClosed && request?.closed_reason === 'date_elapsed');
   const chosenAgency = isChosen ? matches.find((m) => m.agency_id === request.chosen_agency_id) : null;
   const linkedJobId = String(request?.linked_job_id || '').trim();
   const linkedJobPublished = request?.job_post_status === 'published' && !!linkedJobId;
@@ -140,6 +141,16 @@ export default function FamilyRequestResults() {
               <p className="text-sm text-stone-600 mt-1">
                 Your care request and its marketplace matches were permanently removed.
               </p>
+            </div>
+          </div>
+        </div>
+      ) : isExpired ? (
+        <div className="rounded-3xl border border-stone-200 bg-stone-50 p-6">
+          <div className="flex items-start gap-3">
+            <Clock className="h-5 w-5 text-stone-600 mt-0.5 shrink-0" />
+            <div>
+              <h1 className="text-2xl font-bold text-stone-900">Request Expired</h1>
+              <p className="text-sm text-stone-600 mt-1">The care dates for this request have passed. It remains available for your records, but it is no longer an active request.</p>
             </div>
           </div>
         </div>
@@ -202,7 +213,7 @@ export default function FamilyRequestResults() {
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h2 className="text-lg font-bold text-stone-900">Your Request</h2>
-            {!isClosed ? (
+            {!isClosed && !isExpired ? (
               <button
                 type="button"
                 onClick={handleCloseRequest}
@@ -271,7 +282,16 @@ export default function FamilyRequestResults() {
       )}
 
       {/* Agency list */}
-      {matches.length === 0 ? (
+      {isExpired ? (
+        <div className="rounded-3xl border border-stone-200 bg-white p-8 text-center">
+          <Clock className="h-10 w-10 text-stone-300 mx-auto mb-3" />
+          <h3 className="text-lg font-bold text-stone-900">No active matching process</h3>
+          <p className="text-sm text-stone-500 mt-1">Submit a new care request if your family still needs coverage.</p>
+          <Link to="/family/request-care" className="inline-flex mt-4 px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-semibold">
+            Submit New Request
+          </Link>
+        </div>
+      ) : matches.length === 0 ? (
         <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-8 text-center">
           <AlertCircle className="h-10 w-10 text-stone-300 mx-auto mb-3" />
           <h3 className="text-lg font-bold text-stone-900">No agencies matched yet</h3>

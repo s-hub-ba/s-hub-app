@@ -254,8 +254,8 @@ const autoCloseExpiredFamilyRequests = async (snapshot: any, now: Date) => {
 
   const nowIso = now.toISOString();
   await Promise.all(expiredDocs.map((docSnap: any) => docSnap.ref.set({
-    status: 'closed',
-    closed_reason: 'date_elapsed',
+    status: 'expired',
+    expired_reason: 'date_elapsed',
     updated_at: nowIso,
   }, { merge: true })));
 };

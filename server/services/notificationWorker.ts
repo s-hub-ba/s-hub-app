@@ -1,5 +1,5 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { db, messaging } from '../firebase.js';
+import { db, firebaseAdminConfigured, messaging } from '../firebase.js';
 import { processPlacementEndingSoonNotifications } from './placementEndingNotifier.ts';
 
 let isRunning = false;
@@ -368,6 +368,11 @@ export function startNotificationWorker(options?: { intervalMs?: number }) {
 
   if (!enabled) {
     console.log('[notification-worker] Disabled via DISABLE_NOTIFICATION_WORKER');
+    return { stop: () => {} };
+  }
+
+  if (!firebaseAdminConfigured) {
+    console.log('[notification-worker] Disabled because Firebase Admin credentials are unavailable');
     return { stop: () => {} };
   }
 

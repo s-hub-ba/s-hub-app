@@ -25,6 +25,19 @@ const normalizeProfileCareType = (value: unknown): FamilyRequestInput['care_type
   return 'full-time';
 };
 
+const isRequestExpired = (request: any): boolean => {
+  const careType = String(request?.care_type || '').trim().toLowerCase();
+  const expiryValue = careType === 'occasional' || careType === 'last-minute'
+    ? (request?.end_date || request?.start_date)
+    : request?.end_date;
+  if (!expiryValue) return false;
+  const normalized = String(expiryValue).trim();
+  const expiry = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    ? new Date(`${normalized}T23:59:59.999`)
+    : new Date(normalized);
+  return !Number.isNaN(expiry.getTime()) && expiry.getTime() < Date.now();
+};
+
 const inferAgeGroupsFromProfile = (children: any[]): string[] => {
   return (children || [])
     .map((c: any) => {
@@ -98,6 +111,7 @@ export default function FamilyExtensionFlow() {
 
         const activeRequest = (requests || []).find((request: any) =>
           ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(request?.status || ''))
+          && !isRequestExpired(request)
         ) || null;
         setActiveRequestId(activeRequest?.id || null);
 
