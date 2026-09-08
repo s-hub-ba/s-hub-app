@@ -99,7 +99,7 @@ async function startServer() {
   app.use('/api/notifications', notificationsRoutes);
 
   // Vite middleware for development and SPA fallback
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && process.env.DISABLE_VITE !== 'true') {
     // Keep HMR off by default to avoid websocket port collisions (can be enabled explicitly).
     if (process.env.ENABLE_HMR !== 'true') {
       process.env.DISABLE_HMR = 'true';

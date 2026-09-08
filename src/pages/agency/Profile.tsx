@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, Plus, X, Image, Globe, Calendar, MapPin, FileText, Newspaper, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getAgencyById,
@@ -12,7 +11,7 @@ import {
   AgencyPost,
   resolveAgencyIdForUser,
 } from '../../lib/api';
-import { storage } from '../../lib/firebase';
+import { fileToBase64 } from '../../lib/utils';
 
 const PREDEFINED_SERVICES = [
   'Full-Time Nanny Placement',
@@ -172,24 +171,11 @@ export default function AgencyProfilePage() {
     setUploading(true);
     setError('');
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const storagePath = `agency-profiles/${agencyId}/${kind}-${Date.now()}.${ext}`;
-      const fileRef = ref(storage, storagePath);
-      await uploadBytes(fileRef, file);
-      const downloadUrl = await getDownloadURL(fileRef);
-      setValue(downloadUrl);
+      const base64DataUrl = await fileToBase64(file);
+      setValue(base64DataUrl);
     } catch (uploadErr: any) {
-      console.error(`Failed to upload agency ${kind}:`, uploadErr);
-      const errorCode = String(uploadErr?.code || '');
-      if (errorCode.includes('storage/unauthorized')) {
-        setError('Storage permissions blocked this upload. Please try again after confirming storage access.');
-      } else if (errorCode.includes('storage/unauthenticated')) {
-        setError('Please sign in again before uploading an image.');
-      } else if (errorCode.includes('storage/quota-exceeded')) {
-        setError('Storage quota was exceeded. Please try again later.');
-      } else {
-        setError(uploadErr?.message || 'Unable to upload the image right now. Please try again.');
-      }
+      console.error(`Failed to convert agency ${kind}:`, uploadErr);
+      setError(uploadErr?.message || 'Unable to process the image right now. Please try again.');
     } finally {
       setUploading(false);
     }

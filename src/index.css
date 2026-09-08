@@ -1,5 +1,82 @@
 @import "tailwindcss";
 
+/* Family calendar: a quieter agenda surface without changing shared calendar behavior. */
+.family-calendar-shell .fc {
+	--fc-border-color: #eeeae4;
+	--fc-button-bg-color: #ffffff;
+	--fc-button-border-color: #e7e2da;
+	--fc-button-text-color: #57534e;
+	--fc-button-hover-bg-color: #f5f3ef;
+	--fc-button-hover-border-color: #d6d0c7;
+	--fc-button-active-bg-color: #ecfdf5;
+	--fc-button-active-border-color: #a7f3d0;
+	--fc-today-bg-color: #fffbeb;
+	--fc-list-event-hover-bg-color: #fafaf9;
+	font-size: 0.875rem;
+}
+
+.family-calendar-shell .fc-toolbar {
+	gap: 1rem;
+	padding: 1.25rem 1.25rem 1rem;
+	margin-bottom: 0 !important;
+	background: #fff;
+}
+
+.family-calendar-shell .fc-toolbar-title {
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: #292524;
+}
+
+.family-calendar-shell .fc-button {
+	min-height: 2.25rem;
+	border-radius: 0.7rem;
+	box-shadow: none;
+	font-size: 0.75rem;
+	font-weight: 700;
+	text-transform: none;
+}
+
+.family-calendar-shell .fc-button:focus {
+	box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
+
+.family-calendar-shell .fc-list {
+	border: 0;
+}
+
+.family-calendar-shell .fc-list-day-cushion {
+	padding: 0.8rem 1.25rem;
+	background: #fafaf9;
+	color: #78716c;
+	font-size: 0.72rem;
+	font-weight: 800;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.family-calendar-shell .fc-list-event td {
+	padding: 1rem 1.25rem;
+	border-color: #f1eeea;
+	vertical-align: middle;
+}
+
+.family-calendar-shell .fc-list-event-time {
+	color: #78716c;
+	font-weight: 600;
+}
+
+.family-calendar-shell .fc-list-event-dot {
+	border-width: 5px;
+}
+
+.family-calendar-shell .fc-daygrid-day-number,
+.family-calendar-shell .fc-col-header-cell-cushion {
+	color: #78716c;
+	font-weight: 700;
+	text-decoration: none;
+}
+
 /* Mobile-first responsive improvements */
 @layer base {
 	html {

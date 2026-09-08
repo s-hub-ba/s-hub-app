@@ -13,17 +13,16 @@ function parseServiceAccountFromEnv() {
   try {
     const parsed = JSON.parse(raw);
     if (
-      typeof parsed?.project_id !== 'string'
-      || typeof parsed?.client_email !== 'string'
-      || typeof parsed?.private_key !== 'string'
+      typeof parsed?.project_id !== 'string' ||
+      typeof parsed?.client_email !== 'string' ||
+      typeof parsed?.private_key !== 'string'
     ) {
       console.error('[firebase-admin] FIREBASE_SERVICE_ACCOUNT_KEY is missing required fields');
       return null;
     }
 
-    if (typeof parsed.private_key === 'string') {
-      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
-    }
+    // Replace escaped newlines in the private key
+    parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
     return parsed;
   } catch (error) {
     console.error('[firebase-admin] Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON');
@@ -39,10 +38,16 @@ if (!admin.apps.length) {
 
   if (serviceAccount) {
     initOptions.credential = admin.credential.cert(serviceAccount);
+  } else {
+    console.error(
+      '[firebase-admin] Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_KEY in the server environment.'
+    );
   }
 
   admin.initializeApp(initOptions);
 }
+
+export const firebaseAdminConfigured = Boolean(parseServiceAccountFromEnv());
 
 const dbId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
 export const db = getFirestore(admin.app(), dbId);

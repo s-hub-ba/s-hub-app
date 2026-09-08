@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "set DISABLE_HMR=true && tsx server.ts",
+    "dev": "node dev-server.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
@@ -27,7 +27,7 @@
     "dotenv": "^17.3.1",
     "express": "^4.22.1",
     "firebase": "^12.10.0",
-    "firebase-admin": "^12.7.0",
+    "firebase-admin": "^13.10.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.35.2",
     "react": "^19.0.0",

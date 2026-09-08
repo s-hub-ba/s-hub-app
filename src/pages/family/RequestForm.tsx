@@ -58,6 +58,15 @@ const isRequestExpired = (request: any): boolean => {
   return expiry.getTime() < Date.now();
 };
 
+const getRequestExpiry = (request: any): Date | null => {
+  const careType = normalizeRequestCareType(request?.care_type);
+  const endDate = parseDateAtBoundary(request?.end_date, 'end');
+  const startDate = parseDateAtBoundary(request?.start_date, 'end');
+  return careType === 'occasional' || careType === 'last-minute'
+    ? (endDate || startDate)
+    : endDate;
+};
+
 export default function FamilyRequestForm() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -69,6 +78,7 @@ export default function FamilyRequestForm() {
   const [closingExistingRequest, setClosingExistingRequest] = useState(false);
   const [error, setError] = useState('');
   const [activeRequest, setActiveRequest] = useState<any>(null);
+  const [expiredRequest, setExpiredRequest] = useState<any>(null);
 
   const [form, setForm] = useState<FamilyRequestInput>({
     parent_name: '',
@@ -111,6 +121,12 @@ export default function FamilyRequestForm() {
         ['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(request?.status || ''))
         && !isRequestExpired(request)
       ) || null;
+      const mostRecentExpiredRequest = (requests || []).find((request: any) =>
+        String(request?.status || '') === 'expired'
+        || request?.expired_reason === 'date_elapsed'
+        || (String(request?.status || '') === 'closed' && request?.closed_reason === 'date_elapsed')
+        || (['submitted', 'matched', 'in_progress', 'accepted', 'family_chosen'].includes(String(request?.status || '')) && isRequestExpired(request))
+      ) || null;
 
       setForm((prev) => ({
         ...prev,
@@ -140,6 +156,7 @@ export default function FamilyRequestForm() {
         pet_friendly: !!profile?.pet_friendly,
       }));
       setActiveRequest(currentActiveRequest);
+      setExpiredRequest(mostRecentExpiredRequest);
       setLoadingProfile(false);
       setCheckingExistingRequest(false);
     };
@@ -188,6 +205,10 @@ export default function FamilyRequestForm() {
   }, [form]);
 
   const needsDateRange = form.care_type === 'full-time' || form.care_type === 'part-time';
+  const activeRequestExpiry = activeRequest ? getRequestExpiry(activeRequest) : null;
+  const daysUntilActiveRequestExpiry = activeRequestExpiry
+    ? Math.ceil((activeRequestExpiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    : null;
 
   const toggleAgeGroup = (value: string) => {
     setForm((prev) => {
@@ -326,6 +347,13 @@ export default function FamilyRequestForm() {
             </p>
           </div>
 
+            {daysUntilActiveRequestExpiry !== null && daysUntilActiveRequestExpiry <= 3 && daysUntilActiveRequestExpiry >= 0 && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-900">
+                <p className="font-bold">This request expires in {daysUntilActiveRequestExpiry === 0 ? 'less than a day' : `${daysUntilActiveRequestExpiry} ${daysUntilActiveRequestExpiry === 1 ? 'day' : 'days'}`}.</p>
+                <p className="mt-1">If you still need care, submit a new request after this one expires.</p>
+              </div>
+            )}
+
           <div className="flex flex-wrap gap-3">
             <Link
               to={`/family/requests/${activeRequest.id}`}
@@ -342,6 +370,28 @@ export default function FamilyRequestForm() {
               <Trash2 className="h-4 w-4" />
               {closingExistingRequest ? 'Deleting...' : 'Delete Current Request'}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!activeRequest && expiredRequest ? (
+        <div className="rounded-3xl border border-stone-200 bg-stone-50 p-6 space-y-3">
+          <div>
+            <h2 className="text-xl font-bold text-stone-900">Your previous care request expired</h2>
+            <p className="mt-1 text-sm text-stone-600">This request is kept here for your records, but it is no longer active. Submit a new request if you still need care.</p>
+          </div>
+          <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
+            <p className="font-semibold text-stone-900">{formatCareTypeLabel(expiredRequest.care_type || 'Care')} request in {expiredRequest.borough || 'NYC'}</p>
+            <p className="mt-1">{expiredRequest.start_date ? `Needed ${expiredRequest.start_date}${expiredRequest.end_date ? ` through ${expiredRequest.end_date}` : ''}` : 'Dates were not specified.'}</p>
+            <p className="mt-1 font-semibold text-stone-500">Expired</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link to={`/family/requests/${expiredRequest.id}`} className="inline-flex items-center rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-bold text-stone-800 hover:bg-stone-100">
+              View Expired Request
+            </Link>
+            <Link to="/family/request-care" className="inline-flex items-center rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-stone-800">
+              Submit New Request
+            </Link>
           </div>
         </div>
       ) : null}
