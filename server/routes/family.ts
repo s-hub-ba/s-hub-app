@@ -254,8 +254,8 @@ const autoCloseExpiredFamilyRequests = async (snapshot: any, now: Date) => {
 
   const nowIso = now.toISOString();
   await Promise.all(expiredDocs.map((docSnap: any) => docSnap.ref.set({
-    status: 'closed',
-    closed_reason: 'date_elapsed',
+    status: 'expired',
+    expired_reason: 'date_elapsed',
     updated_at: nowIso,
   }, { merge: true })));
 };
@@ -294,36 +294,73 @@ const requireFamilyAuth = async (req: any, res: any, next: any) => {
 };
 
 // POST /api/family/requests/eligibility - Verify family can create a new active request
-router.post('/requests/eligibility', requireFamilyAuth, async (req: any, res: any) => {
-  const callerFamilyId = String(req.userId || '');
-  const familyId = String(req.body?.familyId || callerFamilyId || '');
+router.get('/agencies/:agencyId/review-eligibility', requireFamilyAuth, async (req: any, res: any) => {
+  const familyId = String(req.userId || '');
+  const agencyId = String(req.params.agencyId || '');
 
-  if (!familyId) {
-    return res.status(400).json({ error: 'familyId is required' });
-  }
-
-  if (familyId !== callerFamilyId) {
-    return res.status(403).json({ error: 'Forbidden: cannot check eligibility for another family' });
+  if (!familyId || !agencyId) {
+    return res.status(400).json({
+      allowed: false,
+      reason: 'none',
+      message: 'Missing family or agency information.',
+    });
   }
 
   try {
-    const now = new Date();
-    const snapshot = await db.collection('family_requests')
+    const careHistory = await db.collection('care_history')
       .where('family_id', '==', familyId)
+      .where('agency_id', '==', agencyId)
+      .limit(1)
       .get();
 
-    await autoCloseExpiredFamilyRequests(snapshot, now);
+    if (!careHistory.empty) {
+      return res.json({
+        allowed: true,
+        reason: 'care_history',
+        message: 'Your family has completed care with this agency and can leave a review.',
+      });
+    }
 
-    const activeRequestCount = snapshot.docs.filter((docSnap) => isFamilyRequestStillActive(docSnap.data() || {}, now)).length;
-    const allowed = activeRequestCount < FAMILY_FREE_ACTIVE_REQUEST_LIMIT;
+    const applications = await db.collection('family_applications')
+      .where('family_id', '==', familyId)
+      .where('agency_id', '==', agencyId)
+      .limit(1)
+      .get();
+
+    if (!applications.empty) {
+      return res.json({
+        allowed: true,
+        reason: 'application',
+        message: 'Your family has applied to this agency and can leave a review.',
+      });
+    }
+
+    const conversations = await db.collection('conversations')
+      .where('family_id', '==', familyId)
+      .where('agency_id', '==', agencyId)
+      .limit(1)
+      .get();
+
+    if (!conversations.empty) {
+      return res.json({
+        allowed: true,
+        reason: 'conversation',
+        message: 'Your family has already interacted with this agency and can leave a review.',
+      });
+    }
 
     return res.json({
-      allowed,
-      activeRequestCount,
-      limit: FAMILY_FREE_ACTIVE_REQUEST_LIMIT,
+      allowed: false,
+      reason: 'none',
+      message: 'A parent can review an agency after an inquiry, application, or completed placement.',
     });
   } catch (error: any) {
-    return res.status(500).json({ error: error.message || 'Failed to evaluate family request eligibility' });
+    console.error('[family/review-eligibility] failed:', error);
+    return res.status(500).json({
+      allowed: false,
+      reason: 'none',
+      message: 'Unable to verify review eligibility.',
+    });
   }
 });
 

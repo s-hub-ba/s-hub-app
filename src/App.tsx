@@ -17,7 +17,6 @@ import Login from './pages/Login';
 import Join from './pages/Join';
 import JoinNanny from './pages/JoinNanny';
 import JoinAgency from './pages/JoinAgency';
-import JoinFamily from './pages/JoinFamily';
 import ForNannies from './pages/ForNannies';
 import ForAgencies from './pages/ForAgencies';
 
@@ -30,7 +29,6 @@ import NannyCalendar from './pages/nanny/Calendar';
 import NannyOnboarding from './pages/nanny/Onboarding';
 import NannyTalentPools from './pages/nanny/TalentPools';
 import NannyAgencyDirectory from './pages/nanny/AgencyDirectory';
-import FamilyAgencyDirectory from './pages/family/AgencyDirectory';
 
 import AgencyDashboard from './pages/agency/Dashboard';
 import AgencyJobs from './pages/agency/Jobs';
@@ -54,18 +52,6 @@ import AdminBgAudit from './pages/admin/BgAudit';
 import AdminUsers from './pages/admin/Users';
 import AdminVerification from './pages/admin/Verification';
 
-import FamilyDashboard from './pages/family/Dashboard';
-import FamilyOnboarding from './pages/family/Onboarding';
-import JobDiscovery from './pages/family/JobDiscovery';
-import JobDetails from './pages/family/JobDetails';
-import SavedJobs from './pages/family/SavedJobs';
-import FamilyMessages from './pages/family/Messages';
-import FamilyPlacements from './pages/family/Placements';
-import FamilyProfile from './pages/family/Profile';
-import FamilyRequestForm from './pages/family/RequestForm';
-import FamilyExtensionFlow from './pages/family/ExtensionFlow';
-import FamilyRequestResults from './pages/family/RequestResults';
-import FamilyCalendar from './pages/family/Calendar';
 import Notifications from './pages/Notifications';
 import AgencyFamilyRequests from './pages/agency/FamilyRequests';
 import AgencyFamilyRequestDetail from './pages/agency/FamilyRequestDetail';
@@ -93,31 +79,6 @@ export default function App() {
           <Route path="/join" element={<Join />} />
           <Route path="/join/nanny" element={<JoinNanny />} />
           <Route path="/join/agency" element={<JoinAgency />} />
-          <Route path="/join/family" element={<JoinFamily />} />
-          
-          {/* Protected Family Routes */}
-          <Route element={<ProtectedRoute allowedRoles={['family']} />}>
-            <Route path="/family" element={<DashboardLayout role="family" />}>
-              <Route path="dashboard" element={<FamilyDashboard />} />
-              <Route path="jobs" element={<JobDiscovery />} />
-              <Route path="jobs/:id" element={<JobDetails />} />
-              <Route path="agencies" element={<FamilyAgencyDirectory />} />
-              <Route path="agencies/:id" element={<AgencyProfile />} />
-              <Route path="request-care" element={<FamilyRequestForm />} />
-              <Route path="extensions/new" element={<FamilyExtensionFlow />} />
-              <Route path="requests/:id" element={<FamilyRequestResults />} />
-              <Route path="onboarding" element={<FamilyOnboarding />} />
-
-              <Route path="saved" element={<SavedJobs />} />
-              <Route path="placements" element={<FamilyPlacements />} />
-              <Route path="applications" element={<FamilyPlacements />} />
-              <Route path="calendar" element={<FamilyCalendar />} />
-              <Route path="messages" element={<FamilyMessages />} />
-              <Route path="notifications" element={<Notifications />} />
-              <Route path="profile" element={<FamilyProfile />} />
-            </Route>
-          </Route>
-
           {/* Protected Nanny Routes */}
           <Route element={<ProtectedRoute allowedRoles={['nanny']} />}>
             <Route path="/nanny/onboarding" element={<NannyOnboarding />} />
