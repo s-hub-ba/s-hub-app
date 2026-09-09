@@ -21,7 +21,6 @@ export default function PublicLayout() {
             
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-              <Link to="/agencies" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors whitespace-nowrap">Find Agencies</Link>
               <Link to="/for-nannies" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors whitespace-nowrap">For Nannies</Link>
               <Link to="/for-agencies" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors whitespace-nowrap">For Agencies</Link>
               <div className="flex items-center gap-3 lg:gap-4 ml-2 lg:ml-4">
@@ -48,7 +47,6 @@ export default function PublicLayout() {
         {isMenuOpen && (
           <div className="md:hidden bg-white border-b border-stone-200 safe-area-inset-bottom">
             <div className="px-4 pt-2 pb-4 space-y-2">
-              <Link to="/agencies" className="block px-4 py-3 text-base font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-colors">Find Agencies</Link>
               <Link to="/for-nannies" className="block px-4 py-3 text-base font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-colors">For Nannies</Link>
               <Link to="/for-agencies" className="block px-4 py-3 text-base font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-colors">For Agencies</Link>
               <Link to="/login" className="block px-4 py-3 text-base font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-colors">Log In</Link>
@@ -76,7 +74,6 @@ export default function PublicLayout() {
           <div>
             <h3 className="text-xs sm:text-sm font-semibold text-white uppercase tracking-wider mb-3">Platform</h3>
             <ul className="space-y-2 text-xs sm:text-sm">
-              <li><Link to="/agencies" className="hover:text-white transition-colors">Find Agencies</Link></li>
               <li><Link to="/for-nannies" className="hover:text-white transition-colors">For Nannies</Link></li>
               <li><Link to="/for-agencies" className="hover:text-white transition-colors">For Agencies</Link></li>
             </ul>

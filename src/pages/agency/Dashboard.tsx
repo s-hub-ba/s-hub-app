@@ -254,6 +254,51 @@ export default function AgencyDashboard() {
 
   const highRiskThisWeek = stats.shiftsAtRisk;
 
+  const workQueue = useMemo(() => {
+    const newRequests = inquiries.filter((inquiry) => (inquiry.inquiry_stage || 'new') === 'new').length;
+    const candidateReviews = applications.filter((app) => ['applied', 'reviewing'].includes(String(app.status || ''))).length;
+    const interviewsToSchedule = applications.filter((app) =>
+      ['applied', 'reviewing', 'interview_invited'].includes(String(app.status || ''))
+      && !app.call_scheduled_for
+    ).length;
+    const activePlacements = applications.filter((app) => ['accepted', 'hired', 'active', 'pending_family_approval'].includes(String(app.status || ''))).length;
+
+    return [
+      {
+        label: 'New care requests',
+        count: newRequests,
+        description: 'Review and respond to families waiting on your agency.',
+        href: '/agency/family-requests',
+        tone: 'border-amber-200 bg-amber-50 text-amber-900',
+        countTone: 'text-amber-700',
+      },
+      {
+        label: 'Applications to review',
+        count: candidateReviews,
+        description: 'Shortlist candidates and move the strongest applications forward.',
+        href: '/agency/applications',
+        tone: 'border-sky-200 bg-sky-50 text-sky-900',
+        countTone: 'text-sky-700',
+      },
+      {
+        label: 'Interviews to schedule',
+        count: interviewsToSchedule,
+        description: 'Turn promising candidates into scheduled conversations.',
+        href: '/agency/applications',
+        tone: 'border-violet-200 bg-violet-50 text-violet-900',
+        countTone: 'text-violet-700',
+      },
+      {
+        label: 'Active placements',
+        count: activePlacements,
+        description: 'Keep assigned care, approvals, and next steps moving.',
+        href: '/agency/applications',
+        tone: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+        countTone: 'text-emerald-700',
+      },
+    ];
+  }, [applications, inquiries]);
+
   const longTermPlacementSummary = useMemo(() => {
     const activePlacementStatuses = new Set(['accepted', 'hired', 'active', 'pending_family_approval']);
 
@@ -368,6 +413,33 @@ export default function AgencyDashboard() {
               <p className="mt-1 text-xs text-stone-500">{inquiries.length} recent conversations</p>
             </Link>
           </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-stone-900">Work Queue</h2>
+            <p className="text-sm text-stone-500">The next actions that keep placements moving.</p>
+          </div>
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-400">Today</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {workQueue.map((item) => (
+            <Link
+              key={item.label}
+              to={item.href}
+              className={`rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${item.tone}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-bold">{item.label}</p>
+                <span className={`text-2xl font-black ${item.countTone}`}>{item.count}</span>
+              </div>
+              <p className="mt-3 text-xs leading-5 opacity-75">{item.description}</p>
+              <p className="mt-3 text-xs font-bold opacity-80">Open queue →</p>
+            </Link>
+          ))}
         </div>
       </section>
 

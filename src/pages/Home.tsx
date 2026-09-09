@@ -32,7 +32,7 @@ export default function Home() {
               Place better nannies faster.
             </h1>
             <p className="text-lg md:text-xl text-stone-300 mb-10 max-w-lg leading-relaxed">
-              Shift Me Up helps NYC agencies manage talent, track availability, and place candidates faster - all in one platform.
+              Shift Me Up gives NYC childcare agencies and professional nannies the tools to manage talent, prove readiness, and place great care faster.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-stretch">
@@ -52,7 +52,7 @@ export default function Home() {
                 to="/agencies" 
                 className="inline-flex justify-center items-center px-1 py-3.5 text-stone-200 font-semibold hover:text-white transition-colors"
               >
-                Find agencies
+                Explore the network
               </Link>
             </div>
             <p className="mt-3 text-sm text-stone-300/90">Takes less than 2 minutes</p>
@@ -71,7 +71,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-3xl font-bold text-stone-900 tracking-tight mb-4">Built for how childcare actually works.</h2>
-            <p className="text-lg text-stone-600 max-w-2xl mx-auto">Agencies, nannies, and families operate in one connected system - with real data, verified profiles, and faster decision-making.</p>
+            <p className="text-lg text-stone-600 max-w-2xl mx-auto">One professional workspace for agencies building teams and nannies building trusted careers.</p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
@@ -110,10 +110,10 @@ export default function Home() {
               <div className="h-14 w-14 rounded-2xl bg-purple-100 flex items-center justify-center mb-6 text-purple-600">
                 <ShieldCheck className="h-6 w-6" />
               </div>
-              <h3 className="text-xl font-semibold text-stone-900 mb-3">For Families</h3>
-              <p className="text-stone-600 mb-6 max-w-xs">Connect with trusted NYC agencies and find the right nanny faster.</p>
+              <h3 className="text-xl font-semibold text-stone-900 mb-3">For placements</h3>
+              <p className="text-stone-600 mb-6 max-w-xs">Keep profiles, availability, conversations, and placement decisions moving in one place.</p>
               <Link to="/agencies" className="text-purple-600 font-medium hover:text-purple-700 flex items-center gap-1 mt-auto">
-                Find an agency <span aria-hidden="true">&rarr;</span>
+                Explore the network <span aria-hidden="true">&rarr;</span>
               </Link>
             </motion.div>
           </div>
@@ -135,8 +135,8 @@ export default function Home() {
               <div className="text-xs font-medium text-stone-500 uppercase tracking-wider">Local focus</div>
             </div>
             <div>
-              <div className="text-base md:text-lg font-semibold text-stone-900 mb-2">Verified agency partners</div>
-              <div className="text-xs font-medium text-stone-500 uppercase tracking-wider">Trusted matching</div>
+              <div className="text-base md:text-lg font-semibold text-stone-900 mb-2">Professional profiles</div>
+              <div className="text-xs font-medium text-stone-500 uppercase tracking-wider">Clearer decisions</div>
             </div>
             <div>
               <div className="text-base md:text-lg font-semibold text-stone-900 mb-2">Real-time availability tracking</div>
@@ -144,7 +144,7 @@ export default function Home() {
             </div>
             <div>
               <div className="text-base md:text-lg font-semibold text-stone-900 mb-2">Faster placements</div>
-              <div className="text-xs font-medium text-stone-500 uppercase tracking-wider">Shorter time to close</div>
+              <div className="text-xs font-medium text-stone-500 uppercase tracking-wider">Better outcomes</div>
             </div>
           </div>
         </div>
@@ -159,8 +159,8 @@ export default function Home() {
         transition={{ duration: 0.45 }}
       >
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">Start placing faster today.</h2>
-          <p className="text-lg text-emerald-100 mb-10 max-w-2xl mx-auto">Join NYC agencies already using Shift Me Up to manage talent and close placements faster.</p>
+          <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">Build better placements.</h2>
+          <p className="text-lg text-emerald-100 mb-10 max-w-2xl mx-auto">Give your agency or professional profile a clearer path from availability to the right opportunity.</p>
           <Link 
             to="/join?role=agency" 
             className="inline-flex justify-center items-center px-8 py-4 rounded-xl bg-white text-emerald-900 font-bold text-lg hover:bg-stone-100 hover:scale-[1.02] hover:shadow-xl transition-all shadow-xl"
