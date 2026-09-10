@@ -13,9 +13,9 @@ export type PlanCode = (typeof PLAN_CODES)[keyof typeof PLAN_CODES];
 
 export const PLAN_PRICES: Record<PlanCode, number> = {
   [PLAN_CODES.FREE]: 0.00,
-  [PLAN_CODES.STARTER]: 29.00,
-  [PLAN_CODES.PROFESSIONAL]: 59.00,
-  [PLAN_CODES.ENTERPRISE]: 149.00, // configurable 149–199
+  [PLAN_CODES.STARTER]: 49.00,
+  [PLAN_CODES.PROFESSIONAL]: 99.00,
+  [PLAN_CODES.ENTERPRISE]: 199.00,
 };
 
 export const PLAN_RECRUITER_LIMITS: Record<PlanCode, number | null> = {
@@ -32,7 +32,7 @@ export const PLAN_JOB_LIMITS: Record<PlanCode, number | null> = {
   [PLAN_CODES.ENTERPRISE]: null,
 };
 
-export const ENTERPRISE_PRICE_RANGE = { min: 149, max: 199 };
+export const ENTERPRISE_PRICE_RANGE = { min: 199, max: 199 };
 
 // ─── Addon prices ─────────────────────────────────────────────────────────────
 

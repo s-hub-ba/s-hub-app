@@ -53,6 +53,7 @@ export interface Plan {
   // Feature flags
   has_invite_link: boolean;
   has_family_request_inbox: boolean;
+  has_emergency_care: boolean;
   has_advanced_search: boolean;
   has_priority_family_discovery: boolean;
   has_early_family_request_access: boolean;
@@ -63,6 +64,8 @@ export interface Plan {
   has_bulk_import: boolean;
   has_api_access: boolean;
   has_dedicated_support: boolean;
+  has_team_collaboration: boolean;
+  has_advanced_analytics: boolean;
 
   is_active: boolean;
   is_popular?: boolean;
@@ -85,6 +88,7 @@ export const PLANS: Plan[] = [
     nanny_profile_limit: 10,
     has_invite_link: false,
     has_family_request_inbox: true,
+    has_emergency_care: false,
     has_advanced_search: false,
     has_priority_family_discovery: false,
     has_early_family_request_access: false,
@@ -95,22 +99,25 @@ export const PLANS: Plan[] = [
     has_bulk_import: false,
     has_api_access: false,
     has_dedicated_support: false,
+    has_team_collaboration: false,
+    has_advanced_analytics: false,
     is_active: true,
   },
   {
     id: 'starter',
     code: PLAN_CODES.STARTER,
-    name: 'Starter',
+    name: 'Launch',
     tagline: 'Launch',
-    monthly_price: 29,
-    description: 'Start receiving family inquiries and managing your placements in one place.',
-    target: 'Boutique agencies starting out',
+    monthly_price: 49,
+    description: 'Everything a boutique agency needs to manage jobs, nannies, and standard family requests.',
+    target: 'Solo recruiters and small boutique agencies',
     color: 'emerald',
     recruiter_seat_limit: 1,
     active_job_limit: 5,
-    nanny_profile_limit: 50,
+    nanny_profile_limit: 100,
     has_invite_link: true,
     has_family_request_inbox: true,
+    has_emergency_care: false,
     has_advanced_search: false,
     has_priority_family_discovery: false,
     has_early_family_request_access: false,
@@ -121,22 +128,25 @@ export const PLANS: Plan[] = [
     has_bulk_import: false,
     has_api_access: false,
     has_dedicated_support: false,
+    has_team_collaboration: false,
+    has_advanced_analytics: false,
     is_active: true,
   },
   {
     id: 'professional',
     code: PLAN_CODES.PROFESSIONAL,
-    name: 'Pro',
-    tagline: 'Scale',
-    monthly_price: 59,
-    description: 'Grow your placements with priority visibility and faster access to families.',
-    target: 'Growing agencies',
+    name: 'Growth',
+    tagline: 'Most Popular',
+    monthly_price: 99,
+    description: 'Grow placements with unlimited jobs, advanced recruiting tools, and urgent care opportunities.',
+    target: 'Established agencies ready for more placements',
     color: 'blue',
     recruiter_seat_limit: 3,
     active_job_limit: null,
     nanny_profile_limit: null,
     has_invite_link: true,
     has_family_request_inbox: true,
+    has_emergency_care: true,
     has_advanced_search: true,
     has_priority_family_discovery: true,
     has_early_family_request_access: true,
@@ -146,25 +156,28 @@ export const PLANS: Plan[] = [
     has_advanced_matching: false,
     has_bulk_import: false,
     has_api_access: false,
-    has_dedicated_support: false,
+    has_dedicated_support: true,
+    has_team_collaboration: true,
+    has_advanced_analytics: true,
     is_active: true,
     is_popular: true,
   },
   {
     id: 'enterprise',
     code: PLAN_CODES.ENTERPRISE,
-    name: 'Team',
-    tagline: 'Operate',
+    name: 'Scale',
+    tagline: 'Maximum access and control',
     // Configurable price between ENTERPRISE_PRICE_RANGE.min and max
-    monthly_price: 149,
-    description: 'Scale your agency with premium visibility, automation, and high-quality leads.',
-    target: 'Serious agencies',
+    monthly_price: 199,
+    description: 'Maximum visibility, priority, and control for established agency teams.',
+    target: 'Larger agencies and teams',
     color: 'red',
     recruiter_seat_limit: null,
     active_job_limit: null,
     nanny_profile_limit: null,
     has_invite_link: true,
     has_family_request_inbox: true,
+    has_emergency_care: true,
     has_advanced_search: true,
     has_priority_family_discovery: true,
     has_early_family_request_access: true,
@@ -175,12 +188,16 @@ export const PLANS: Plan[] = [
     has_bulk_import: true,
     has_api_access: true,
     has_dedicated_support: true,
+    has_team_collaboration: true,
+    has_advanced_analytics: true,
     is_active: true,
   },
 ];
 
 /** Enterprise plan price range (configurable billing) */
 export const ENTERPRISE_PRICE_RANGE = { min: 149, max: 199 };
+
+export const PAID_PLANS = PLANS.filter((plan) => plan.code !== PLAN_CODES.FREE);
 
 /** Lookup map by plan code */
 export const PLAN_CONFIG_MAP: Record<PlanCode, Plan> = Object.fromEntries(
@@ -277,10 +294,13 @@ export interface AgencyEntitlements {
   canUseAdvancedSearch: boolean;
   canAccessPriorityDiscovery: boolean;
   canAccessEarlyFamilyRequests: boolean;
+  canAccessEmergencyCare: boolean;
   canUseAgencyBranding: boolean;
   canUseBulkImport: boolean;
   canUseApiAccess: boolean;
   hasDedicatedSupport: boolean;
+  hasTeamCollaboration: boolean;
+  hasAdvancedAnalytics: boolean;
 
   // Addon-driven flags (can be granted by plan OR addon)
   isFeaturedAgency: boolean;
@@ -340,11 +360,14 @@ export function resolveEntitlements(
     canAccessEarlyFamilyRequests:
       plan.has_early_family_request_access ||
       hasAddon(ADDON_CODES.PRIORITY_LEAD_BOOST),
+    canAccessEmergencyCare: plan.has_emergency_care,
     canUseAgencyBranding: plan.has_agency_branding,
     canUseBulkImport:
       plan.has_bulk_import || hasAddon(ADDON_CODES.BULK_IMPORT),
     canUseApiAccess: plan.has_api_access,
     hasDedicatedSupport: plan.has_dedicated_support,
+    hasTeamCollaboration: plan.has_team_collaboration,
+    hasAdvancedAnalytics: plan.has_advanced_analytics,
 
     isFeaturedAgency: hasAddon(ADDON_CODES.FEATURED_AGENCY_BOOST),
     hasPriorityLeadBoost: hasAddon(ADDON_CODES.PRIORITY_LEAD_BOOST),

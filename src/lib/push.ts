@@ -9,6 +9,28 @@ function resolveMessagingSwUrl(): string {
   return `${normalized}firebase-messaging-sw.js`;
 }
 
+// getToken() fails with "no active Service Worker" if the worker is still installing.
+async function waitForActiveServiceWorker(
+  registration: ServiceWorkerRegistration,
+): Promise<ServiceWorkerRegistration> {
+  if (registration.active) return registration;
+
+  const pending = registration.installing || registration.waiting;
+  if (!pending) return navigator.serviceWorker.ready;
+
+  await new Promise<void>((resolve) => {
+    const onStateChange = () => {
+      if (pending.state === 'activated' || pending.state === 'redundant') {
+        pending.removeEventListener('statechange', onStateChange);
+        resolve();
+      }
+    };
+    pending.addEventListener('statechange', onStateChange);
+  });
+
+  return registration;
+}
+
 export async function getBrowserFcmToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   if (!('Notification' in window) || !('serviceWorker' in navigator)) return null;
@@ -27,7 +49,9 @@ export async function getBrowserFcmToken(): Promise<string | null> {
     : await Notification.requestPermission();
   if (permission !== 'granted') return null;
 
-  const registration = await navigator.serviceWorker.register(resolveMessagingSwUrl());
+  const registration = await waitForActiveServiceWorker(
+    await navigator.serviceWorker.register(resolveMessagingSwUrl()),
+  );
   const messaging = getMessaging(app);
   const token = await getToken(messaging, {
     vapidKey: VAPID_KEY,
