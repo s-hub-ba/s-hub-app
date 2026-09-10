@@ -12,6 +12,7 @@ import {
   type AddonCode,
   PLAN_CONFIG_MAP,
   ADDON_CONFIG_MAP,
+  PAID_PLANS,
 } from '../../lib/plans';
 import {
   finalizeAgencyPlanCheckout,
@@ -59,9 +60,12 @@ const PLAN_ICON: Record<string, string> = {
 const featureRows: { label: string; key: keyof typeof PLAN_CONFIG_MAP['starter'] }[] = [
   { label: 'Agency Profile (family-visible)', key: 'has_family_request_inbox' },
   { label: 'Family Request Inbox', key: 'has_family_request_inbox' },
+  { label: 'Emergency Care', key: 'has_emergency_care' },
   { label: 'Agency-Controlled Messaging', key: 'has_family_request_inbox' },
   { label: 'Invite Link for Nannies', key: 'has_invite_link' },
   { label: 'Advanced Search & Filters', key: 'has_advanced_search' },
+  { label: 'Team Collaboration', key: 'has_team_collaboration' },
+  { label: 'Advanced Analytics', key: 'has_advanced_analytics' },
   { label: 'Priority Placement in Discovery', key: 'has_priority_family_discovery' },
   { label: 'Early Access to Family Requests', key: 'has_early_family_request_access' },
   { label: 'Agency Branding on Profiles', key: 'has_agency_branding' },
@@ -231,8 +235,8 @@ export default function Subscription() {
       </AnimatePresence>
 
       {/* Plan Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {PLANS.map((plan) => {
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {PAID_PLANS.map((plan) => {
           const isActive = plan.code === currentPlanCode;
           const isSaving = saving === plan.code;
           const canCheckout = plan.code !== PLAN_CODES.FREE;
@@ -278,6 +282,11 @@ export default function Subscription() {
                 </div>
                 <p className="text-xs text-stone-400 mb-4">{plan.target}</p>
                 <p className="text-sm text-stone-600 leading-relaxed">{plan.description}</p>
+                {plan.has_emergency_care && (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800">
+                    Unlock urgent care opportunities: same-day, last-minute, and emergency childcare requests.
+                  </div>
+                )}
               </div>
 
               <div className="px-6 pb-4 space-y-2.5 flex-1">
@@ -326,7 +335,7 @@ export default function Subscription() {
             <thead>
               <tr className="border-b border-stone-100">
                 <th className="text-left px-6 py-3 font-semibold text-stone-500 w-1/2">Feature</th>
-                {PLANS.map((p) => (
+                {PAID_PLANS.map((p) => (
                   <th key={p.code} className={`px-4 py-3 font-bold ${p.code === currentPlanCode ? 'text-stone-900' : 'text-stone-500'}`}>
                     {p.name}
                   </th>
@@ -337,7 +346,7 @@ export default function Subscription() {
               {featureRows.map((row) => (
                 <tr key={row.key} className="hover:bg-stone-50/50">
                   <td className="px-6 py-3 text-stone-700">{row.label}</td>
-                  {PLANS.map((p) => (
+                  {PAID_PLANS.map((p) => (
                     <td key={p.code} className="px-4 py-3 text-center">
                       {(p as any)[row.key] ? (
                         <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />

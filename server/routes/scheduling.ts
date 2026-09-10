@@ -193,7 +193,8 @@ router.get('/events', async (req, res) => {
     return res.json({ events: dtos, total: dtos.length });
   } catch (err: any) {
     console.error('[scheduling/events]', err);
-    return res.status(500).json({ error: err.message });
+    const normalized = normalizeFirebaseAdminError(err);
+    return res.status(normalized.status).json({ error: normalized.message });
   }
 });
 
@@ -308,6 +309,24 @@ router.post('/shift-offer', async (req, res) => {
     return res.status(403).json({ error: 'Agency access only' });
   }
   if (!caller.agencyId) return res.status(403).json({ error: 'Agency profile not found' });
+
+  const isEmergencyOffer = req.body?.metadata?.urgency === 'high';
+  if (isEmergencyOffer) {
+    const subscriptionSnapshot = await db.collection('agency_subscriptions')
+      .where('agency_id', '==', caller.agencyId)
+      .where('status', 'in', ['active', 'trial'])
+      .limit(1)
+      .get();
+    const planCode = subscriptionSnapshot.empty
+      ? 'free'
+      : String(subscriptionSnapshot.docs[0].data()?.plan_code || 'free');
+    if (!['professional', 'enterprise'].includes(planCode)) {
+      return res.status(403).json({
+        error: 'Emergency Care is available on Growth and Scale plans. Upgrade to send urgent shift offers.',
+        code: 'EMERGENCY_CARE_PLAN_REQUIRED',
+      });
+    }
+  }
 
   try {
     const {

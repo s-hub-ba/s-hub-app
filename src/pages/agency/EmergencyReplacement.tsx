@@ -10,6 +10,7 @@ import {
 } from '../../lib/api';
 import { getApiBaseUrl } from '../../lib/apiBase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAgencyEntitlements } from '../../lib/entitlements';
 
 type PoolCandidate = {
   nannyId: string;
@@ -164,6 +165,7 @@ export default function AgencyEmergencyReplacement() {
   const [sentOfferIds, setSentOfferIds] = useState<string[]>([]);
   const [viewedCount, setViewedCount] = useState(0);
   const [acceptedCount, setAcceptedCount] = useState(0);
+  const { entitlements, loading: loadingEntitlements } = useAgencyEntitlements(agencyId);
 
   const isShiftWindowValid = useMemo(() => {
     if (!startAt || !endAt) return false;
@@ -374,8 +376,27 @@ export default function AgencyEmergencyReplacement() {
     }
   };
 
-  if (loadingBase) {
+  if (loadingBase || loadingEntitlements) {
     return <div className="p-8 text-center text-stone-500">Loading Emergency Mode...</div>;
+  }
+
+  if (!entitlements?.canAccessEmergencyCare) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-5 py-12">
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center shadow-sm">
+          <ShieldCheck className="mx-auto h-12 w-12 text-amber-600" />
+          <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Growth capability</p>
+          <h1 className="mt-2 text-3xl font-black text-amber-950">Unlock urgent care opportunities</h1>
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-amber-900/80">
+            Emergency Mode is available on Growth and Scale. Upgrade to receive same-day, last-minute, and emergency childcare requests.
+          </p>
+          <Link to="/agency/subscription" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">
+            View Growth plan
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   if (!agencyId) {
